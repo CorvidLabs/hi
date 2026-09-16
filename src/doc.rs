@@ -569,7 +569,7 @@ impl Doc {
     /// Cases go with their parent, because a case whose parent has been retired
     /// is an orphan that `check` would then report. The section is created when
     /// the file has none, and the id stays reserved forever either way.
-    pub fn retire(&mut self, id: &Id, reason: Option<&str>) -> Result<usize> {
+    pub fn retire(&mut self, id: &Id, reason: Option<&str>) -> Result<Vec<String>> {
         let mut ranges: Vec<(usize, usize)> = self
             .criteria
             .iter()
@@ -584,16 +584,31 @@ impl Doc {
             bail!("{id} is not an active criterion in {}", self.path.display());
         }
         ranges.sort_unstable();
-        let count = ranges.len();
+        // Name what went. A case can belong to a different concern than its
+        // parent, and taking it along silently is a decision made for you.
+        let mut taken: Vec<String> = self
+            .criteria
+            .iter()
+            .filter(|c| {
+                c.id.as_ref()
+                    .is_some_and(|other| other.is_descendant_of(id))
+            })
+            .map(|c| c.raw_id.clone())
+            .collect();
+        taken.sort();
 
         let mut moved: Vec<String> = Vec::new();
         for (start, end) in &ranges {
             moved.extend_from_slice(&self.lines[*start..=*end]);
         }
         if let Some(reason) = reason.map(str::trim).filter(|r| !r.is_empty()) {
-            // After the whole block, so a parent's cases stay attached to it.
+            // Directly under the criterion it explains. Putting it after the
+            // whole block reads tidily and parses as a note on the LAST case,
+            // so hi wrote files that failed its own check. As a markdown list
+            // item's continuation line it also renders correctly, with any
+            // nested cases following it.
             let indent = " ".repeat(moved[0].len() - moved[0].trim_start().len() + 2);
-            moved.push(format!("{indent}retired: {reason}"));
+            moved.insert(1, format!("{indent}retired: {reason}"));
         }
 
         // Highest first, so the earlier ranges keep their indexes.
@@ -614,7 +629,7 @@ impl Doc {
         // Positions moved in both directions, so re-derive them rather than
         // trying to patch each one.
         *self = Doc::parse(self.path.clone(), &self.to_text());
-        Ok(count)
+        Ok(taken)
     }
 
     /// Record why an already retired criterion was retired.
@@ -1199,10 +1214,14 @@ mod tests {
         let mut doc = doc(
             "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  One.\n  - **SEND-1.a**  A case.\n- **SEND-2**  Two.\n",
         );
-        let moved = doc
+        let taken = doc
             .retire(&Id::parse("SEND-1").unwrap(), Some("different product"))
             .unwrap();
-        assert_eq!(moved, 2, "the case goes with its parent");
+        assert_eq!(
+            taken,
+            vec!["SEND-1.a"],
+            "the case goes with its parent, and is named"
+        );
         let text = doc.to_text();
         assert!(text.contains("## Retired"));
         assert!(text.contains("retired: different product"));
@@ -1211,6 +1230,36 @@ mod tests {
         assert_eq!(reparsed.criteria.len(), 1);
         assert_eq!(reparsed.criteria[0].raw_id, "SEND-2");
         assert_eq!(reparsed.retired.len(), 2);
+    }
+
+    #[test]
+    fn the_reason_attaches_to_the_criterion_it_explains() {
+        // Regression: written after the whole block, the note parsed as a
+        // continuation of the last case, so hi produced files that failed its
+        // own check.
+        let mut doc = doc(
+            "---\nhi: 1\nfamilies: [GIFT]\n---\n\n## Criteria\n\n- **GIFT-1**  As an operator, I can cancel a gift.\n  - **GIFT-1.a**  As a member, I am told.\n",
+        );
+        doc.retire(&Id::parse("GIFT-1").unwrap(), Some("never shipped"))
+            .unwrap();
+        let reparsed = Doc::parse(PathBuf::from("hi/gift.md"), &doc.to_text());
+
+        let parent = reparsed
+            .retired
+            .iter()
+            .find(|c| c.raw_id == "GIFT-1")
+            .unwrap();
+        let case = reparsed
+            .retired
+            .iter()
+            .find(|c| c.raw_id == "GIFT-1.a")
+            .unwrap();
+        assert_eq!(
+            parent.note.as_deref(),
+            Some("never shipped"),
+            "the parent owns the reason"
+        );
+        assert_eq!(case.note, None, "the case does not");
     }
 
     #[test]

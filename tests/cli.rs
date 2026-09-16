@@ -664,3 +664,43 @@ fn a_ticket_does_not_print_the_sentence_twice() {
     assert!(text.contains("Speaking as operator"), "{text}");
     assert!(text.contains("hi: SPEND-1"));
 }
+
+#[test]
+fn what_hi_writes_passes_hi_own_check() {
+    // hi retire wrote the reason after the cases while hi check looked for it
+    // under the parent, so hi produced files that failed its own check.
+    let repo = Repo::new("selfcheck");
+    repo.write(
+        "hi/gift.md",
+        "---\nhi: 1\nfamilies: [GIFT]\n---\n\n## Criteria\n\n- **GIFT-1**  As an operator, I can cancel a pending gift.\n  - **GIFT-1.a**  As a member, I am told when one is cancelled.\n  - **GIFT-1.b**  As an operator, the refund is automatic.\n",
+    );
+
+    let out = repo.run(&["retire", "GIFT-1", "we never shipped gifting"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    // What went is named, not counted: a case can belong to another concern.
+    assert!(
+        stdout(&out).contains("GIFT-1.a, GIFT-1.b"),
+        "{}",
+        stdout(&out)
+    );
+
+    let check = repo.run(&["check"]);
+    assert!(check.status.success(), "{}", stdout(&check));
+    assert!(
+        !stdout(&check).contains("does not say why"),
+        "hi must not write a file that fails its own check:\n{}",
+        stdout(&check)
+    );
+
+    // The reason belongs to the criterion it explains, not to the last case.
+    let export = repo.run(&["export"]);
+    let value: serde_json::Value = serde_json::from_str(&stdout(&export)).unwrap();
+    let retired = value["files"][0]["retired"].as_array().unwrap();
+    let parent = retired.iter().find(|c| c["id"] == "GIFT-1").unwrap();
+    let case = retired.iter().find(|c| c["id"] == "GIFT-1.a").unwrap();
+    assert_eq!(parent["retired"], "we never shipped gifting");
+    assert!(
+        case.get("retired").is_none(),
+        "the case carries no reason of its own"
+    );
+}

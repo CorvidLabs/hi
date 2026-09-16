@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 
 use crate::doc::Section;
+use crate::id::Id;
 use crate::workspace::Workspace;
 
 /// What kind of structural problem this is.
@@ -222,11 +223,25 @@ pub fn run(workspace: &Workspace) -> Report {
     }
     // Retiring in a hurry is fine; never saying why is a decision nobody can
     // reconstruct later. Same register as the role note, and never a failure.
+    // Only the root of a retirement needs a reason. A case went with its
+    // parent and was never a separate decision, so asking it to explain itself
+    // is asking for the same sentence twice.
     let unexplained = workspace
         .docs
         .iter()
-        .flat_map(|doc| doc.retired.iter())
-        .filter(|c| c.note.is_none())
+        .flat_map(|doc| {
+            let retired_ids: Vec<&Id> = doc.retired.iter().filter_map(|c| c.id.as_ref()).collect();
+            doc.retired.iter().filter(move |c| {
+                if c.note.is_some() {
+                    return false;
+                }
+                match c.id.as_ref().and_then(|id| id.parent()) {
+                    // Retired alongside its parent: not its own decision.
+                    Some(parent) => !retired_ids.iter().any(|other| **other == parent),
+                    None => true,
+                }
+            })
+        })
         .count();
     if unexplained > 0 {
         let subject = if unexplained == 1 {

@@ -242,12 +242,14 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 return Ok(ExitCode::SUCCESS);
             }
             let doc = &mut workspace.docs[index];
-            let moved = doc.retire(&parsed, reason.as_deref())?;
+            let taken = doc.retire(&parsed, reason.as_deref())?;
             doc.save()?;
             let file = workspace.rel(&workspace.docs[index].path);
-            match moved {
-                1 => println!("{file}  {parsed} retired"),
-                n => println!("{file}  {parsed} retired, with {} of its cases", n - 1),
+            println!("{file}  {parsed} retired");
+            if !taken.is_empty() {
+                // Named, not counted: a case may belong to a different concern
+                // than its parent, and you should see what went with it.
+                println!("        its cases went too: {}", taken.join(", "));
             }
             Ok(ExitCode::SUCCESS)
         }

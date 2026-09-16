@@ -724,3 +724,58 @@ workspace`.
 This is display only. The file is never rewritten, and section 8.6 still holds: hi does not touch
 the words you wrote. It is recorded here because a reader of the list went and checked the file
 against 8.6 before concluding it was safe, which is a minute nobody should have to spend.
+
+---
+
+## 18. Retired is how the format teaches
+
+An agent with no access to the code, the repository or any help was handed `hi/` alone and asked
+what the product was. It got the product, both roles, the promises and the refusals right, which is
+the claim `hi view` exists to make and which nobody had ever tested, because until then the only
+readers had also been the author.
+
+Then it did something nobody designed. It read the seven entries in `## Retired`, extracted five
+distinct reasons for retiring a criterion, stated the rule those reasons implied, and applied the
+rule to the live criteria, catching one as unfalsifiable and citing two retirements as precedent.
+
+It learned the author's editorial standard from the document and turned it on the author.
+
+`## Retired` was specified as an id reservation: a place to keep a number spoken for so it is never
+handed out twice. It turns out to be the only part of a hi file that records judgement rather than
+intent, which makes it the part a reader can learn a standard from. That is worth knowing before
+anyone proposes making it terser, moving it to a separate file, or dropping the reason.
+
+This is also the strongest argument yet for `hi check` nagging about a retirement with no reason.
+A reasonless retirement is not just an undocumented decision, it is a lesson the next reader cannot
+learn.
+
+---
+
+## 19. Open: a reader cannot tell met from unmet
+
+Recorded as an open question rather than a decision, because the argument against section 5 got
+sharper and has not been answered.
+
+Section 5 cut evidence binding on the grounds that hi is about what was wanted, and that a criterion
+with no proof is a normal state rather than a defect. Section 16 declined a built-yet bit because
+nothing in hi knows when a feature ships, so the bit would go stale.
+
+The field report that tested criteria for rot found none, and then said something we had not
+considered:
+
+> Two criteria were born false, which is worse, and nothing caught either. The cost of no mechanism
+> is not drift, it is that a reader cannot tell met from unmet and has to read the code, which is
+> the thing the document exists to spare them.
+
+The stranger agent hit the same wall independently.
+
+That is a different argument from the one section 5 answers. It is not about staleness and not about
+gating. It is that the document's stated purpose is to save a reader from reading the code, and on
+the question a reader most wants answered it sends them to the code anyway.
+
+We have no answer we are happy with. An evidence binding reintroduces everything section 5 cut. A
+status field reintroduces everything section 16 cut. Doing nothing leaves the complaint standing,
+and it has now been made independently by two readers.
+
+It is written down here so the next person to propose evidence binding is arguing with this rather
+than with a straw version of section 5.
