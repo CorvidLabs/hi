@@ -838,3 +838,51 @@ and `hi/see.md` is the specification for an open issue. If a later session reach
 without being told, that is the data point. Whether hi is reached for unprompted is still the
 question that decides if any of this matters, and it has to be measured on someone who has a
 Tuesday.
+
+---
+
+## 21. Criteria are directions, which answers section 19
+
+Section 19 logged an unanswered complaint: a reader cannot tell whether a criterion is met, so on
+the question they most want answered the document sends them to the code. Two readers made it
+independently and we had no reply.
+
+The reply is that the question belongs to a different layer, and the owner put it better than we
+had:
+
+> Directions of one driving a car. Even if you take a wrong turn, you still have the correct
+> direction. So the AC is our directions.
+
+A criterion that is currently false is not a defective criterion. It means the code has not arrived
+yet, or has gone the wrong way. The directions are unchanged either way, and rewriting them because
+you took a wrong turn is exactly the mistake. A criterion can describe something true today,
+something a year out, or something that was true and has since been revised. In every case it says
+what the thing should be, which is the only claim hi ever makes.
+
+That resolves section 19 without adding a mechanism. "Is this met" is a question about where the car
+currently is. hi holds where it is going. Answering the first one is the job of something that reads
+code against contracts, which is what spec-sync and project-specific checks are for, and hi already
+feeds them through `hi export`.
+
+So the layering is:
+
+| Layer | Question it answers | Owned by |
+|---|---|---|
+| hi | Where are we going | A person, in their own words |
+| Specs and code checks | Where is the car now | Tools that read the code |
+| The code | How we get there | Whoever is driving |
+
+Two things follow.
+
+The value hi is actually claiming is narrower and more defensible than "you will not have to read
+the code". It is that a person can read what the thing should be, and an agent can read the same
+sentence and get the same answer. Neither of them has to reverse-engineer intent from an
+implementation, and neither is told they are looking at a status report.
+
+And section 19's three properties still matter, just not as a job for hi. When someone does build
+the checking layer, it should be measured against them: available to a non-author, usable across a
+whole set rather than two at a time, and leaving something behind. Those describe a checker worth
+having. They were never a description of hi.
+
+The direction of travel is that the checking gets built alongside, not inside. hi stays the
+directions.

@@ -41,6 +41,7 @@ a standup a year from now and have it still mean the same line.
 - **FILE-15**  As a person writing intent, a criterion I changed my mind about stays in the file under Retired, with my reason beside it, so the file remembers what we dropped.
 - **FILE-16**  As a reader, I can tell who each criterion speaks for, because every one names the role it is written in.
 - **FILE-17**  As a person writing intent, if I cannot put a role in front of a sentence, I learn while typing that I wrote a fact rather than a want.
+- **FILE-18**  As a reader, I understand a criterion as what this should be, not as a report of what it currently does.
 
 - **ID-1**  As a reader, an id never moves once written, so I can say it out loud a year later and still mean the same line.
   - **ID-1.a**  As a person writing intent, inserting a criterion never renumbers anything around it.

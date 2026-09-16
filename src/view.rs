@@ -318,7 +318,7 @@ footer {{
 <body>
 <div class="wrap">
 <header>
-<p class="eyebrow">What we said we wanted</p>
+<p class="eyebrow">What this should be</p>
 <h1>{title}</h1>
 {lead}
 <hr class="rule">
@@ -326,7 +326,8 @@ footer {{
 {features}
 <footer>
 <p>{total} criteria across {count} {noun}. Generated from the <code>hi/</code> files by <code>hi view</code>.</p>
-<p>Every line here is something a person asked for. The short code beside each one is its permanent id. You can quote it and it will still mean this line later.</p>
+<p>Every line here is something a person asked for, written as what this should be rather than as a report of what it currently does. A line can describe something true today, something a year out, or something that has since been revised. These are directions, and they stay correct through a wrong turn.</p>
+<p>The short code beside each one is its permanent id. You can quote it and it will still mean this line later.</p>
 </footer>
 </div>
 </body>
