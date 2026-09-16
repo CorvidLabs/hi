@@ -779,3 +779,62 @@ and it has now been made independently by two readers.
 
 It is written down here so the next person to propose evidence binding is arguing with this rather
 than with a straw version of section 5.
+
+### What people actually do instead, observed
+
+Asked what they did instead of using hi when they wanted to know whether a criterion held, the same
+reporter answered with behavior rather than a proposal. Twice in one stretch of work they ran
+`git show origin/main:Sources/...` and read the function with their eyes. Not a test, not a search,
+not a document: straight to the implementation, one criterion at a time.
+
+Three properties of that workaround matter more than any feature:
+
+**It is available only to the author.** They could check one criterion because they knew the guard
+lived in a particular file. Someone who did not write the code cannot perform this at all, which is
+exactly why the stranger agent said plainly that it could not tell met from unmet. The workaround is
+unavailable to the audience the document exists for.
+
+**It does not scale and was not attempted at scale.** Two criteria out of fifty were checked, each
+because of a specific suspicion. There was no pass over the whole set and there would not have been.
+Reading fifty call sites is not something anyone does twice.
+
+**It leaves no residue.** Two criteria turned out to be false. That knowledge lived in one head and
+then in a commit message. Nothing in `hi/` is different for the checking having happened, so the
+next reader starts from zero, and so does the same person a month later.
+
+So the problem is not that hi cannot prove a criterion is met. It is that verification today is
+author-only, small-batch, and evaporates.
+
+Any mechanism anyone proposes should be measured against those three rather than against whether it
+can bind a test to an id. In the reporter's words, which are sharper than ours:
+
+> A thing that lets a non-author ask the question at all would beat a thing that proves it
+> rigorously for the author, because the author already has the workaround and the reader has
+> nothing.
+
+That reframes the design space. The interesting target is not proof, it is giving the reader a way
+to ask.
+
+---
+
+## 20. How to measure whether hi gets used
+
+Section 19's companion, and a correction to our own method.
+
+We asked an agent whether it would reach for hi unprompted, and said that if six months passed
+without it happening, that would be the answer. The agent corrected the question:
+
+> That assumes a continuity I do not have. I am a session, not a person with a Tuesday. So my zero
+> is not the same measurement as a human's zero and should not be counted as one.
+
+That is right, and the mistake is worth keeping because it is easy to repeat. Habit is a property of
+something that persists between occasions. An agent that starts fresh each time can leave an
+artifact where the next one will find it, and cannot form a habit at all. Asking it to is asking for
+a measurement it is not able to produce, and counting its zero as a human zero would have put a
+false reading into this file.
+
+What a session can do, and did: `hi/` is committed, the unbuilt work it describes is still unbuilt,
+and `hi/see.md` is the specification for an open issue. If a later session reaches for it there
+without being told, that is the data point. Whether hi is reached for unprompted is still the
+question that decides if any of this matters, and it has to be measured on someone who has a
+Tuesday.
