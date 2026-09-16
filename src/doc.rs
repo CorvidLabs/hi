@@ -396,7 +396,13 @@ impl Doc {
         // the file happens to end (inside the intent prose, or below a heading
         // where nothing would ever read it). Make the section instead.
         if self.criteria_heading.is_none() {
-            let at = last_content_line(&self.lines, self.lines.len()) + 1;
+            // `+ 1` runs off the end of an empty file: a zero-byte `hi/*.md`
+            // yields no lines at all, and splicing at 1 into a Vec of length 0
+            // panics. An empty file is what `touch`, a crashed editor or a
+            // partial checkout leaves behind, and it should get the same
+            // "no frontmatter" refusal any other unusable file gets
+            // (hi: CAPTURE-12).
+            let at = (last_content_line(&self.lines, self.lines.len()) + 1).min(self.lines.len());
             let opening = vec![String::new(), "## Criteria".to_string(), String::new()];
             let count = opening.len();
             self.lines.splice(at..at, opening);
@@ -804,6 +810,19 @@ pub fn write_atomically(path: &Path, body: &str) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_empty_file_is_refused_rather_than_panicking() {
+        // A zero-byte hi/*.md is what `touch`, a crashed editor or a partial
+        // checkout leaves behind. It used to splice past the end of an empty
+        // line buffer and abort with a backtrace (hi: CAPTURE-12).
+        let mut doc = Doc::parse(PathBuf::from("/r/hi/empty.md"), "");
+        let id = Id::parse("SEND-1").unwrap();
+        assert!(
+            doc.insert(&id, "a sentence").is_err(),
+            "an empty file has no frontmatter, so the insert must refuse"
+        );
+    }
     use super::*;
 
     fn doc(raw: &str) -> Doc {

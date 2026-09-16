@@ -99,11 +99,15 @@ pub fn issue_markdown(doc: &Doc, criterion: &Criterion) -> (String, String) {
         }
     }
 
-    if !doc.intent.trim().is_empty() {
+    // The starter prompt hi writes into a new file is not intent, and a ticket
+    // that quotes it reads as though nobody has written the why yet because
+    // somebody pasted the question in (hi: ISSUE-6).
+    let intent = crate::view::strip_comments(&doc.intent);
+    if !intent.trim().is_empty() {
         body.push_str(&format!(
             "\n---\n\nIntent for {}:\n\n{}\n",
             doc.name(),
-            doc.intent
+            intent.trim()
         ));
     }
 
@@ -231,7 +235,10 @@ pub fn export(workspace: &Workspace, scope: Option<&str>) -> Result<String> {
         files.push(ExportFile {
             file: workspace.rel(&doc.path),
             title: doc.title.clone(),
-            intent: doc.intent.clone(),
+            // The page and the ticket both refuse to pass hi's starter prompt
+            // off as prose; the payload an agent reads must agree with them
+            // (hi: EXPORT-5).
+            intent: crate::view::strip_comments(&doc.intent).trim().to_string(),
             families: doc.front.families.clone(),
             criteria: doc
                 .criteria
@@ -276,22 +283,13 @@ pub fn export(workspace: &Workspace, scope: Option<&str>) -> Result<String> {
 /// The prose from INTENT.md, with the generated index stripped out.
 fn read_product_intent(workspace: &Workspace) -> Option<String> {
     let raw = fs::read_to_string(workspace.intent_path()).ok()?;
-    let mut out = Vec::new();
-    let mut skipping = false;
-    for line in raw.lines() {
-        if line.trim() == INDEX_OPEN {
-            skipping = true;
-            continue;
-        }
-        if line.trim() == INDEX_CLOSE {
-            skipping = false;
-            continue;
-        }
-        if !skipping {
-            out.push(line);
-        }
-    }
-    let text = out.join("\n").trim().to_string();
+    // The same reading the page takes: drop the generated index, the title and
+    // the generated `## Features` heading, then drop hi's own starter prompt.
+    // An agent asking what this product is for should get what a person wrote
+    // or nothing, never the question hi left behind (hi: EXPORT-5).
+    let text = crate::view::strip_comments(&crate::view::strip_index(raw))
+        .trim()
+        .to_string();
     (!text.is_empty()).then_some(text)
 }
 
@@ -508,6 +506,29 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["files"].as_array().unwrap().len(), 1);
         assert_eq!(value["files"][0]["file"], "hi/chat.md");
+    }
+
+    #[test]
+    fn hi_own_starter_prompt_is_never_passed_off_as_prose() {
+        // A day-one repository has hi's question in every `## Intent` block and
+        // a generated `## Features` heading in INTENT.md. The page already
+        // refuses to print either; the export and the ticket have to agree,
+        // because those are what an agent and a tracker read (hi: EXPORT-5,
+        // ISSUE-6).
+        let placeholder = "---\nhi: 1\nfamilies: [SEND]\n---\n\n# Send\n\n\
+             ## Intent\n\n<!-- What is this for, and what should it feel like? -->\n\n\
+             ## Criteria\n\n- **SEND-1**  I hit enter and it shows up.\n";
+        let doc = Doc::parse(PathBuf::from("/r/hi/send.md"), placeholder);
+
+        let (_, body) = issue_markdown(&doc, doc.criteria.first().unwrap());
+        assert!(
+            !body.contains("What is this for"),
+            "a ticket must not quote hi's own starter prompt: {body}"
+        );
+        assert!(
+            !body.contains("Intent for send"),
+            "with no prose written there is no intent section to print: {body}"
+        );
     }
 
     #[test]

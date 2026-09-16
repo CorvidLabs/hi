@@ -28,12 +28,14 @@ the moment it needs setup it stops being used.
   - **ISSUE-3.a**  I read a case in the ticket as nested under what it is a case of, not flattened into a list of peers.
 - **ISSUE-4**  I cannot turn a retired criterion into work.
 - **ISSUE-5**  I get the feature's intent prose on the ticket, so I know why the work exists and not just what to build.
+- **ISSUE-6**  A ticket carries my intent prose, and nothing hi generated into the file around it.
 
 - **EXPORT-1**  I can hand an agent everything it needs to write the spec in one command.
   - **EXPORT-1.a**  I get the intent prose and not just the criteria.
 - **EXPORT-2**  I can export one family, one file, or the whole product.
 - **EXPORT-3**  I read a smaller export as the same payload with less in it, so I never need a special case.
 - **EXPORT-4**  I get the retired criteria in the export kept apart from the live ones, so the agent never writes a spec for something we dropped.
+- **EXPORT-5**  The starter prompts hi wrote into a file never reach an agent as if I had written them.
 
 - **INDEX-1**  I get a root file that shows what features exist without keeping a list by hand.
   - **INDEX-1.a**  I can run hi with no root file yet, or no list in it, and it starts one with a place for my own prose rather than refusing until I set it up.

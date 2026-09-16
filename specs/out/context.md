@@ -44,35 +44,9 @@ spec: out.spec.md
   `contains()`. A substring search matches a marker quoted in a sentence, and the splice then
   rewrites everything from that sentence to the real close, which is exactly the prose INDEX-2
   exists to protect. The doc comment on `index_span` says so; leave it there.
-- What whole-line matching does **not** cover, and INDEX-2.a now asks for: a marker written alone
-  on a line inside a fenced code block. `index_span` has no fence state and latches the first
-  opening marker line in the file, so a documented example of the format is adopted as the real
-  block and every byte down to the next closing marker line, prose included, is replaced. Same for
-  two bare opening marker lines above one close. Both exit 0. `doc` already solved the equivalent
-  problem for `hi/*.md` by treating fences as opaque (hi: FILE-9); nothing here does. Fixing it
-  means teaching `index_span` fence state, and it changes `read_product_intent` too, since the two
-  functions agree on the rule by duplication rather than by sharing code.
-- `index_span` deliberately ends the span at `span.start + line.trim_end().len()`: the last
-  non-whitespace byte of the closing marker's line, not the end of the line. The closing newline
-  stays in the file, so the blank line after the block survives every rewrite. Shortening this to
-  `span.end` eats that blank line on every run and makes `hi index` produce a diff every time.
-  `index_leaves_a_marker_quoted_in_prose_alone` in `tests/cli.rs` asserts `"<!-- /hi:index -->\n\n"`
-  precisely to catch that.
-- An opening marker line with no close is a **refusal**, not an append (hi: INDEX-2.b). The
-  `None if has_marker_line(&existing, INDEX_OPEN)` arm has to stay *above* the blank-file and
-  append arms, because otherwise a half-edited `INTENT.md` silently grows a second `## Features`
-  section and the person never learns their markers are broken. The bail happens before the write,
-  so a refusal leaves no temporary file and no change.
-- `write_index` writes through `doc::write_atomically`, not `fs::write`. This is the FILE-8 fix
-  applied to the one file this module owns: `INTENT.md` holds hand-written product prose and there
-  is no second copy of it. Do not route this back through `fs::write` for brevity. Two things
-  follow from the rename that are easy to forget: the *directory* is what must be writable, so a
-  read-only `INTENT.md` is replaced rather than refused, and the replacement carries the temporary
-  file's permission bits. The `.with_context(|| format!("writing {}", path.display()))` wrapper
-  stays, because `write_atomically` returns a bare `io::Error` that names nothing.
-- Only the *opening* marker gates that refusal. A file holding a lone closing marker falls through
-  to the append branch: there is no opening marker, so there is nothing to guess past. That
-  asymmetry is intentional, not an oversight.
+  on a line inside a fenced code block. `index_span` tracks ``` fences and ignores any marker
+  inside one, so a person can document the format in their own prose and `hi index` still finds
+  the real block below it (hi: INDEX-2.a, closed in 0.2.0).
 
 ## Files to Read First
 

@@ -94,7 +94,11 @@ fn find_pair(chars: &[char], start: usize) -> Option<usize> {
 }
 
 /// Remove `<!-- ... -->` spans so an editing note never reaches the page.
-fn strip_comments(raw: &str) -> String {
+///
+/// Public because `out::export` and `out::issue` hand the same prose to an
+/// agent and to a tracker, and the starter prompt hi wrote into a new file is
+/// not the author's words wherever it surfaces (hi: EXPORT-5, ISSUE-6).
+pub fn strip_comments(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut rest = raw;
     while let Some(open) = rest.find("<!--") {
@@ -354,8 +358,12 @@ fn product_name(raw: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Drop the generated index block and the H1 from INTENT.md prose.
-fn strip_index(raw: String) -> String {
+/// Drop the generated index block, the H1 and the generated `## Features`
+/// heading from INTENT.md prose, leaving only what a person wrote.
+///
+/// Public for the same reason as `strip_comments`: `hi export` carries this
+/// text to an agent, and a generated heading is not product intent.
+pub fn strip_index(raw: String) -> String {
     let mut out = Vec::new();
     let mut skipping = false;
     for line in raw.lines() {

@@ -4,6 +4,11 @@ version: 1
 status: active
 files:
   - src/view.rs
+  - src/view/style.css
+  - src/view/app.js
+  - src/view/theme.js
+  - src/view/prepaint.html
+  - src/view/toggle.html
 
 db_tables: []
 depends_on:
@@ -42,6 +47,8 @@ from the CorvidLabs brand tokens and are defined for light and dark in all three
 | Export | Description |
 |--------|-------------|
 | `inline_markdown` | Escape a sentence and render the inline markdown it is allowed to carry. |
+| `strip_comments` | Remove `<!-- ... -->` spans from prose, so hi's own starter prompt never surfaces as something a person wrote. |
+| `strip_index` | Drop the generated index block, the `# ` title and the generated `## Features` heading from `INTENT.md` prose. |
 | `render` | Build the complete HTML page from a workspace, optional product-level prose, and the product's own name. |
 | `write` | Render and write the page, defaulting to `intent.html` at the repository root. |
 
@@ -67,6 +74,8 @@ from the CorvidLabs brand tokens and are defined for light and dark in all three
 | `escape` (private) | `escape(raw: &str) -> String` | Escape `&`, `<`, `>`, `"` and `'`. |
 | `find_from` / `find_pair` (private) | `(&[char], usize, char) -> Option<usize>` / `(&[char], usize) -> Option<usize>` | Locate a closing single marker, or a closing `**`. |
 | `strip_comments` (private) | `strip_comments(raw: &str) -> String` | Remove every HTML comment span, from `<!--` to `-->`. An unterminated `<!--` drops the remainder of the prose, as a browser would. |
+| `strip_comments` | `strip_comments(raw: &str) -> String` | Remove every `<!-- ... -->` span, including one left unterminated, the way a browser would. Public because `out::export` and `out::issue` hand the same prose to an agent and to a tracker, and a starter prompt is not intent wherever it surfaces (hi: VIEW-1.c, EXPORT-5, ISSUE-6). |
+| `strip_index` | `strip_index(raw: String) -> String` | Drop the `<!-- hi:index -->` block, any `# ` heading and a `## Features` heading, returning what a person actually wrote. `view::write` reads the heading separately for the page title before this runs (hi: VIEW-11, EXPORT-5). |
 | `paragraphs` (private) | `paragraphs(raw: &str) -> String` | Strip comments, split what is left on blank lines, drop blocks that are now empty, join each block's lines with a space, and render it as one `<p>`. Returns an empty string when nothing survives. |
 | `criteria_list` / `feature_section` (private) | `(&[Criterion]) -> String` / `(&Doc) -> String` | Render one list of criteria, and one feature's whole section. Each criterion is one `<li class="d<depth>">` holding a `cid` span and a `ctext` span separated by a newline (hi: VIEW-1.d). |
 | `strip_index` (private) | `strip_index(raw: String) -> String` | Remove the `hi:index` block, the H1 and the `## Features` heading from `INTENT.md`. |
@@ -134,16 +143,21 @@ from the CorvidLabs brand tokens and are defined for light and dark in all three
     while the count claims it was hidden (hi: VIEW-6, VIEW-7).
 21. A search match is wrapped in `<mark>` by walking text nodes only, never by re-parsing rendered
     HTML, so a criterion's own `<code>` or `<a>` is never cut in half (hi: VIEW-13, VIEW-3.a).
-22. The token block at the top of `view/style.css` is a verbatim copy of
+22. `hi export` and `hi issue` read prose through the same `strip_comments` this module uses for
+    the page, and `read_product_intent` also runs `strip_index`. A day-one repository, where every
+    `## Intent` still holds hi's question and `INTENT.md` still holds the generated `## Features`
+    heading, therefore exports `product: null` and an empty per-file `intent`, and its tickets carry
+    no intent section at all, rather than quoting the prompt back (hi: EXPORT-5, ISSUE-6).
+23. The token block at the top of `view/style.css` is a verbatim copy of
     `_CorvidLabs/design-system/assets/tokens.css` (Brand Kit v1.3), as are `view/theme.js` and the
     sun/moon toggle's markup and pre-paint snippet. Nothing here re-derives a brand value. The one
     divergence is the webfonts: the kit loads Schibsted Grotesk and Spline Sans Mono from Google,
     and this page must reference no other server, so both are named first in the font stack with
     system fallbacks (hi: VIEW-17, VIEW-17.a).
-23. The page honours `?theme=light|dark`, `data-theme` on `<html>` and `prefers-color-scheme`, in
+24. The page honours `?theme=light|dark`, `data-theme` on `<html>` and `prefers-color-scheme`, in
     that order, and the toggle persists a choice to `localStorage` under `corvid-theme`. The
     pre-paint snippet runs before the stylesheet so a stored choice never flashes (hi: VIEW-18).
-24. Prose yields to results: the product's lead prose is hidden while anything is filtered, and a
+25. Prose yields to results: the product's lead prose is hidden while anything is filtered, and a
     feature's own prose is hidden while a search is running (hi: VIEW-6).
 
 ## Behavioral Examples

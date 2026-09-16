@@ -151,9 +151,9 @@ Found by looking at the rendered page, which no test does.
 
 ## [0.2.3] 2026-09-16
 
-### Criteria are directions, which closes the open question in section 19
+### Criteria are directions, which closes the open question in section 21
 
-Section 19 logged a complaint two readers made independently: a reader cannot tell whether a
+Section 21 logged a complaint two readers made independently: a reader cannot tell whether a
 criterion is met, so on the question they most want answered the document sends them to the code.
 It had no answer.
 
@@ -166,7 +166,7 @@ wrong. Whether the code has arrived belongs to something that reads code against
 The page eyebrow now reads "What this should be" rather than "What we said we wanted", which was
 past tense and read as a report of decisions.
 
-Section 19's three properties survive as requirements on whoever builds the checking layer:
+Section 21's three properties survive as requirements on whoever builds the checking layer:
 available to a non-author, usable across a whole set, and leaving something behind. They were never
 a description of hi.
 
@@ -193,7 +193,7 @@ An agent with no code, no repository and no help read `hi/` and got the product,
 promises and the refusals right. It then derived the editorial standard from `## Retired`, read
 seven retirements, extracted five distinct reasons, and used the rule to catch a live criterion as
 unfalsifiable. `## Retired` was specified as an id reservation; it is the part of the format a
-reader can learn a standard from. DECISIONS.md section 18.
+reader can learn a standard from. DECISIONS.md section 20.
 
 ## [0.2.1] 2026-09-16
 

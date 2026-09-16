@@ -83,12 +83,11 @@ atomic write goes through. Error Cases below lists all eight.
 2. A marker counts only when it is alone on its own line: `index_span` and `has_marker_line` both
    compare `line.trim()` to the whole marker, so a marker quoted inside a sentence is prose and is
    copied through untouched. A substring search would have matched that sentence and rewritten
-   everything from there to the real close. The whole-line rule is where the protection stops:
-   neither helper tracks fenced code blocks, and `index_span` latches the *first* opening marker
-   line it sees, so a marker written alone on a line inside a ``` fence in `INTENT.md` is taken as
-   the real opening marker and everything from it down to the next closing marker line is replaced.
-   INDEX-2.a asks for more than that today ("even on a line of their own or inside a code block"),
-   and this module does not deliver it; see tasks.md.
+   everything from there to the real close. Fenced blocks are opaque too: `index_span` and
+   `has_marker_line` both track ``` fences and ignore any marker inside one, so a person can show
+   an example of the index in their own prose and `hi index` will rewrite the real block below it
+   rather than the illustration. That closed in 0.2.0, and INDEX-2.a's promise ("even on a line of
+   their own or inside a code block") is delivered.
 3. When `INTENT.md` holds both marker lines in order, `write_index` replaces exactly the span from
    the start of the opening marker's line through the end of the closing marker's text. The closing
    line's own newline is deliberately left outside the span, so the blank line that follows the
@@ -154,10 +153,9 @@ atomic write goes through. Error Cases below lists all eight.
 - **Then** the title is the sentence without its trailing period, the body contains `hi: SEND-1`
   and a `Cases:` list naming `SEND-1.a`, the body does not mention `SEND-2`, and the file's intent
   prose is appended below a `---` rule (hi: ISSUE-2, ISSUE-3, ISSUE-5)
-- **And** with a deeper tree, `SEND-1.a.1` is written as `-   SEND-1.a.1 <text>`: the depth indent
-  sits after the `- `, so the line is offset in the source and renders as a sibling of `SEND-1.a`
-  rather than nested under it. ISSUE-3.a asks for nesting a reader can see, and the body does not
-  give it; see tasks.md
+- **And** with a deeper tree, `SEND-1.a.1` is written as `  - **SEND-1.a.1**  <text>`: the depth
+  indent sits *before* the bullet, so a renderer nests it under `SEND-1.a` instead of showing a flat
+  list of peers. That is ISSUE-3.a, and it landed in 0.2.0
 
 ### Scenario: Whole-repo export
 
@@ -239,11 +237,9 @@ atomic write goes through. Error Cases below lists all eight.
 - **Given** an `INTENT.md` that documents the format by putting `<!-- hi:index -->` and
   `<!-- /hi:index -->` on lines of their own inside a ``` fence, above the real marker pair
 - **When** `write_index` runs
-- **Then** the fenced pair is the block: the generated list is written inside the code fence, the
-  real pair further down is left holding whatever stale text it held, and any prose between the two
-  pairs is replaced. `hi index` exits 0 and says the index was updated. This is current behavior
-  and it is what INDEX-2.a now says must not happen; `index_span` has no fence awareness and takes
-  the first opening marker line in the file
+- **Then** the fenced pair is skipped and the real pair below it is the block: the illustration is
+  left byte-identical and the generated list lands where it belongs. `index_span` tracks ``` fences
+  and ignores any marker inside one (hi: INDEX-2.a)
 
 ### Scenario: There is no INTENT.md yet
 
@@ -281,7 +277,7 @@ atomic write goes through. Error Cases below lists all eight.
 | `INTENT.md` has an opening marker line that is never closed, including markers written in the wrong order | `<path> has an opening <!-- hi:index --> with no matching <!-- /hi:index -->. Fix the markers rather than have hi guess where the block ends`. Nothing is written (hi: INDEX-2.b) |
 | `INTENT.md` holds only the *closing* marker, or holds markers only inside sentences | Not an error: no opening marker line exists, so the existing text is preserved and a fresh `## Features` section carrying the block is appended below it, producing a second `## Features` heading when the file already had one |
 | `INTENT.md` begins with a BOM immediately followed by the opening marker | Not an error: the BOM is not whitespace, so that line is not a marker line to either `index_span` or `has_marker_line` and the append branch runs. `read_product_intent` misses the same line, so the stale block reaches `product` |
-| `INTENT.md` carries the two markers on lines of their own inside a fenced code block | Not an error, and not a refusal: `index_span` has no fence awareness, so the fenced pair is treated as the real block. The generated list is written inside the fence and everything between the fenced opening marker and the next closing marker line is replaced, including prose. Exit 0 (contradicts hi: INDEX-2.a; see tasks.md) |
+| `INTENT.md` carries the two markers on lines of their own inside a fenced code block | Not an error: `index_span` tracks ``` fences and skips any marker inside one, so the illustration is left byte-identical and the real pair below it is rewritten. Exit 0 (hi: INDEX-2.a) |
 
 ## Dependencies
 

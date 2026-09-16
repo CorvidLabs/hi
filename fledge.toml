@@ -9,8 +9,12 @@ fmt = "cargo fmt --check"
 spec = "specsync check"
 # hi checks its own intent files with its own binary.
 intent = "cargo run --quiet -- check"
+# INTENT.md's feature list is generated, so it can silently fall behind the
+# criteria it counts. It did: the committed index claimed 114 against an actual
+# 119. The script regenerates and fails if that changed anything.
+index = "sh scripts/index-is-current.sh"
 plugin-validate = "fledge plugins validate . --strict"
 
 [lanes.verify]
-description = "The single gate: format, lint, tests, hi's own intent, and specs"
-steps = [{ parallel = ["fmt", "lint"] }, "test", "intent", "spec", "plugin-validate"]
+description = "The single gate: format, lint, tests, hi's own intent and index, and specs"
+steps = [{ parallel = ["fmt", "lint"] }, "test", "intent", "index", "spec", "plugin-validate"]

@@ -35,3 +35,4 @@ something that already exists.
 - **CAPTURE-9**  The sentence I type is the sentence that lands in the file, word for word.
 - **CAPTURE-10**  hi works from any directory inside my repository, and a repository is where it stops looking.
 - **CAPTURE-11**  Every capture tells me which file it landed in, so I never have to go looking.
+- **CAPTURE-12**  If a file in my hi directory is empty, hi tells me what is wrong with it instead of crashing.

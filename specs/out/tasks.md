@@ -32,21 +32,6 @@ spec: out.spec.md
       preserved line ending. The atomic replace is done (`write_index` routes through
       `doc::write_atomically`), but the block is still written with `\n` into a CRLF file, and a
       BOM'd opening marker still quietly takes the append branch (REQ-out-011, REQ-out-012).
-- [ ] **Teach `index_span` about fenced code blocks, or decide not to.** A marker pair written on
-      lines of their own inside a ``` fence in `INTENT.md` is adopted as the real block today: the
-      generated list is written inside the fence, the real block downstream is left stale, and prose
-      between the two pairs is replaced, at exit 0. The first opening marker line always wins, so
-      two bare opening markers above one close lose the prose between them the same way. INDEX-2.a
-      was widened to promise exactly this protection ("even on a line of their own or inside a code
-      block") and the code was not. `doc` already treats fences as opaque for `hi/*.md` (hi: FILE-9);
-      this is the same fix on `INTENT.md`, and it has to land in `read_product_intent` too, because
-      the two functions agree on the marker rule by duplication (REQ-out-012, hi: INDEX-2.a).
-- [ ] **Decide whether an `issue` body should nest its cases.** `issue_markdown` writes
-      `format!("- {indent}{} {}\n", ...)`, putting the depth indent after the list marker, so a
-      rendered ticket is one flat list and a depth-3 case reads as a peer of the depth-2 case it
-      sits inside. ISSUE-3.a asks for visible nesting. Whoever changes this should land a test that
-      renders the body rather than greps it, which is the DECISIONS.md §12 lesson on a second
-      surface (REQ-out-003, hi: ISSUE-3.a).
 - [ ] Add a unit test pinning the family/file-stem collision: a scope that is both selects the
       named file whole *and* every other file holding the family, filtered (REQ-out-007). It is the
       one scope rule nothing asserts and the easiest to "fix" into a regression. Verified by hand

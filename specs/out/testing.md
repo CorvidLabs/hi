@@ -124,7 +124,7 @@ These flows run against this repository's own `hi/` directory, which is the modu
 | `ls --family X` where no file holds `X` | Prints only the hint line; no file headings and no blank lines |
 | `ls` over a criterion whose id failed to parse | Rendered at depth 1 using its raw id; invisible under any `--family` filter |
 | `issue` on a criterion with no cases | No `Cases:` section is emitted rather than an empty one |
-| `issue` on a criterion whose cases go more than one level deep | Every descendant is listed, but the depth indent is written after the `- `, so the source line reads `-   SEND-1.a.1 ...` and a Markdown renderer shows one flat list. Contradicts hi: ISSUE-3.a; see tasks.md |
+| `issue` on a criterion whose cases go more than one level deep | Every descendant is listed with the depth indent before the bullet, so the source reads `  - **SEND-1.a.1**  ...` and a Markdown renderer nests it under its parent (hi: ISSUE-3.a) |
 | `issue` on a criterion in a file with no `## Intent` | No `---` rule and no intent section |
 | `issue` on a criterion whose sentence ends in `...` | All trailing periods are trimmed from the title; the body keeps the sentence verbatim |
 | `issue` on a retired id | `<id> is retired, so it should not become work`, exits 1, and nothing is sent to `gh` even with `--create` |
@@ -153,6 +153,6 @@ These flows run against this repository's own `hi/` directory, which is the modu
 | `write_index` where `INTENT.md` is whitespace-only | Treated as absent: a full starter file is written |
 | `write_index` where `INTENT.md` is read-only but its directory is writable | Succeeds. `doc::write_atomically` renames a sibling temp over it, so the mode of the old file never matters; the replacement carries the temp file's permission bits |
 | `write_index` where the directory holding `INTENT.md` is not writable, or the disk is full | Fails with `writing <path>` wrapping the I/O error, the temp file is removed, and `INTENT.md` keeps every byte it had |
-| `write_index` where both markers sit alone on lines inside a fenced code block | The fenced pair is taken as the real block: the list is written inside the fence, the real block downstream is left stale, and prose between the two pairs is replaced. Exit 0, no warning. Contradicts hi: INDEX-2.a; see tasks.md |
+| `write_index` where both markers sit alone on lines inside a fenced code block | The fenced pair is skipped and the real block below it is rewritten; the illustration is left byte-identical. Exit 0 (hi: INDEX-2.a) |
 | `write_index` where two bare opening marker lines precede one closing marker | The first opening marker wins, so the prose between the two opening markers is inside the replaced span and is lost. Exit 0 |
 | `export` at repo scope where `INTENT.md` is a freshly generated starter file | `product` is present and carries the `# <root>` heading, the unanswered `<!-- What is this product for ... -->` prompt, and the `## Features` heading. Only the generated block is stripped; `view::strip_comments` is not used here |

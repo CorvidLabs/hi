@@ -321,9 +321,9 @@ Rust single binaries.
   including CI and release workflows).
 - **Install** `cargo install human-intent`, or a release archive, or
   `fledge plugins install CorvidLabs/hi` for `fledge hi`. The fledge plugin is not bundled with
-  fledge and builds from source, so it needs cargo too. Homebrew was planned and is not built:
-  there is no `hi` formula in `CorvidLabs/homebrew-tap` yet, so `brew install corvidlabs/tap/hi`
-  does not work.
+  fledge and builds from source, so it needs cargo too. Homebrew shipped in 0.3.0:
+  `brew install corvidlabs/tap/hi` works on macOS and Linux, on both architectures each since
+  0.3.1 added `aarch64-unknown-linux-gnu`.
 - Always written as **"hi (Human Intent)"** in anything searchable. Bare `hi` is unsearchable and
   collides with a universal shell greeting.
 
@@ -331,8 +331,10 @@ Rust single binaries.
 
 The full spec-sync treatment: **public repo, a README that teaches the format in 60 seconds, and a
 docs site at `corvidlabs.xyz/hi`**, with the binary as the reference implementation. The repo and
-the README shipped with v0.1.0; the docs site has not been built yet and `corvidlabs.xyz/hi` still
-returns 404, so the README is the only documentation there is. The format is documented prose.
+the README shipped with v0.1.0, and the docs site shipped alongside 0.3.0: an overview, a
+quickstart, the format, ids, a CLI reference and a page on adopting it. `corvidlabs.github.io/hi`
+publishes this repository's own `hi view` output, so the demo is the artifact rather than a
+mock-up of it. The format is documented prose.
 There is no formal grammar and no conformance-vector suite, because the format is five rules and a
 file layout.
 
