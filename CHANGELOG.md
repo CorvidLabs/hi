@@ -9,8 +9,80 @@ only version so far.
 
 ## [Unreleased]
 
-Not tagged and not published. `cargo install human-intent` still gets 0.1.0; everything below needs
-a build from `main`.
+### Criteria are directions, which closes the open question in section 19
+
+Section 19 logged a complaint two readers made independently: a reader cannot tell whether a
+criterion is met, so on the question they most want answered the document sends them to the code.
+It had no answer.
+
+The answer is that it is the wrong question asked of the wrong layer. A criterion says what the
+thing should be, not what it currently does, and directions stay correct through a wrong turn. A
+criterion that is false right now means the code has not arrived yet, not that the criterion is
+wrong. Whether the code has arrived belongs to something that reads code against contracts, which
+`hi export` already feeds.
+
+The page eyebrow now reads "What this should be" rather than "What we said we wanted", which was
+past tense and read as a report of decisions.
+
+Section 19's three properties survive as requirements on whoever builds the checking layer:
+available to a non-author, usable across a whole set, and leaving something behind. They were never
+a description of hi.
+
+## [0.2.2] 2026-09-16
+
+### hi wrote files that failed hi's own check
+
+Reproducible in four commands. `hi retire` on a criterion with cases wrote the reason after the
+cases, `hi check` looked for it directly under the parent, so the note landed on the last case and
+the parent was reported as having no reason. Introduced while making the file look tidier.
+
+The reason now sits directly under the criterion it explains, which is also what renders correctly
+as a markdown list item with nested cases following it. `check` asks only the root of a retirement
+for a reason, since a case went along with its parent and was never a separate decision.
+
+### Retiring says what it took
+
+A case can belong to a different concern than its parent, and taking it along silently is a decision
+made on your behalf. `hi retire` names what went rather than counting it.
+
+### Recorded, not changed
+
+An agent with no code, no repository and no help read `hi/` and got the product, both roles, the
+promises and the refusals right. It then derived the editorial standard from `## Retired`, read
+seven retirements, extracted five distinct reasons, and used the rule to catch a live criterion as
+unfalsifiable. `## Retired` was specified as an id reservation; it is the part of the format a
+reader can learn a standard from. DECISIONS.md section 18.
+
+## [0.2.1] 2026-09-16
+
+### Retiring works the way people actually retire things
+
+`hi retire GIFT-4` with no reason succeeded silently, and coming back later with a reason failed
+with "not an active criterion", forcing a hand edit. The reporter's summary: it did not make them
+write something perfunctory, it made them write nothing.
+
+A reason can now be added after the fact, and `hi check` says how many retired criteria never say
+why.
+
+### The role prefix is the linter section 9 said could not exist
+
+A discovery rather than a change. Two of forty criteria would not take a role, and both turned out
+to be defective: the author could not write "As a ___" in front of them because they had written a
+fact about the system rather than anyone's want. That test has no false positives because nothing
+guesses. It is in the README beside the 59% figure.
+
+### hi is upstream of whoever decided the shape
+
+The README said to reach for hi before the code rather than after. Tested by writing a family before
+its code existed, that was the wrong axis: a ticket written as a solution exerts the same pull, and
+most tickets are written as solutions.
+
+### Also
+
+- Whether a criterion is built yet stays out of the tool; the README documents the prose convention.
+- "1 criterion does not say who they speak for" disagreed in number at n=1.
+
+## [0.2.0] 2026-09-16
 
 Everything here comes from one field report: someone used v0.1.0 cold on a 33k-line Swift Discord
 bot and wrote up where it let them down. The three biggest findings were all things hi could never
