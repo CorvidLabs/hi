@@ -8,6 +8,7 @@ mod capture;
 mod check;
 mod doc;
 mod id;
+mod lock;
 mod out;
 mod view;
 mod workspace;
@@ -172,7 +173,14 @@ fn run_capture(root: Option<&std::path::Path>, raw_id: &str, rest: &[String]) ->
         Some(root) => root.to_path_buf(),
         None => std::env::current_dir()?,
     };
+    // Held across the whole read-modify-write, not just the write: two
+    // captures that both load the same original will otherwise each write
+    // their own version over the other (hi: FILE-19).
     let mut workspace = Workspace::find(&start)?;
+    let _writing = lock::acquire(&workspace.root.join("hi"))?;
+    // Reload under the lock, in case another writer finished between the find
+    // above and the lock being granted.
+    workspace = Workspace::find(&start)?;
     let done = capture::capture(&mut workspace, raw_id, &sentence)?;
 
     if let Some(intent) = &done.started_intent {
@@ -220,6 +228,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         }
         Command::Retire { id, reason } => {
             let mut workspace = workspace;
+            let _writing = lock::acquire(&workspace.root.join("hi"))?;
             let parsed =
                 id::Id::parse(&id).map_err(|e| anyhow::anyhow!("'{id}' is not a valid id: {e}"))?;
             let Some((index, found)) = workspace.find_id(&parsed) else {

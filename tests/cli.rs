@@ -16,7 +16,10 @@ struct Repo {
 
 impl Repo {
     fn new(name: &str) -> Repo {
-        let root = std::env::temp_dir().join(format!("hi-cli-{name}"));
+        // Same mistake as `doc::write_atomically` had: a fixed path shared by
+        // every process. Two `cargo test` runs at once wiped each other's
+        // fixtures and the failures read as flakes.
+        let root = std::env::temp_dir().join(format!("hi-cli-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("hi")).unwrap();
         Repo { root }
@@ -200,6 +203,110 @@ fn issue_prints_a_ticket_carrying_the_id() {
     let text = stdout(&out);
     assert!(text.contains("hi: SEND-1"), "{text}");
     assert!(text.contains("It should feel like texting."), "{text}");
+}
+
+#[test]
+fn an_id_is_never_handed_out_twice() {
+    // The one promise hi makes. Four of its own verbs used to break it; each
+    // line below is one of them (hi: FILE-13, FILE-20, RETIRE-5, RETIRE-6).
+    let repo = Repo::new("permanence");
+
+    // 1. Retiring into a file whose `## Retired` is not the last section used
+    //    to append at EOF, stranding the criterion and freeing its id.
+    repo.write(
+        "hi/send.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  first\n\n## Retired\n\n- **SEND-9**  old\n  retired: dropped\n\n## Notes\n\nProse after the retired block.\n",
+    );
+    assert!(
+        repo.run(&["retire", "SEND-1", "changed my mind"])
+            .status
+            .success()
+    );
+    let after = repo.read("hi/send.md");
+    let retired_at = after.find("## Retired").expect("a retired section");
+    let notes_at = after.find("## Notes").expect("the notes section");
+    let moved_at = after.find("- **SEND-1**").expect("the retired criterion");
+    assert!(
+        moved_at > retired_at && moved_at < notes_at,
+        "SEND-1 must land inside ## Retired, not after ## Notes:\n{after}"
+    );
+    let out = repo.run(&["SEND-1", "a completely different thing"]);
+    assert!(!out.status.success(), "a retired id must never be reusable");
+
+    // 2. A reason with newlines used to write a real criterion line, burning
+    //    an id nobody wrote.
+    let forge = Repo::new("permanence-forge");
+    forge.write(
+        "hi/send.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  first\n",
+    );
+    assert!(
+        forge
+            .run(&["retire", "SEND-1", "a\n- **SEND-5**  forged\nb"])
+            .status
+            .success()
+    );
+    let body = forge.read("hi/send.md");
+    // The words survive inside the reason, collapsed onto one line, which is
+    // fine. What must not survive is a LINE that reads as a criterion.
+    assert!(
+        !body
+            .lines()
+            .any(|l| l.trim_start().starts_with("- **SEND-5**")),
+        "a reason must never become a criterion line:\n{body}"
+    );
+    assert!(
+        forge.run(&["SEND-5", "the real one"]).status.success(),
+        "SEND-5 was never written, so it must still be free"
+    );
+
+    // 3. A criterion inside a fence under `## Criteria` was invisible to every
+    //    check, and capture would hand the same id out again.
+    let fenced = Repo::new("permanence-fence");
+    fenced.write(
+        "hi/send.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  first\n\n```markdown\n- **SEND-2**  hidden\n```\n",
+    );
+    let out = fenced.run(&["SEND-2", "a different thing"]);
+    assert!(
+        !out.status.success(),
+        "an id hi cannot read is still taken: {}",
+        stdout(&out)
+    );
+}
+
+#[test]
+fn concurrent_captures_all_land() {
+    // Capture is read-modify-write. Without a lock two processes both read the
+    // same original and the last write wins: eight concurrent captures used to
+    // land two (hi: FILE-19).
+    let repo = Repo::with_chat("concurrent");
+    let handles: Vec<_> = (2..=9)
+        .map(|n| {
+            let root = repo.root.clone();
+            std::thread::spawn(move || {
+                std::process::Command::new(BIN)
+                    .args([
+                        "--root",
+                        root.to_str().unwrap(),
+                        &format!("SEND-{n}"),
+                        "a sentence",
+                    ])
+                    .output()
+                    .unwrap()
+            })
+        })
+        .collect();
+    for handle in handles {
+        let _ = handle.join();
+    }
+    let body = repo.read("hi/chat.md");
+    for n in 2..=9 {
+        assert!(
+            body.contains(&format!("**SEND-{n}**")),
+            "SEND-{n} was lost to a concurrent write:\n{body}"
+        );
+    }
 }
 
 #[test]

@@ -40,6 +40,8 @@ a standup a year from now and have it still mean the same line.
 - **FILE-14**  I can type a criterion into the file by hand, bullet or no bullet, bold or plain, and hi still reads it as one.
 - **FILE-15**  A criterion I changed my mind about stays in the file under Retired, with my reason beside it, so the file remembers what we dropped.
 - **FILE-18**  I understand a criterion as what this should be, not as a report of what it currently does.
+- **FILE-19**  Two captures running at the same time both land, instead of one quietly overwriting the other.
+- **FILE-20**  A criterion hi cannot see is never silently invisible; it is reported rather than ignored.
 
 - **ID-1**  An id never moves once written, so I can say it out loud a year later and still mean the same line.
   - **ID-1.a**  Inserting a criterion never renumbers anything around it.

@@ -112,6 +112,26 @@ impl Workspace {
         None
     }
 
+    /// A criterion-shaped line hi could not read, but which spoke for this id.
+    ///
+    /// An id written where nothing parses it, outside every section or inside a
+    /// fence, has still been used. Handing it out again produces two lines with
+    /// the same id and different sentences, which is the one thing hi promises
+    /// cannot happen, so capture refuses and points at the line
+    /// (hi: FILE-20, CAPTURE-14).
+    pub fn find_stray(&self, id: &Id) -> Option<(usize, usize)> {
+        let wanted = id.to_string().to_ascii_uppercase();
+        for (index, doc) in self.docs.iter().enumerate() {
+            for (line, token) in &doc.stray {
+                // The recorded token keeps its markdown emphasis: `**SEND-2**`.
+                if crate::doc::strip_emphasis(token).to_ascii_uppercase() == wanted {
+                    return Some((index, line + 1));
+                }
+            }
+        }
+        None
+    }
+
     /// The next free top-level number in a family.
     pub fn next_free(&self, family: &str) -> u32 {
         let highest = self
@@ -122,7 +142,10 @@ impl Workspace {
             .filter(|id| id.family == family)
             .filter_map(|id| id.root_number())
             .max();
-        highest.map(|n| n + 1).unwrap_or(1)
+        // At the ceiling `n + 1` wrapped in release and printed
+        // "next free is SEND-0", which is a wrong id offered as a hint rather
+        // than a crash. Say there is no next one instead (hi: CAPTURE-13).
+        highest.map(|n| n.saturating_add(1)).unwrap_or(1)
     }
 
     /// Every family in the workspace, sorted, from frontmatter and from use.

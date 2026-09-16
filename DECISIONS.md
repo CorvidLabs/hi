@@ -1045,3 +1045,53 @@ you can send to someone.
 **What would change this decision:** the kit shipping the two faces as files we can embed as data
 URIs at a size worth paying for. The page is already around 200KB; two subsetted woff2 faces would
 roughly double it, which is a trade worth making only if someone asks for it.
+
+---
+
+## 26. The one promise, and the four ways hi broke it
+
+**An id is permanent and never reused.** Everything else in hi is a preference. This is the claim
+the format rests on, because the whole point of an id is that it can be quoted somewhere hi will
+never see: a ticket, a spec, a commit, a conversation. An id that can be reassigned is worse than
+no id, because the quotation silently starts pointing at something else.
+
+A thirteen-agent audit went looking for what a 1.0 would freeze and found that hi's own verbs broke
+that promise four ways. Three were silent: `hi check` reported no problem.
+
+1. **`retired_end` was a `match` with two byte-identical arms**, so retiring always appended at end
+   of file. Where `## Retired` was not the last section the criterion landed under whatever
+   followed it, outside every section hi reads, while the command printed "retired". The id was
+   then free, and capture handed it out again.
+2. **Retire reasons were not collapsed to one line**, though criterion sentences always were. A
+   reason carrying a newline and a criterion-shaped line wrote a second real criterion, burning an
+   id nobody had written.
+3. **A fence under `## Criteria` hid a criterion from all six checks.** Fences are opaque so a
+   person can document the format inside their own prose (§3, `FILE-9`), and that is right for
+   `## Intent` and wrong for a criteria section.
+4. **Concurrent captures overwrote each other.** `write_atomically` makes one write atomic and says
+   nothing about two processes reading the same original. Eight concurrent captures landed two.
+
+### What that says about the design, not just the code
+
+**Atomic is not the same as safe.** `write_atomically` was written carefully, tested, and specified,
+and it protected exactly the failure it named: a torn file. The failure that actually cost data was
+one directory up, in the read-modify-write around it. A guarantee is only as wide as its wording.
+
+**Three of the four were invisible to `hi check`.** The checker is deliberately narrow, six
+structural problems and no opinion about your English (§9), and that is still right. But "narrow"
+has to mean narrow-and-honest, not narrow-and-blind: a criterion hi cannot parse must be reported,
+never skipped. That is now `FILE-20`, and it is why capture refuses an id written where hi cannot
+read it rather than treating unparseable as absent.
+
+**The blind spot repeated for the third time.** §12 was the wall-of-text bug, found because every
+test asserted on parse output. §25 was the `[hidden]` bug, found because every view test asserted on
+generated HTML. These four were found because every write-path test asserted on files hi itself had
+written. Each regression test added here is written over a file hi did not produce.
+
+**Concurrency stopped being hypothetical without anyone deciding it had.** hi was built for a
+person at a terminal writing one sentence at a time. It is now used by agents capturing in bulk:
+twelve repositories, about 1,700 criteria, most of it generated. Nothing was announced. The usage
+changed and the assumptions did not, which is the ordinary way a tool becomes unsafe.
+
+**What would change this decision:** nothing about the promise. If the locking proves too coarse
+for a real workflow, the lock can narrow from the repository to the file. The promise does not move.

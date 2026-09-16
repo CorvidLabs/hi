@@ -38,13 +38,38 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
     // An id that already exists is the one case that refuses.
     if let Some((index, existing)) = workspace.find_id(&id) {
         let file = workspace.rel(&workspace.docs[index].path);
-        let next = Id {
-            family: id.family.clone(),
-            levels: vec![crate::id::Level::Number(workspace.next_free(&id.family))],
+        // At the very top of the range there is no next one, and the old
+        // arithmetic wrapped and offered SEND-0. A refusal with no hint is
+        // better than a refusal with a wrong hint (hi: CAPTURE-13).
+        let free = workspace.next_free(&id.family);
+        let hint = if free == u32::MAX
+            && workspace
+                .find_id(&Id {
+                    family: id.family.clone(),
+                    levels: vec![crate::id::Level::Number(free)],
+                })
+                .is_some()
+        {
+            String::new()
+        } else {
+            let next = Id {
+                family: id.family.clone(),
+                levels: vec![crate::id::Level::Number(free)],
+            };
+            format!("\nhint:  next free is {next}")
         };
+        bail!("{id} already exists in {file}:{}{hint}", existing.line_no());
+    }
+
+    // An id hi cannot read is still an id somebody wrote. Reusing it would put
+    // two lines with the same id and different sentences in one file, which no
+    // amount of later checking undoes (hi: CAPTURE-14).
+    if let Some((index, line)) = workspace.find_stray(&id) {
+        let file = workspace.rel(&workspace.docs[index].path);
         bail!(
-            "{id} already exists in {file}:{}\nhint:  next free is {next}",
-            existing.line_no()
+            "{id} is already written at {file}:{line}, where hi cannot read it.\n\
+             hint:  move that line under ## Criteria or ## Retired, or delete it, \
+             then capture again"
         );
     }
 

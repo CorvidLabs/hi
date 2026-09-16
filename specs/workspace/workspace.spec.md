@@ -4,6 +4,7 @@ version: 1
 status: active
 files:
   - src/workspace.rs
+  - src/lock.rs
 
 db_tables: []
 depends_on:
@@ -50,6 +51,9 @@ file), `out` (rewriting `INTENT.md`) and `view` (writing the HTML page) (hi: FIL
 | `criteria_count` | Count of active criteria across every doc, retired excluded. |
 | `doc_for_family` | Index of the doc that owns a family, by frontmatter declaration or by actual use. |
 | `find_id` | Look up one criterion by exact id, active or retired, returning its doc index with it. |
+| `acquire` | Take the one-writer lock for a repository's `hi/` directory, waiting for another writer and returning a guard that releases on drop. |
+| `Guard` | The held lock. Releasing on drop means a refusal never leaves the lock behind. |
+| `find_stray` | The file and 1-based line of a criterion-shaped line hi could not read but which spoke for this id, matched after stripping emphasis. Capture refuses such an id: a line hi cannot parse has still used it, and handing it out again puts two identical ids with different sentences in one file (hi: CAPTURE-14, FILE-20). |
 | `next_free` | One past the highest top-level number a family uses; retired numbers count, so they are never reissued. |
 | `families` | Every family in the workspace, deduplicated and sorted. |
 | `rel` | Render a path relative to `root`, joined with forward slashes on every platform, for stable output such as `hi/chat.md`. |
@@ -83,6 +87,8 @@ Every exported function is an inherent method on `Workspace`. One private free f
 | `families` | `fn families(&self) -> Vec<String>` | Every family in the workspace, deduplicated and sorted: the union of each doc's declared `families:` and the families its criteria actually use. |
 | `rel` | `fn rel(&self, path: &Path) -> String` | Renders `path` relative to `root` for stable, machine-comparable output such as `hi/chat.md`. The remaining components are joined with `/` rather than the host separator, so a Windows run prints `hi/chat.md` too and the string is safe in exported JSON, an issue body and a markdown link (hi: FILE-12). A path that is not under `root` is rendered from its own components rather than failing. |
 | `holds_hi_files` (private) | `fn holds_hi_files(dir: &Path) -> bool` | True when `dir` holds at least one file this tool would recognize: a `*.md` (extension compared case-insensitively) whose opening `---` frontmatter block contains a key of exactly `hi`. Strips a leading UTF-8 BOM before looking, so an editor-written marker cannot hide a file from discovery the way it once hid the frontmatter from the parser (hi: FILE-11). A directory it cannot list, a file it cannot read, or a file that is not valid UTF-8 simply does not count; nothing here errors. |
+| `acquire` | `lock::acquire(hi_dir: &Path) -> Result<Guard>` | Exclusive-create `<hi_dir>/.hi.lock`. Retries every 20ms for 5 seconds, treats a lock older than 60 seconds as abandoned by a dead process and takes it, and gives up with a message naming the file to delete. A `hi/` that cannot be written returns a guard rather than a lock error, because the caller is about to fail with something more useful. |
+| `Guard::drop` | `fn drop(&mut self)` | Removes the lock file. Held across the whole read-modify-write in `capture` and `retire`, not just the write: `doc::write_atomically` makes one write atomic and does nothing about two processes each reading the same original and writing over the other. Eight concurrent captures used to land two (hi: FILE-19). |
 
 ## Invariants
 

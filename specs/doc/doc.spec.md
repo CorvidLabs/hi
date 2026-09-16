@@ -60,6 +60,8 @@ any output for a human. Those belong to `id`, `capture`, `workspace`, and `out`/
 | `set_retired_reason` | Record why an already retired criterion was retired, replacing an existing note rather than stacking one. Retiring in a hurry and explaining later is the normal shape of changing your mind, and without this the only way to add the reason was to hand-edit (hi: RETIRE-1.c). |
 | `write_atomically` | Write a string to a path without ever leaving the target truncated: sibling temp file, flush, fsync, rename. Public so `out::write_index` can give `INTENT.md` the same protection `Doc::save` gives `hi/*.md` (hi: FILE-8). |
 | `new_file_text` | The starting text for a brand-new feature file, already parseable as an empty hi document. |
+| `one_line` | Collapse any run of whitespace, newlines included, so a string hi writes into a file cannot become more than one line. |
+| `strip_emphasis` | Remove markdown emphasis from around an id token, so `**SEND-1**` and `SEND-1` compare equal. |
 
 ### Structs & Enums
 
@@ -91,6 +93,8 @@ any output for a human. Those belong to `id`, `capture`, `workspace`, and `out`/
 | `name` | `Doc::name(&self) -> String` | The path's file stem, falling back to the whole displayed path when there is no stem. |
 | `render_criterion` | `render_criterion(id: &Id, text: &str) -> Vec<String>` | Returns exactly one line, `{indent}- **{id}**  {sentence}`, where `indent` is `"  "` repeated `id.depth() - 1` times and `sentence` is `text` split on whitespace and rejoined with single spaces. The bullet makes the criteria render as a list and the bold makes the id read as a label rather than the first two words of the sentence. The `Vec` return exists because `insert` splices a slice of lines, not because more than one is ever produced. |
 | `new_file_text` | `new_file_text(title: &str, family: &str) -> String` | Returns frontmatter (`hi: 1`, `families: [{family}]`), `# {title}`, an `## Intent` section holding one HTML-comment prompt, and an empty `## Criteria` section. |
+| `one_line` | `one_line(raw: &str) -> String` | `split_whitespace().join(" ")`. Every string hi writes into a file goes through this. A retire reason did not, so a reason carrying a newline and a criterion-shaped line wrote a second real criterion into the file: `hi check` saw nothing wrong and that id was burned forever (hi: RETIRE-6). |
+| `strip_emphasis` | `strip_emphasis(token: &str) -> &str` | Strip paired `**`, `*`, `__` or `_` from around an id token. Public so `workspace::find_stray` can compare a recorded stray token, which keeps its emphasis, against a parsed id. |
 
 ## Invariants
 

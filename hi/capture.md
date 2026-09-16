@@ -36,3 +36,5 @@ something that already exists.
 - **CAPTURE-10**  hi works from any directory inside my repository, and a repository is where it stops looking.
 - **CAPTURE-11**  Every capture tells me which file it landed in, so I never have to go looking.
 - **CAPTURE-12**  If a file in my hi directory is empty, hi tells me what is wrong with it instead of crashing.
+- **CAPTURE-13**  When an id is taken, the next free one I am offered is one I can actually use.
+- **CAPTURE-14**  An id written somewhere hi cannot read it is still taken, and is never handed out twice.

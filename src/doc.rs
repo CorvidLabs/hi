@@ -228,6 +228,22 @@ impl Doc {
             }
 
             if fence.is_some() {
+                // A fence inside `## Intent` is somebody documenting the format
+                // in their own prose, and stays opaque (hi: FILE-9). A fence
+                // inside `## Criteria` or `## Retired` hides a criterion from
+                // every one of the six checks, and capture would then hand the
+                // same id out again: two `- **SEND-2**` lines, different
+                // sentences, `hi check` clean. Record it as stray, which is
+                // exactly what it is: a criterion nothing reads where it sits
+                // (hi: FILE-20).
+                if !in_intent && !trimmed.is_empty() && is_criterion_line(trimmed) {
+                    let first = strip_bullet(trimmed)
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .to_string();
+                    self.stray.push((index, first));
+                }
                 if in_intent {
                     intent_lines.push(line);
                 }
@@ -606,7 +622,7 @@ impl Doc {
             // item's continuation line it also renders correctly, with any
             // nested cases following it.
             let indent = " ".repeat(moved[0].len() - moved[0].trim_start().len() + 2);
-            moved.insert(1, format!("{indent}retired: {reason}"));
+            moved.insert(1, format!("{indent}retired: {}", one_line(reason)));
         }
 
         // Highest first, so the earlier ranges keep their indexes.
@@ -650,7 +666,7 @@ impl Doc {
             let line = &self.lines[criterion.line];
             " ".repeat(line.len() - line.trim_start().len() + 2)
         };
-        let rendered = format!("{indent}retired: {}", reason.trim());
+        let rendered = format!("{indent}retired: {}", one_line(reason));
 
         // Replace an existing note, or add one after the criterion's last line.
         let existing = (criterion.line..=criterion.end_line)
@@ -671,9 +687,27 @@ impl Doc {
     }
 
     /// Where a newly retired criterion should be appended.
+    ///
+    /// Inside `## Retired`, which is not always the end of the file. Both arms
+    /// of this used to append at EOF, so retiring into a file whose `## Retired`
+    /// was followed by any other section printed "retired" and put the
+    /// criterion under that other section instead, outside every section hi
+    /// reads. From there `hi ls --retired` lost it and the id could be captured
+    /// again, which is the one thing hi promises cannot happen
+    /// (hi: RETIRE-5, FILE-13).
     fn retired_end(&self) -> usize {
         match self.retired_heading() {
-            Some(_) => last_content_line(&self.lines, self.lines.len()) + 1,
+            // The last line with content before the next heading of any level,
+            // so the criterion lands at the bottom of the retired block rather
+            // than at the bottom of the file.
+            Some(at) => {
+                let next = self.lines[at + 1..]
+                    .iter()
+                    .position(|line| line.trim_start().starts_with('#'))
+                    .map(|offset| at + 1 + offset)
+                    .unwrap_or(self.lines.len());
+                last_content_line(&self.lines, next) + 1
+            }
             None => last_content_line(&self.lines, self.lines.len()) + 1,
         }
     }
@@ -708,7 +742,7 @@ impl Doc {
 }
 
 /// Drop markdown emphasis around a token, so `**SEND-1**` reads as `SEND-1`.
-fn strip_emphasis(token: &str) -> &str {
+pub fn strip_emphasis(token: &str) -> &str {
     token.trim_matches(|c| c == '*' || c == '_')
 }
 
@@ -739,6 +773,17 @@ fn last_content_line(lines: &[String], before: usize) -> usize {
         index -= 1;
     }
     index.saturating_sub(1)
+}
+
+/// Collapse anything a person typed into something that is one line.
+///
+/// A criterion sentence has always gone through this. A retire reason did not,
+/// so `hi retire SEND-1 "$(printf 'a\n- **SEND-5**  forged')"` wrote a second,
+/// real criterion line into the file: `hi check` saw nothing wrong and SEND-5
+/// was burned forever, an id nobody had written. Every string hi writes into a
+/// file goes through here (hi: RETIRE-6).
+pub fn one_line(raw: &str) -> String {
+    raw.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Render a criterion as one line: `ID  sentence`.
@@ -786,7 +831,11 @@ pub fn write_atomically(path: &Path, body: &str) -> std::io::Result<()> {
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
-    let temp = dir.join(format!(".{name}.hi-tmp"));
+    // A fixed temp name means two hi processes writing the same file share one
+    // scratch path: the first rename moves it out from under the second, which
+    // then fails with "no such file". Eight concurrent captures used to land
+    // two. The pid makes the scratch file this process's own (hi: FILE-18).
+    let temp = dir.join(format!(".{name}.{}.hi-tmp", std::process::id()));
 
     let attempt = (|| -> std::io::Result<()> {
         let mut file = fs::File::create(&temp)?;

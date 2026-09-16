@@ -68,6 +68,17 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
 - **Line-index bookkeeping after `splice`.** `Doc::insert` shifts `line`, `end_line`,
   `criteria_end` and `criteria_heading`. `rewrite_families` shifts them again when it adds a
   frontmatter line. Miss one and the next insert lands in the wrong place.
+- **An id is the only promise. Guard it.** Four of hi's own verbs could break it, three
+  silently. Anything that writes a `hi/*.md` must not be able to strand a criterion, forge one,
+  hide one, or lose one to a concurrent write. `capture` and `retire` hold `lock::acquire` across
+  the whole read-modify-write, and every string hi writes into a file goes through `doc::one_line`
+  (DECISIONS.md §26, `hi: FILE-19`, `FILE-20`, `RETIRE-5`, `RETIRE-6`, `CAPTURE-14`).
+- **Never write a fixed temp or fixture path.** `write_atomically` and the integration-test
+  fixtures both used one, so two processes shared a scratch file. That is why the suite flaked and
+  why bulk capture lost writes. Include the pid.
+- **Rebuild before you trust an integration test.** `target/debug/hi` went stale twice in one
+  session and both times the failure looked like a code bug. `cargo clean -p human-intent` when a
+  result does not match what the release binary does.
 - **Capture validates before it mutates.** Every refusal path must return before any filesystem
   write (`hi: CAPTURE-5`). There is a test for this; keep it true.
 - **`hi check` never fails on unfinished intent.** Only on a structurally broken file
@@ -120,7 +131,7 @@ gitignored.
 
 ## Releasing
 
-v0.3.3 is out: the repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
+v0.4.0 is out: the repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
 Homebrew tap, and every tagged release carries binaries for Linux and macOS (both architectures
 each) and Windows. The docs are at corvidlabs.xyz/hi, and corvidlabs.github.io/hi publishes this
 repository's own `hi view` output on every push to `main`.

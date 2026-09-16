@@ -29,3 +29,5 @@ reason next to the thing it explains.
 - **RETIRE-2**  A retired id is still spoken for, so it is never handed out to something else.
 - **RETIRE-3**  I am told when a retired criterion never says why it was retired.
 - **RETIRE-4**  I can learn the standard a team retires things by, because every retirement says why.
+- **RETIRE-5**  What I retire lands in the retired section, wherever that section sits in the file.
+- **RETIRE-6**  A reason I type is a reason, even with line breaks in it, and can never become a criterion.

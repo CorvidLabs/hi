@@ -7,6 +7,58 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## [0.4.0] 2026-09-16
+
+### hi could break its own only promise, four ways
+
+An id is permanent and never reused. That is the one thing hi
+guarantees, and a 13-agent audit found four ways its own verbs broke it.
+Three were silent: `hi check` reported no problem.
+
+**`hi retire` put the criterion in the wrong place.** `retired_end` was a
+match with two byte-identical arms, so it always appended at end of file.
+If `## Retired` was not the last section, the criterion landed under
+whatever followed it, outside every section hi reads. It printed
+"retired". `hi ls --retired` lost it, and **the id could then be captured
+again**: two `- **SEND-1**` lines, different sentences, one file
+(`RETIRE-5`).
+
+**A retire reason could forge a criterion.** Criterion sentences were
+collapsed to one line; retire reasons were not. A reason containing a
+newline and a criterion-shaped line wrote a second real criterion into
+the file. `hi check` reported zero problems, and that id was burned
+forever, having never been written by anyone. Every string hi writes into
+a file now goes through one normalizer (`RETIRE-6`).
+
+**A criterion inside a fence was invisible.** Fenced blocks are opaque so
+you can document the format inside your own `## Intent` (`FILE-9`). Under
+`## Criteria` that hid the criterion from all six checks, and capture
+would hand the same id out again. A fence inside a criteria section is
+now reported as `stray-criterion`, and **capture refuses any id already
+written somewhere hi cannot read it** (`FILE-20`, `CAPTURE-14`).
+
+**Eight concurrent captures landed two.** Capture is read-modify-write,
+and `write_atomically` made the write atomic while doing nothing about
+two processes reading the same original and each writing over the other.
+It also used a fixed temp filename, so the two collided. Capture and
+retire now hold a lock file across the whole read-modify-write; eight
+concurrent captures land eight (`FILE-19`).
+
+This stopped being theoretical: twelve repositories now hold about 1,700
+criteria, most captured by agents in bulk.
+
+### Smaller
+
+- `hi` no longer offers `SEND-0` as the next free id at the top of the
+  range. Where there is no next id it gives no hint rather than a wrong
+  one (`CAPTURE-13`).
+- The integration-test fixture path had the same fixed-path bug as
+  `write_atomically`, which is why the suite flaked.
+
+Every fix has a regression test, and each is written over a file hi did
+not produce, because asserting on hi's own output is the blind spot that
+produced three of these.
+
 ## [0.3.3] 2026-09-16
 
 ### The page is now checked by something that opens it
