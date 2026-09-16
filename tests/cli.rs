@@ -644,6 +644,13 @@ fn a_criterion_carries_the_role_it_speaks_for() {
         page.contains("class=\"role\""),
         "the page must label the voice"
     );
+    // A span with no rule behind it renders as bare text jammed into the
+    // sentence, which is how it shipped in 0.2.0 through 0.2.3. Assert the
+    // style exists, not just the markup.
+    assert!(
+        page.contains(".role {"),
+        "the role label must be styled, not merely emitted"
+    );
     assert!(page.contains("operator") && page.contains("member"));
 }
 

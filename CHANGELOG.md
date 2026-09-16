@@ -7,6 +7,23 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## [0.2.4] 2026-09-16
+
+### The role label was never styled
+
+The role chip shipped in 0.2.0 without its CSS rule, so every criterion on the
+page rendered as `person writing intentI can write a thought down`: the label
+as bare text, jammed into the sentence with no separator. Three releases of the
+headline feature looked broken on the one surface built for people who do not
+read markdown.
+
+The edit that added the rule reported success and silently did nothing, because
+the CSS lives inside a Rust `format!` where braces are doubled and the search
+text did not match. The test asserted the span was emitted, which it was, and
+not that it was styled. It now asserts both.
+
+Found by looking at the rendered page, which no test does.
+
 ## [0.2.3] 2026-09-16
 
 ### Criteria are directions, which closes the open question in section 19

@@ -291,6 +291,12 @@ ul.criteria li.d4 {{ padding-left: 78px; }}
   white-space: nowrap; flex: 0 0 auto; padding-top: 3px; min-width: 76px;
 }}
 .ctext {{ flex: 1 1 auto; }}
+.role {{
+  display: inline-block; font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--sheen-strong);
+  background: var(--wash); padding: 2px 7px; border-radius: 3px;
+  margin-right: 10px; white-space: nowrap; vertical-align: 1px;
+}}
 code {{
   font-family: var(--font-mono); font-size: .87em;
   background: var(--wash); padding: 1px 5px; border-radius: 3px;
