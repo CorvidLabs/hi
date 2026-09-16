@@ -7,7 +7,7 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
-## [Unreleased]
+## [0.2.3] 2026-09-16
 
 ### Criteria are directions, which closes the open question in section 19
 
