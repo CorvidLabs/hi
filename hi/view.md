@@ -29,3 +29,9 @@ send to somebody.
   - **VIEW-3.a**  As a reader, anything that looks like markup in a sentence is escaped, never executed.
 - **VIEW-4**  As a reader, retired criteria are on the page but folded away, so the history is there without being noise.
 - **VIEW-5**  As a developer, nothing on the page says whether anything is done, so nobody can read it as a progress report.
+- **VIEW-6**  As a reader, I can search the whole page by id, role or wording and see only what matches.
+- **VIEW-7**  As a reader, I can narrow the page to one role or one feature by clicking it.
+- **VIEW-8**  As a reader, I can sort everything by id, by role or by family instead of reading it grouped.
+- **VIEW-9**  As a reader, I can click any id to get a link straight to that criterion, and that link works when I send it to someone.
+  - **VIEW-9.a**  As a reader, a link to a criterion lands on it even when a filter would have hidden it.
+- **VIEW-10**  As a reader, I still see every criterion with scripting turned off, and I am not shown a search box that cannot search.

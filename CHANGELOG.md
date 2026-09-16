@@ -7,6 +7,30 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## [0.3.0] 2026-09-16
+
+### The page can be searched, sorted, filtered and linked
+
+`hi view` produced a static document. It coloured and nested, and that was all:
+no way to search it, no way to narrow it, and no way to link to a criterion,
+which is absurd for a format whose whole point is permanent, quotable ids.
+
+It now ships:
+
+- **Search** across ids, roles and wording, with `/` to focus it and Escape to
+  clear.
+- **Filter** by role or by feature, by clicking a chip. They combine.
+- **Sort** by id, role or family, or stay grouped by feature.
+- **Deep links.** Every criterion is an anchor. Click an id to get
+  `intent.html#SEND-1`, and that link lands on the criterion even when a filter
+  would have hidden it, so a shared link never silently shows nothing.
+- **Retired criteria** on a toggle, with their reason attached.
+
+Still one self-contained file with no network access at all. The script is
+inline, so the page works from an email attachment, and with scripting off
+every criterion is still there while the controls stay hidden rather than
+offering a search box that cannot search.
+
 ## [0.2.5] 2026-09-16
 
 ### The roles were jargon

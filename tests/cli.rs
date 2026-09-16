@@ -210,7 +210,14 @@ fn view_writes_a_self_contained_page() {
     let page = repo.read("intent.html");
     assert!(page.contains("I hit enter and it shows up."));
     assert!(page.contains("prefers-color-scheme: dark"));
-    assert!(!page.contains("<script"), "the page must carry no script");
+    // An inline script is fine; a request to someone else's server is not.
+    assert!(!page.contains("src="), "the page must fetch nothing");
+    assert!(!page.contains("https://"), "the page must fetch nothing");
+    // And the controls it ships are the point of the page.
+    assert!(page.contains("id=\"q\""), "search");
+    assert!(page.contains("Sort by id"), "sort");
+    assert!(page.contains("data-filter=\"file\""), "filter");
+    assert!(page.contains("href=\"#SEND-1\""), "deep link");
 }
 
 #[test]
