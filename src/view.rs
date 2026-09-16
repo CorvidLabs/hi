@@ -140,7 +140,7 @@ fn criteria_list(criteria: &[Criterion]) -> String {
         let sentence = if criterion.role.is_some() {
             crate::doc::without_role(&criterion.text)
         } else {
-            &criterion.text
+            criterion.text.clone()
         };
         out.push_str(&format!(
             // The newline between the spans is deliberate: without whitespace
@@ -149,7 +149,7 @@ fn criteria_list(criteria: &[Criterion]) -> String {
             "<li class=\"d{}\">\n<span class=\"cid\">{}</span>\n<span class=\"ctext\">{role}{}</span>\n</li>\n",
             depth.min(4),
             escape(&criterion.raw_id),
-            inline_markdown(sentence),
+            inline_markdown(&sentence),
         ));
     }
     out

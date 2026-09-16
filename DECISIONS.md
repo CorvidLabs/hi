@@ -313,9 +313,11 @@ Rust single binaries.
 - **Crate** `human-intent`. `hi` is taken on crates.io (v0.1.18, ~21k downloads) but is
   library-only with no binaries, so the `hi` **command** is free.
 - **Binaries** one, `hi`, from **one repo**. `bin/fledge-hi` is a shell shim rather than a second
-  compiled binary: it execs the `hi` on your `PATH`, or the repo's own `target/release/hi`. A root
-  `plugin.toml` points fledge at it. Standalone-plus-plugin is the established norm; a separate
-  `fledge-plugin-hi` repo is not.
+  compiled binary: it execs this plugin's own `target/release/hi` or `target/debug/hi`, and fails
+  with a build hint if neither is there. It deliberately does **not** resolve `hi` through `PATH`,
+  because another project ships a binary by that name that is a coding agent with shell access
+  (§13). A root `plugin.toml` points fledge at it. Standalone-plus-plugin is the established norm;
+  a separate `fledge-plugin-hi` repo is not.
 - **Scaffold** `fledge templates init hi --template rust-cli --org CorvidLabs` (nine files,
   including CI and release workflows).
 - **Install** `cargo install human-intent`, or a release archive, or
@@ -414,10 +416,12 @@ The two that mattered most were both data loss, and neither was visible from rea
 - **`hi index` overwrote prose.** Markers were matched by substring, so a sentence that merely
   *mentioned* `<!-- hi:index -->` became the start of the generated block, and everything up to the
   real close marker was replaced. Markers now match whole lines, and an unclosed marker refuses
-  rather than guessing (`INDEX-2.a`, `INDEX-2.b`). Whole-line matching is narrower than `INDEX-2.a`
-  reads, and the gap is known and still open: a marker pair written alone on its own lines inside a
-  fenced code block in `INTENT.md` is still taken as the real block, so `hi index` writes the list
-  into your example and leaves the real block stale. `specs/out/` records it.
+  rather than guessing (`INDEX-2.a`, `INDEX-2.b`). Whole-line matching was narrower than
+  `INDEX-2.a` reads, and the remaining gap was recorded here as open: a marker pair written alone
+  on its own lines inside a fenced code block in `INTENT.md` was still taken as the real block, so
+  `hi index` wrote the list into your example and left the real block stale. **That is closed.**
+  `index_span` and `has_marker_line` now track fences, so a marker inside one is an example and
+  nothing else, and the real block below it is the one that gets rewritten.
 
 Three findings were about hi's own promises being false in a corner:
 
@@ -579,11 +583,14 @@ silent. Enforcing the opening of a sentence is the sentence grammar §9 refused,
 refused for the same reason: syntax conformance is free to check and worth nothing, and a checker
 people argue with is a checker people disable.
 
-**The four-word cap is a heuristic, not a parser.** It exists so that a sentence which happens to
-begin *"as a"* is not mistaken for a role. It is not exact: *"As a matter of fact, the queue is
-flushed nightly"* will be read as a role named *matter of fact*. That is accepted. The cost is one
-odd-looking bracket in `hi ls`, and the alternative is a vocabulary of legal roles, which is a
-schema, and a schema is exactly the form that stops people writing things down.
+**The four-word cap is a heuristic, not a parser**, and it is wrong in both directions.
+*"As a matter of fact, the queue is flushed nightly"* is read as a role named *matter of fact*.
+*"As an operator responsible for the budget, I can cap spend"* is five words and so is not read as
+a role at all: the whole sentence stays as written and `hi ls` shows no bracket. Both are accepted.
+The cost of the first is one odd-looking bracket; the cost of the second is that a long role is
+simply not surfaced, and shortening it to *operator* fixes it. The alternative is a vocabulary of
+legal roles, which is a schema, and a schema is exactly the form that stops people writing things
+down.
 
 **There is no `roles:` list in frontmatter**, and no check that a role is one hi has seen before.
 If a product later needs a closed set, that is the cheapest addition and it can be made without
@@ -608,7 +615,7 @@ worse than having no IDs. `hi retire <ID> [reason]` moves the criterion and its 
 command, creates the section when the file has none, and keeps the reason next to what it explains
 (`RETIRE-1`, `RETIRE-2`).
 
-**`INTENT.md` exists from the first capture, and `hi check` says while it is empty.** It used to
+**`INTENT.md` exists from the first capture, and `hi check` says so while it is empty.** It used to
 appear only when somebody ran `hi index`, which meant it appeared only for people who had read far
 enough to know the verb existed. The report never saw the file, so the product-level why for a
 33k-line codebase was never written. Capture now creates it as soon as there is anything to have a
@@ -622,6 +629,7 @@ markdown rendered nested cases as a flat list of peers, or as a code block once 
 spaces of it. Both fixed (`ISSUE-3.a`).
 
 The lesson is the one in §14 and it is worth the repetition: everything in these two sections came
-from one person using hi on a product that was not hi, in a week. None of it could have come from
-dogfooding, and the parts of hi that dogfooding does exercise are, unsurprisingly, the parts that
-were already right.
+from one person using hi on a product that was not hi. Dogfooding and a 45-agent bug hunt (§11) had
+already been over this code, and both were looking at the parts hi exercises on itself. A gap in the
+format, a verb the file format implied and no command provided, and a file nobody could discover
+are not bugs in that sense. They are things you only see from outside.

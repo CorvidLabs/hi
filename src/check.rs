@@ -216,8 +216,29 @@ pub fn run(workspace: &Workspace) -> Report {
 
     problems.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
 
+    let mut notes: Vec<String> = Vec::new();
+    if let Some(note) = product_intent_note(workspace) {
+        notes.push(note);
+    }
+    let roleless = workspace
+        .docs
+        .iter()
+        .flat_map(|doc| doc.criteria.iter())
+        .filter(|c| c.role.is_none())
+        .count();
+    if roleless > 0 {
+        let subject = if roleless == 1 {
+            "1 criterion does".to_string()
+        } else {
+            format!("{roleless} criteria do")
+        };
+        notes.push(format!(
+            "{subject} not say who they speak for. Open with \"As a ...,\""
+        ));
+    }
+
     Report {
-        note: product_intent_note(workspace),
+        note: (!notes.is_empty()).then(|| notes.join("\n      ")),
         files: workspace.docs.len(),
         criteria: workspace.criteria_count(),
         retired: workspace.docs.iter().map(|d| d.retired.len()).sum(),

@@ -665,15 +665,25 @@ impl Doc {
 /// "As an operator, I can cap the spend." gives `operator`. A sentence that
 /// does not open that way simply has no role; nothing fails.
 pub fn role_of(text: &str) -> Option<String> {
+    // Any "As ..." opening counts. Pinning it to "As a" and "As an" made the
+    // natural "As someone writing intent," silently carry no role at all,
+    // which is the kind of quiet nothing this format exists to avoid.
     let rest = text
-        .strip_prefix("As a ")
-        .or_else(|| text.strip_prefix("As an "))
-        .or_else(|| text.strip_prefix("as a "))
-        .or_else(|| text.strip_prefix("as an "))?;
+        .strip_prefix("As ")
+        .or_else(|| text.strip_prefix("as "))?;
     let (role, _) = rest.split_once(',')?;
     let role = role.trim();
-    // A role is a short noun phrase. Anything long is a sentence that happens
-    // to begin with "as a", not a role.
+
+    // An article is grammar, not part of who the person is.
+    let role = role
+        .strip_prefix("a ")
+        .or_else(|| role.strip_prefix("an "))
+        .or_else(|| role.strip_prefix("the "))
+        .unwrap_or(role)
+        .trim();
+
+    // A role is a short noun phrase. Anything longer is a sentence that
+    // happens to begin with "as", not a role.
     if role.is_empty() || role.split_whitespace().count() > 4 {
         return None;
     }
@@ -681,13 +691,19 @@ pub fn role_of(text: &str) -> Option<String> {
 }
 
 /// The sentence with its role prefix removed, for rendering the two apart.
-pub fn without_role(text: &str) -> &str {
+pub fn without_role(text: &str) -> String {
     if role_of(text).is_some()
         && let Some((_, rest)) = text.split_once(',')
     {
-        return rest.trim_start();
+        let rest = rest.trim_start();
+        // The remainder is now the start of a sentence, so read it as one.
+        let mut chars = rest.chars();
+        return match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => String::new(),
+        };
     }
-    text
+    text.to_string()
 }
 
 /// Drop markdown emphasis around a token, so `**SEND-1**` reads as `SEND-1`.
@@ -1188,6 +1204,15 @@ mod tests {
         );
         assert_eq!(
             role_of("As a server owner, I can hand over the keys."),
+            Some("server owner".into())
+        );
+        // The phrasings a person actually reaches for all work.
+        assert_eq!(
+            role_of("As someone writing intent, I can capture fast."),
+            Some("someone writing intent".into())
+        );
+        assert_eq!(
+            role_of("As the server owner, I can hand over the keys."),
             Some("server owner".into())
         );
         // No role is not an error, it is just a sentence.

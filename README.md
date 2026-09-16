@@ -62,7 +62,7 @@ That is the whole format. Five rules:
    `As an operator,` and then the sentence. A role is a short noun phrase, at most four words,
    followed by a comma. There is no new syntax and nothing to configure: because the shape is
    universal, hi reads the role off the front of the sentence, and `hi ls`, `hi export`, `hi issue`
-   and `hi view` all show whose voice you are in.
+   and `hi view` all carry it through.
 3. **You write the id yourself**, because you are the one who has to say it out loud. `SEND-1` is a
    name, not a position.
 4. **Letters are cases, numbers are steps**, alternating strictly: `SEND-1.a.1.b`. Reading an id
@@ -213,6 +213,11 @@ Intent is written once, by a human. Everything downstream is generated from it:
 $ hi issue SEND-1 --create            # a ticket, with hi: SEND-1 as the permanent backlink
 $ hi export SEND | claude -p "write the spec-sync module spec for this"
 ```
+
+**Reach for hi at the start of a feature, not after it.** Writing intent for code that already
+exists means reverse-engineering the want out of the implementation, and what comes back is the
+implementation with a sentence wrapped around it. The hour before anyone opens an editor is where
+this pays.
 
 ## What it deliberately does not do
 

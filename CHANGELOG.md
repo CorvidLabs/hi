@@ -7,12 +7,15 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
-## [0.2.0] 2026-09-16
+## [Unreleased]
+
+Not tagged and not published. `cargo install human-intent` still gets 0.1.0; everything below needs
+a build from `main`.
 
 Everything here comes from one field report: someone used v0.1.0 cold on a 33k-line Swift Discord
-bot, roughly 40 criteria across 9 families, and wrote up where it let them down. The three biggest
-findings were all things hi could never have found by dogfooding itself, because hi serves one
-audience and that project serves three.
+bot and wrote up where it let them down. The three biggest findings were all things hi could never
+have found by dogfooding itself, because hi serves one audience and that project serves several.
+[DECISIONS.md](DECISIONS.md) §14 and §15 record the decisions and the blind spot behind them.
 
 ### Criteria say whose voice they speak in
 
@@ -21,9 +24,18 @@ spends in a day.` On a product with several audiences, an operator criterion and
 used to render as the same undifferentiated "I", and a reader could not tell whether the person was
 being paid or doing the paying.
 
-There is no new syntax. Because the shape is universal, hi reads the role off the front of the
-sentence and surfaces it in `hi ls`, in `hi export` as a `role` field, on the ticket, and as a label
-on the page. A criterion without a role still works; nothing fails.
+There is no new syntax and no new field. The role is ordinary English at a fixed position, so hi
+reads it back off the front of the sentence: `As a <role>,` or `As an <role>,`, where a role is a
+short noun phrase of at most four words followed by a comma. `hi ls` prints it in brackets ahead of
+the sentence, `hi export` emits it as its own `role` field beside the full text, `hi issue` opens
+the ticket body with *Speaking as operator.*, and `hi view` carries it onto the page.
+
+**Nothing enforces it.** There is no new `hi check` kind and no warning: a sentence with no role
+parses, exports and renders exactly as written. Enforcing the opening of a sentence is the sentence
+grammar DECISIONS.md §9 refused, and it is still refused.
+
+`HI/1` is unchanged. A file written before this is still valid; it just cannot tell you who is
+speaking.
 
 hi's own 96 criteria were rewritten in this voice, across six roles.
 
@@ -53,9 +65,24 @@ now too, which never named the file at all.
   happened to sit last.
 - `fledge hi` runs this plugin's own binary instead of whatever `hi` is first on `PATH`. Another
   project ships a coding agent by that name.
-- `hi index` no longer rewrites a marker pair that sits inside a fenced code block.
-- The README says why there is no prose linter, with the number: requirements-smell detection
-  measures about 59% precision, so a linter would be wrong two times in five.
+- `hi index` no longer rewrites a marker pair that sits inside a fenced code block. DECISIONS.md §11
+  recorded that as a known open gap; it is closed, and the section now says so.
+- Adopting a file hi did not create no longer reports it as `created`.
+
+### Documentation
+
+- The README teaches the role as rule 2 of five, and its example file is written in the new voice.
+- **The 59% number is in the README.** Requirements-smell detection measures about 59% precision, so
+  a prose linter would be wrong two times in five and people would learn to ignore it. That is why
+  hi has none. It was buried in DECISIONS.md §9; it now sits in "What it deliberately does not do",
+  where a first-time reader meets the question.
+- The README says that `hi view` writes `intent.html` into the repository root and that it belongs
+  in your `.gitignore`. Nothing told anyone that before.
+- The first-run walkthrough names `INTENT.md`, which it never did.
+- DECISIONS.md §7 no longer claims the fledge shim resolves `hi` through `PATH`. The shim stopped
+  doing that, and §7 was describing the version that still did.
+- DECISIONS.md §14 and §15 are new: the role-play decision, what the field report found, why hi's
+  own dogfooding could never have found it, and the smaller holes the same report opened.
 
 ### Not changed, deliberately
 
