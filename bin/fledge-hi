@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Thin shim so `fledge hi ...` runs the same binary as `hi ...`.
+# Runs this plugin's own hi, never whatever `hi` happens to be on PATH.
+#
+# `hi` is a common binary name and at least one other project ships one that is
+# a coding agent with shell access (see DECISIONS.md section 13). Resolving
+# through PATH would let `fledge hi` run that instead, so this does not.
 set -euo pipefail
 SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$SOURCE" ]; do
@@ -9,12 +13,12 @@ while [ -L "$SOURCE" ]; do
 done
 PLUGIN_DIR="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
 
-# Prefer an installed `hi`, fall back to this checkout's release build.
-if command -v hi >/dev/null 2>&1; then
-  exec hi "$@"
-elif [ -x "$PLUGIN_DIR/target/release/hi" ]; then
-  exec "$PLUGIN_DIR/target/release/hi" "$@"
-else
-  echo "error: hi is not built. Run 'cargo build --release' in $PLUGIN_DIR" >&2
-  exit 1
-fi
+for candidate in "$PLUGIN_DIR/target/release/hi" "$PLUGIN_DIR/target/debug/hi"; do
+  if [ -x "$candidate" ]; then
+    exec "$candidate" "$@"
+  fi
+done
+
+echo "error: this plugin's hi is not built." >&2
+echo "hint:  cargo build --release --manifest-path $PLUGIN_DIR/Cargo.toml" >&2
+exit 1

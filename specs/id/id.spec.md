@@ -22,8 +22,9 @@ beneath another id. It also names precisely why a string is not an id.
 It exists because an id that moves is worse than no id at all (hi: ID-1). Everything else in hi
 reads identity through this module: capture resolves a file from `Id::parent` first and `Id::family`
 second (hi: CAPTURE-4.a), check finds orphan cases through `Id::parent`, doc separates criterion
-lines from prose through `looks_like_id`, export publishes `depth` and `parent` as the payload's
-tree shape, and view indents a criterion by `depth`.
+lines from prose through `looks_like_id` (reached through its own `is_criterion_line`, which strips
+a bullet and any emphasis first), export publishes `depth` and `parent` as the payload's tree shape,
+and view indents a criterion by `depth`.
 
 This module is pure. It performs no I/O, holds no state, allocates no files, and never renumbers,
 reorders, or rewrites anything. It only answers questions about a string (hi: ID-1.a).
@@ -40,7 +41,7 @@ reorders, or rewrites anything. It only answers questions about a string (hi: ID
 | `is_descendant_of` | `Id::is_descendant_of(&self, other: &Id) -> bool`. True when `self` sits strictly beneath `other`: same family, deeper, and level-for-level equal over `other`'s prefix. Never true for an id against itself. |
 | `depth` | `Id::depth(&self) -> usize`. How many levels the id has. A top-level criterion is depth 1. |
 | `root_number` | `Id::root_number(&self) -> Option<u32>`. The top-level number, used to find the next free id in a family; `None` when the first level is not a `Number`. |
-| `looks_like_id` | `looks_like_id(token: &str) -> bool`. True when a token is shaped like an id (a valid family, a hyphen, and something after it) without committing to the id being valid. Deliberately more permissive than `parse`. |
+| `looks_like_id` | `looks_like_id(token: &str) -> bool`. True when a token is shaped like an id: a non-empty family that starts with an ASCII letter of **either case** and continues in ASCII alphanumerics or `_`, a hyphen, and a remainder whose first character is an ASCII digit. It never commits to the id being valid. It is looser than `parse` on family case and on level text, so `send-2` and `SEND-007` are id-shaped; it is tighter than "a hyphen and anything" on the first level, so `spec-sync` and `well-formed` are ordinary words. |
 
 ### Structs & Enums
 
@@ -65,7 +66,7 @@ reorders, or rewrites anything. It only answers questions about a string (hi: ID
 | `is_descendant_of` | `fn is_descendant_of(&self, other: &Id) -> bool` | Family equality, strictly greater depth, and a level-wise prefix match. |
 | `depth` | `fn depth(&self) -> usize` | Returns `levels.len()`. |
 | `root_number` | `fn root_number(&self) -> Option<u32>` | Matches the first level; `Some(n)` for `Level::Number(n)`, `None` otherwise. |
-| `looks_like_id` | `fn looks_like_id(token: &str) -> bool` | Free function. Splits at the first `-` and requires a non-empty valid family and a non-empty remainder. |
+| `looks_like_id` | `fn looks_like_id(token: &str) -> bool` | Free function. Splits at the first `-`, requires a non-empty family that starts with `is_ascii_alphabetic` and is otherwise `is_ascii_alphanumeric` or `_`, and requires the remainder to start with `is_ascii_digit`. It writes both tests inline and does **not** call `valid_family`. |
 
 ## Invariants
 
@@ -96,15 +97,41 @@ reorders, or rewrites anything. It only answers questions about a string (hi: ID
 8. `is_descendant_of` is strict and structural: never reflexive, never true across families, and
    compares `Level` values rather than text, so `SEND-11` is not a descendant of `SEND-1`.
 9. `depth` equals `levels.len()`, and for any id with a parent, `id.depth() == parent.depth() + 1`.
-10. `looks_like_id` is deliberately weaker than `parse`: every id that parses looks like an id, but
-    `SEND-a.b` and `SEND-007` look like ids and do not parse. That gap is what lets `doc` treat a
-    malformed line as an intended criterion and `check` report it instead of silently reading it as
-    prose (hi: CHECK-2.d). The same predicate is what `doc` uses outside every section to record a
-    stray criterion, so a criterion-shaped line stranded above `## Criteria` is reported rather than
-    lost (hi: CHECK-2.e). `looks_like_id` judges one token; deciding whether that token is even
-    structure happens in `doc` before this module is consulted, since a line inside a fenced code
-    block is prose, whatever it looks like (hi: FILE-9).
-11. The module is pure: no I/O, no globals, no interior mutability, and no dependency beyond
+10. `looks_like_id` is weaker than `parse` in two ways and stricter in one. Every id that parses
+    looks like an id. On top of those it accepts a wrongly cased family and a level `parse` refuses,
+    so `send-2`, `Send-3`, `SEND-007`, `SEND-1a` and `SEND-1.` all look like ids and all fail to
+    parse. That gap is what lets `doc` treat a malformed line as an intended criterion and `check`
+    report it instead of silently reading it as prose (hi: CHECK-2.d). The case half of the gap is
+    deliberate: a lowercase id is plainly meant as an id, so it is recognized here and refused by
+    `parse` with a reason rather than lost.
+11. `looks_like_id` requires the first level to begin with an ASCII digit. That single rule is what
+    separates an id from an ordinary hyphenated word, so `spec-sync`, `well-formed` and
+    `co-authored` are prose and are never read as criteria.
+12. The two tests `looks_like_id` applies are written inline; it does **not** go through
+    `valid_family`. `valid_family` belongs to `parse` alone and demands ASCII uppercase, while
+    `looks_like_id` accepts either case. The predicates agree on which characters may appear in a
+    family and disagree, on purpose, only about case. A charset change must be made in both places.
+13. The shape tests in invariants 10 through 12 have a cost, recorded here rather than discovered
+    later. A token whose family starts with a digit, or whose first level is a letter, fails the
+    family test or the digit test, so it is not id-shaped, never reaches `parse`, and
+    never becomes a criterion. `SEND-a`, `SEND-a.b` and `1ST-4` written under `## Criteria` are read
+    as prose: `hi check` does not count them and does not report them, and `hi ls` does not list
+    them. `IdError::Alternation { depth: 1 }` is therefore unreachable from a file, and so is the
+    `IdError::BadFamily` raised by a family that starts with a digit or carries a character outside
+    `[A-Za-z0-9_]`. Both are reached only when the id arrives as a command-line argument to a
+    subcommand, as in `hi issue SEND-a` or `hi issue 1ST-4`; as a bare first argument, `hi SEND-a
+    "..."` and `hi 1ST-4 "..."` are not routed to capture at all and clap answers "unrecognized
+    subcommand" with exit 2. The `BadFamily` raised by a wrongly cased family is a separate matter
+    and *is* reachable from a file, because `send-2` is id-shaped (invariant 10). So ID-4's promise
+    holds for an alternation break at depth 3 or deeper (`SEND-1.a.b` is reported) and stops one
+    step short at depth 1.
+14. The same predicate is what `doc` uses outside every section to record a stray criterion, so a
+    criterion-shaped line stranded above `## Criteria` is reported rather than lost
+    (hi: CHECK-2.e). `looks_like_id` judges one token and nothing else. Whether that token is even
+    structure is decided in `doc` before this module is consulted: `doc::is_criterion_line` strips a
+    markdown bullet and any surrounding emphasis and hands over the first whitespace-separated
+    token, and a line inside a fenced code block is prose whatever it looks like (hi: FILE-9).
+15. The module is pure: no I/O, no globals, no interior mutability, and no dependency beyond
     `std::fmt`. Nothing here ever renumbers, reorders, or rewrites an id (hi: ID-1, ID-1.a).
 
 ## Behavioral Examples
@@ -168,11 +195,40 @@ reorders, or rewrites anything. It only answers questions about a string (hi: ID
 
 #### Scenario: Telling a criterion line from prose
 
-- **Given** the first token of a line in a hi file
+- **Given** the first token of a line in a hi file, after `doc` has stripped any bullet and emphasis
 - **When** `looks_like_id` runs
-- **Then** `SEND-1`, `SEND-1.a`, and the malformed `SEND-a.b` are all recognized as id-shaped, while
-  `I`, `well-formed`, and `Given` are not. A sentence that starts a paragraph is therefore never
-  mistaken for a criterion, and a mistyped id is still reported rather than ignored
+- **Then** `SEND-1` and `SEND-1.a` are id-shaped, and so are the malformed `send-2` and `Send-3`,
+  because a wrongly cased id is plainly meant as an id and should be refused with a reason rather
+  than lost (hi: CHECK-2.d)
+- **And** `I`, `Given`, `well-formed`, `spec-sync`, `co-authored`, and `SEND-a` are not id-shaped, so
+  a sentence that starts a paragraph and an ordinary hyphenated word are never mistaken for criteria
+
+#### Scenario: A wrongly cased id is reported, not swallowed
+
+- **Given** a `## Criteria` section holding `- **send-2**  Lowercase, meant as a criterion.`
+- **When** `hi check` runs
+- **Then** `looks_like_id` says the token is id-shaped, `Id::parse` returns
+  `IdError::BadFamily("send")`, and `check` prints
+  `unparseable-id  'send-2' is not a valid id: family 'send' must start with A-Z and contain only
+  A-Z, 0-9, _` at that file and line, exiting 1
+
+#### Scenario: A hyphenated word stays a word
+
+- **Given** a line of prose reading `spec-sync and well-formed are ordinary words.`
+- **When** `doc` parses the file
+- **Then** nothing on the line is id-shaped, because the first level does not start with a digit, so
+  the line stays prose and `hi check` exits 0
+
+#### Scenario: The first level being a letter puts the token out of reach
+
+- **Given** `- **SEND-a.b**  a case of a case` written under `## Criteria`
+- **When** `hi check` runs
+- **Then** the line is **not** reported: `looks_like_id` is false because the first level is a
+  letter, so the line is read as prose and the criterion count does not include it
+- **And** the same id given as a subcommand argument, `hi issue SEND-a.b`, does reach `Id::parse` and
+  prints `error: 'SEND-a.b' is not a valid id: level 1 must be a number, because levels alternate
+  number, letter, number, letter` at exit 1. The break is reported at depth 1, not depth 3, because
+  the letter `a` is already wrong where it stands (invariant 13)
 
 ## Error Cases
 
@@ -184,11 +240,12 @@ reorders, or rewrites anything. It only answers questions about a string (hi: ID
 | A doubled or trailing dot (`SEND-1.`, `SEND-1..a`) | `Err(IdError::EmptyLevel)`. The sentence is "empty level (a doubled or trailing '.')" |
 | A level that is neither all digits nor all lowercase letters (`SE-ND-1`, `SEND-1.A`, `SEND-1a`) | `Err(IdError::BadLevel(level))`, whose sentence quotes the level: "level 'ND-1' must be a number or lowercase letters" |
 | A number level too large for `u32` | `Err(IdError::BadLevel(level))`; the `u32` parse failure is mapped to the same variant |
-| A numeric level with a leading zero (`SEND-007`, `SEND-1.a.01`) | `Err(IdError::PaddedLevel(level))`, whose sentence is "level '007' has a leading zero. Write it as '7', so the id always means the same thing". The check runs before the `u32` parse, so the padding is never normalized away. A bare `0` is not padding and parses |
-| A level of the right shape at the wrong depth (`SEND-a`, `SEND-1.a.b`) | `Err(IdError::Alternation { depth, expected })`. The sentence is "level N must be a number/a letter. Levels alternate number, letter, number, letter" |
+| A numeric level with a leading zero (`SEND-007`, `SEND-1.a.01`) | `Err(IdError::PaddedLevel(level))`, whose sentence is "level '007' has a leading zero; write it as '7', so the id always means the same thing". The check runs before the `u32` parse, so the padding is never normalized away. A bare `0` is not padding and parses |
+| A level of the right shape at the wrong depth (`SEND-a`, `SEND-1.a.b`) | `Err(IdError::Alternation { depth, expected })`. The sentence is "level 3 must be a number, because levels alternate number, letter, number, letter", with `expected` reading either "a number" or "a letter" |
 | `parent()` on a depth-1 id | `None`. Not an error; it is how `capture` and `check` learn that a criterion is top-level and needs no parent |
 | `root_number()` on an id whose first level is a letter, or that has no levels | `None`. Only reachable for a hand-built `Id`, since `parse` guarantees a leading number |
-| A token that is id-shaped but not parseable | `looks_like_id` returns `true` while `Id::parse` returns `Err`. The caller decides: `doc` stores the `IdError` on the criterion and `check` reports it as a structural error |
+| A token that is id-shaped but not parseable (`send-2`, `SEND-007`, `SEND-1a`, `SEND-1.`, `SEND-1.a.b`) | `looks_like_id` returns `true` while `Id::parse` returns `Err`. The caller decides: `doc` stores the `IdError` on the criterion and `check` reports it as a structural error |
+| A token that is not id-shaped but would not parse either (`SEND-a`, `SEND-a.b`, `1ST-4`) | `looks_like_id` returns `false`, so `doc` never calls `parse` and the line is prose. `check` reports nothing and `ls` lists nothing. The error is only reachable when the id is an argument to a subcommand, such as `hi issue SEND-a` (invariant 13) |
 
 ## Dependencies
 
@@ -206,11 +263,11 @@ No sibling module and no external crate. This is the bottom of hi's dependency g
 |--------|-------------|
 | `capture` (`src/capture.rs`) | `Id::parse` for the captured id; `Id::parent` twice, first to refuse a case with no parent, then to resolve the file that actually holds that parent before falling back to `Id.family` (hi: CAPTURE-4.a); `Id { family, levels }` with `Level::Number` to render the "next free is SEND-3" hint |
 | `check` (`src/check.rs`) | `Id::parent` for orphan-case detection; `Id.family` for the undeclared-family check; `Id` rendering for problem messages |
-| `doc` (`src/doc.rs`) | `looks_like_id` to tell a criterion line from prose inside a section, and again outside every section to record a stray criterion; `Id::parse` with the `IdError` stored on `Criterion::id_error`; `Id::parent`, `Id` equality, and `Id::is_descendant_of` in `insertion_point` to place a new criterion after its parent and that parent's last descendant |
+| `doc` (`src/doc.rs`) | `looks_like_id`, always through `doc`'s own `is_criterion_line`, which strips a markdown bullet (`- `, `* `, `+ `) and any surrounding `*`/`_` emphasis and tests the first whitespace-separated token. There are three call sites: inside a section to tell a criterion line from prose, outside every section to record a stray criterion, and in the continuation scan, where an indented line that is itself a criterion ends the one above it. Also `Id::parse` with the `IdError` stored on `Criterion::id_error`; `Id::parent`, `Id` equality, and `Id::is_descendant_of` in `insertion_point` to place a new criterion after its parent and that parent's last descendant |
 | `out` (`src/out.rs`) | `Id::parse` in `issue`; `Id::depth` for list and ticket indentation; `Id::is_descendant_of` to gather a criterion's cases; `Id::depth` and `Id::parent` for the export payload's `depth` and `parent` fields |
 | `workspace` (`src/workspace.rs`) | `Id` equality (`PartialEq`) in `find_id`; `Id.family` and `Id::root_number` in `next_free` |
-| `view` (`src/view.rs`) | `Id::depth` in `criteria_list` to pick the `d1` to `d4` indent class for a criterion in the rendered page |
-| `main` (`src/main.rs`) | `looks_like_id` to route an id-shaped first argument to capture before clap parses the command line. It is applied to the tail left after `peel_root` removes `--root`, so a flag is never the token tested (hi: CAPTURE-8), and only to an argument that converts through `OsStr::to_str`, so a non-UTF-8 argument is simply not id-shaped and gets a plain error rather than a panic (hi: CAPTURE-1.c) |
+| `view` (`src/view.rs`) | `Id::depth` in `criteria_list` to build the `d{depth}` indent class for a criterion in the rendered page. The page styles `d2` through `d4`; `d1` and anything deeper fall back to no extra padding |
+| `main` (`src/main.rs`) | `looks_like_id` to route an id-shaped first argument to capture before clap parses the command line. It is applied to the tail left after `peel_root` removes `--root` (which `peel_root` only consumes *before* the id, so everything after the id is the sentence), so a flag is never the token tested (hi: CAPTURE-8), and only to an argument that converts through `OsStr::to_str`, so a non-UTF-8 argument is simply not id-shaped and gets a plain error rather than a panic (hi: CAPTURE-1.c). A first argument that is not id-shaped falls through to clap, so `hi SEND-a "..."` is an "unrecognized subcommand" usage error with exit 2 rather than the alternation error with exit 1 (invariant 13) |
 
 ## Change Log
 
@@ -220,3 +277,4 @@ No sibling module and no external crate. This is the bottom of hi's dependency g
 | 2026-09-16 | Leif | Verification pass against `src/id.rs`: added `view` as a consumer (`Id::depth` in `criteria_list`), added `Id.family` to the `workspace` row, corrected the hand-built-`Id` invariant (the `Id` `capture` builds is a valid depth-1 id), and stopped describing `Display` as derived. |
 | 2026-09-16 | Leif | Reconciled with the bug-fix pass. Added the `IdError::PaddedLevel` variant (seven variants now), so a zero-padded number is refused instead of normalized (hi: ID-1.c): rewrote the level-shape and `Display`-inverse invariants, added the refusal scenario and error row, and added REQ-id-011. Recorded that `looks_like_id` also gates `doc`'s stray-criterion detection (hi: CHECK-2.e) and that fence opacity is decided in `doc` before this module is consulted (hi: FILE-9). Updated the `capture` consumer row for parent-first file resolution (hi: CAPTURE-4.a) and the `main` row for `peel_root` and `args_os` (hi: CAPTURE-8, CAPTURE-1.c). |
 | 2026-09-16 | Leif | Adversarial re-verification against `src/id.rs`. Two residues of the padding change survived the previous row: the `Id` struct row still claimed `SEND-1` and `SEND-01` compare equal "both parse to `Number(1)`" (`SEND-01` is now `PaddedLevel` and does not parse at all), and the Purpose paragraph still said `capture` resolves a file from `Id::family` alone. Both corrected; everything else in the spec traced clean to the source. |
+| 2026-09-16 | Leif | Reconciled with the rewritten `looks_like_id`. The predicate is now case-insensitive on the family and requires the first level to start with a digit, and it no longer calls `valid_family`. Rewrote its Public API and Functions rows, split invariant 10 into invariants 10 through 14 (the gap, the first-level-digit rule, the `valid_family` split, the blind spot it creates, and `doc`'s use of it), replaced the `SEND-a.b` prose example with `send-2` / `spec-sync` scenarios, and added two scenarios and an error row for tokens that are now out of `parse`'s reach. Corrected the `PaddedLevel` and `Alternation` sentences to the bytes the binary prints (`; write it as` and `, because levels alternate`, not `. Write it as` and `. Levels alternate`). Updated the `doc` consumer row for `is_criterion_line`/`strip_bullet`/`strip_emphasis` and its third call site, the `main` row for `peel_root` and the clap fall-through, and the `view` row for the `d{depth}` class. |

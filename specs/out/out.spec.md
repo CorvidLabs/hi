@@ -23,9 +23,10 @@ only reads, but it lives in the `view` module.
 
 The module is deliberately narrow. It renders an already-parsed `Workspace` and never parses,
 never mutates a `hi/*.md` file, and never consults the network. The one write it performs is
-`INTENT.md`, and that write is confined to the generated block between the `hi:index` markers
-(hi: INDEX-2). The one external process it may start is `gh`, and only when the caller asked for
-it with `--create` (hi: ISSUE-1.b).
+`INTENT.md`, and once that file carries a marker pair the write is confined to the generated block
+between them (hi: INDEX-2); the starter and append branches, which run only when there is no
+opening marker line at all, are the two that add text of their own. The one external process it may
+start is `gh`, and only when the caller asked for it with `--create` (hi: ISSUE-1.b).
 
 Nothing here fails because intent is incomplete. `ls` over an empty repository prints a hint and
 succeeds; a whole-repo `export` of a repository with no criteria emits an empty `files` list and
@@ -34,7 +35,8 @@ unknown id, a retired id asked to become work, and a scope that selects no file.
 module writes adds a fifth: an `INTENT.md` carrying an opening `hi:index` marker with no matching
 close is refused rather than guessed at, because guessing there would eat the prose between the two
 (hi: INDEX-2.b). Beyond those, the environment can still fail. `gh` may not start or may exit
-non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight.
+non-zero, and the directory holding `INTENT.md` may refuse the sibling temporary file that the
+atomic write goes through. Error Cases below lists all eight.
 
 ## Public API
 
@@ -43,9 +45,9 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
 | `ls` | Print every criterion grouped by file, indented by id depth, optionally filtered to one family and optionally including retired lines. |
 | `issue_markdown` | Render one criterion as a `(title, body)` ticket pair carrying its id, its cases, and the file's intent prose. |
 | `issue` | Resolve an id and print its ticket, or hand the same ticket to `gh issue create` when `create` is set. |
-| `export` | Build the agent payload as pretty-printed JSON for a family, a file stem, or the whole repository. |
+| `export` | Build the agent payload as pretty-printed JSON for a family, a file named by its stem, its file name, or any path ending in `hi/<stem>.md`, or the whole repository. |
 | `index_block` | Build the generated feature list: one Markdown bullet per hi file, with its families and active-criterion count. |
-| `write_index` | Rewrite the generated block inside `INTENT.md`, matching the `hi:index` markers on whole lines only, creating the file or the `## Features` section when they do not exist yet, and refusing when an opening marker has no close, then return the path written relative to the workspace root. |
+| `write_index` | Rewrite the generated block inside `INTENT.md`, matching the `hi:index` markers on whole lines only, creating the file or the `## Features` section when they do not exist yet, and refusing when an opening marker has no close; the replacement goes through `doc::write_atomically`, and the path written is returned relative to the workspace root. |
 
 ### Structs & Enums
 
@@ -64,21 +66,28 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `ls` | `fn ls(workspace: &Workspace, family: Option<&str>, include_retired: bool)` | Walks `workspace.docs` in load order. Prints the workspace-relative path of each file that has something to show, then each criterion as `<2×depth spaces><raw_id>  <text>`; retired lines gain a trailing `  (retired)`. A file with nothing matching is skipped entirely, including its heading. When no criterion at all was printed, prints the capture hint instead. Returns `()` and cannot fail. |
-| `issue_markdown` | `fn issue_markdown(doc: &Doc, criterion: &Criterion) -> (String, String)` | Title is the criterion sentence with trailing `.` characters trimmed. Body is the sentence, a blank line, `hi: <raw_id>`, an optional `Cases:` bullet list of the criterion's active descendants indented relative to the parent, and, when `doc.intent` is not blank, a `---` rule followed by `Intent for <file stem>:` and the prose. |
+| `issue_markdown` | `fn issue_markdown(doc: &Doc, criterion: &Criterion) -> (String, String)` | Title is the criterion sentence with trailing `.` characters trimmed. Body is the sentence, a blank line, `hi: <raw_id>`, an optional `Cases:` bullet list of the criterion's active descendants, each line written as `- `, then two spaces per level below the subject, then `<raw_id> <text>`; the indent is emitted *after* the list marker, so in source a deeper case is offset and in rendered Markdown it is a peer. When `doc.intent` is not blank the body ends with a `---` rule, `Intent for <file stem>:`, and the prose (hi: ISSUE-5). |
 | `issue` | `fn issue(workspace: &Workspace, raw_id: &str, create: bool, repo: Option<&str>) -> Result<()>` | Parses `raw_id`, finds the criterion in the workspace (active or retired), refuses a retired one, then either prints `## <title>` followed by the body or spawns `gh issue create --title <title> --body <body>`, adding `--repo <repo>` when supplied. |
-| `export` | `fn export(workspace: &Workspace, scope: Option<&str>) -> Result<String>` | Selects the files the scope reaches, filters their criteria when the scope is a family, and serializes one envelope (`hi`, `scope`, an optional `product`, and `files`) as pretty-printed JSON. Errors only when a stated scope selected no file at all, which includes a family declared in frontmatter that no criterion actually uses. |
+| `export` | `fn export(workspace: &Workspace, scope: Option<&str>) -> Result<String>` | Selects the files the scope reaches, filters their criteria when the scope is a family, and serializes one envelope (`hi`, `scope`, an optional `product`, and `files`) as pretty-printed JSON. File selection goes through the private `matches_file`, which accepts the stem, `<stem>.md`, or any string that ends with `hi/<stem>.md` once a leading `./` is trimmed, so the repository-relative path `ls` and `export` themselves print is accepted back. Errors only when a stated scope selected no file at all, which includes a family declared in frontmatter that no criterion actually uses. |
 | `index_block` | `fn index_block(workspace: &Workspace) -> String` | Emits `- [<stem>](hi/<stem>.md): <families> (<n> criteria)` per file, using frontmatter families when declared and used families otherwise, `no families yet` when neither exists, and singular `criterion` at a count of one. An empty workspace yields `- nothing captured yet`. |
-| `write_index` | `fn write_index(workspace: &Workspace) -> Result<String>` | Splices the generated block into `INTENT.md` between `<!-- hi:index -->` and `<!-- /hi:index -->` when the private `index_span` finds both on lines of their own, in that order; bails when the private `has_marker_line` still sees an opening marker line that `index_span` could not close; writes a whole starter file when `INTENT.md` is absent or blank; otherwise appends a `## Features` section carrying the block to the existing prose. |
+| `write_index` | `fn write_index(workspace: &Workspace) -> Result<String>` | Splices the generated block into `INTENT.md` between `<!-- hi:index -->` and `<!-- /hi:index -->` when the private `index_span` finds both on lines of their own, in that order; bails when the private `has_marker_line` still sees an opening marker line that `index_span` could not close; writes a whole starter file when `INTENT.md` is absent or blank (hi: INDEX-1.a); otherwise appends a `## Features` section carrying the block to the existing prose. Whichever branch runs, the result reaches disk through `doc::write_atomically`: a sibling `.INTENT.md.hi-tmp`, flushed and fsynced, then renamed over the target. |
 
 ## Invariants
 
 1. Every verb in this module is a pure read of an already-loaded `Workspace`. No `hi/*.md` file is
    opened, parsed, or written here: parsing belongs to `doc`, loading to `workspace`, and writing
-   to `capture`. The single file this module writes is `INTENT.md`.
+   to `capture`. The single file this module writes is `INTENT.md`, and the only other path it
+   touches is the sibling `.INTENT.md.hi-tmp` that `doc::write_atomically` creates and renames
+   away, or deletes when the write fails.
 2. A marker counts only when it is alone on its own line: `index_span` and `has_marker_line` both
    compare `line.trim()` to the whole marker, so a marker quoted inside a sentence is prose and is
-   copied through untouched (hi: INDEX-2.a). A substring search would have matched that sentence
-   and rewritten everything from there to the real close.
+   copied through untouched. A substring search would have matched that sentence and rewritten
+   everything from there to the real close. The whole-line rule is where the protection stops:
+   neither helper tracks fenced code blocks, and `index_span` latches the *first* opening marker
+   line it sees, so a marker written alone on a line inside a ``` fence in `INTENT.md` is taken as
+   the real opening marker and everything from it down to the next closing marker line is replaced.
+   INDEX-2.a asks for more than that today ("even on a line of their own or inside a code block"),
+   and this module does not deliver it; see tasks.md.
 3. When `INTENT.md` holds both marker lines in order, `write_index` replaces exactly the span from
    the start of the opening marker's line through the end of the closing marker's text. The closing
    line's own newline is deliberately left outside the span, so the blank line that follows the
@@ -97,7 +106,8 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
    and `retired` alike, an entry carries `id`, `text`, `depth`, `parent`, and `retired`; that last
    key is the criterion's `retired:` note, which `doc` records wherever it was written, so it can
    appear on an entry sitting in `criteria`. Whether a criterion is retired is which array it is
-   in, never the presence of that key.
+   in, never the presence of that key. Retired criteria travel at every scope, in their own array
+   rather than mixed into `criteria` (hi: EXPORT-4).
 5. Incomplete intent is never an error. `ls` with nothing to show, an `export` of an empty
    repository, a file with no `## Intent`, and a family with no criteria all succeed.
 6. `issue` refuses a retired id before it renders anything, so a criterion the team changed its
@@ -120,15 +130,18 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
    holds for the family lists in `export` and `index_block`: they are `doc.front.families` exactly
    as the parser recorded it, filled from an inline `families: [A, B]` or from a YAML block list
    alike, so a block-style declaration reaches both rather than falling back to used families.
-12. `INTENT.md` gets none of the file hygiene `doc` applies to `hi/*.md`. `write_index` and
-   `read_product_intent` read it with `fs::read_to_string` and strip no BOM, so a byte-order mark
-   sitting immediately before an opening marker hides that line from both (`U+FEFF` is not
-   whitespace, so `line.trim()` keeps it), while `Doc::parse` and workspace discovery do strip one.
-   Line endings are not detected either: a marker on a CRLF line is still recognized, because
-   `trim()` and `trim_end()` drop the `\r` and the closing marker's `\r\n` therefore stays outside
-   the replaced span, but the generated block itself is always written with `\n`. And the write is
-   one `fs::write` of the whole file, not the sibling-temp-file-and-rename of `Doc::save`, so
-   `INTENT.md` carries no crash-atomicity guarantee.
+12. `INTENT.md` gets most, but not all, of the file hygiene `doc` applies to `hi/*.md`.
+   `write_index` and `read_product_intent` read it with `fs::read_to_string` and strip no BOM, so a
+   byte-order mark sitting immediately before an opening marker hides that line from both
+   (`U+FEFF` is not whitespace, so `line.trim()` keeps it), while `Doc::parse` and workspace
+   discovery do strip one. Line endings are not detected either: a marker on a CRLF line is still
+   recognized, because `trim()` and `trim_end()` drop the `\r` and the closing marker's `\r\n`
+   therefore stays outside the replaced span, but the generated block itself is always written with
+   `\n`. The write, however, is now the same sibling-temp-file-and-rename `Doc::save` uses
+   (`doc::write_atomically`), so a write that fails partway cannot leave `INTENT.md` truncated
+   (hi: INDEX-2, FILE-8). Two consequences follow from the rename: the directory has to be
+   writable, not the file, so a read-only `INTENT.md` is replaced rather than refused; and the new
+   file carries the temporary file's permission bits rather than the old file's.
 
 ## Behavioral Examples
 
@@ -139,7 +152,11 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
 - **When** `issue_markdown` renders `SEND-1`
 - **Then** the title is the sentence without its trailing period, the body contains `hi: SEND-1`
   and a `Cases:` list naming `SEND-1.a`, the body does not mention `SEND-2`, and the file's intent
-  prose is appended below a `---` rule
+  prose is appended below a `---` rule (hi: ISSUE-2, ISSUE-3, ISSUE-5)
+- **And** with a deeper tree, `SEND-1.a.1` is written as `-   SEND-1.a.1 <text>`: the depth indent
+  sits after the `- `, so the line is offset in the source and renders as a sibling of `SEND-1.a`
+  rather than nested under it. ISSUE-3.a asks for nesting a reader can see, and the body does not
+  give it; see tasks.md
 
 ### Scenario: Whole-repo export
 
@@ -164,6 +181,13 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
 - **When** `export` is called with scope `chat` (the file stem, without `.md`)
 - **Then** `scope` is `"chat"`, `files` holds exactly one entry, and every criterion in that file
   is kept regardless of which family it belongs to
+- **And** `chat.md`, `hi/chat.md`, and `./hi/chat.md` all select the same file, so the
+  repository-relative path that `ls` and `export` themselves print can be pasted straight back in.
+  `scope` in the payload echoes whichever spelling was asked for
+- **And** the path arm is a suffix test, not a path resolution: any string ending in `hi/chat.md`
+  matches, including `/anywhere/hi/chat.md` and `xhi/chat.md`, while `HI/chat.md` and
+  `hi\chat.md` do not, because the comparison is case-sensitive and the separator is the forward
+  slash `Workspace::rel` emits on every platform (hi: FILE-12)
 
 ### Scenario: A scope that is both a file stem and a family matches both
 
@@ -207,7 +231,18 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
 - **When** `write_index` runs
 - **Then** it fails with a message naming both markers and telling the person to fix them rather
   than have hi guess where the block ends, and `INTENT.md` is left exactly as it was, because the
-  bail happens before the single `fs::write` (hi: INDEX-2.b)
+  bail happens before anything is written and no temporary file is created (hi: INDEX-2.b)
+
+### Scenario: Markers alone on their own lines inside a fenced code block
+
+- **Given** an `INTENT.md` that documents the format by putting `<!-- hi:index -->` and
+  `<!-- /hi:index -->` on lines of their own inside a ``` fence, above the real marker pair
+- **When** `write_index` runs
+- **Then** the fenced pair is the block: the generated list is written inside the code fence, the
+  real pair further down is left holding whatever stale text it held, and any prose between the two
+  pairs is replaced. `hi index` exits 0 and says the index was updated. This is current behavior
+  and it is what INDEX-2.a now says must not happen; `index_span` has no fence awareness and takes
+  the first opening marker line in the file
 
 ### Scenario: There is no INTENT.md yet
 
@@ -215,6 +250,10 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
 - **When** `write_index` runs
 - **Then** a starter file is written: an `# <root directory name>` heading, an HTML comment
   prompting for the product-level why, a `## Features` heading, and the generated block
+  (hi: INDEX-1.a)
+- **And** a whole-repo `export` of that repository carries that starter text in `product`, comment
+  and `## Features` heading included: `read_product_intent` strips the generated block and nothing
+  else, and it does not use `view::strip_comments`
 
 ### Scenario: Nothing captured yet
 
@@ -231,15 +270,17 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
 | `issue` is given a retired id | `<id> is retired, so it should not become work` (hi: ISSUE-4) |
 | `issue --create` cannot start `gh` | `running \`gh\` (is the GitHub CLI installed and authenticated?)` wrapping the spawn error |
 | `gh issue create` exits non-zero | `gh issue create failed`; `gh`'s own diagnostics have already reached the terminal because its stdio is inherited |
-| `export` is given a scope that selects no file | `nothing matches '<scope>', which is not a family or a file in hi/` |
-| `export` is given a family that frontmatter declares but no criterion uses | The same `nothing matches '<scope>', which is not a family or a file in hi/`. File selection needs a criterion in `doc.all()`, so a declared-but-unused family reaches no file even though `Workspace::families` lists it, and the message contradicts the frontmatter |
+| `export` is given a scope that selects no file | `nothing matches '<scope>'. Give a family like SEND, a file like chat, or nothing at all for the whole repository` |
+| `export` is given a family that frontmatter declares but no criterion uses | The same `nothing matches '<scope>'. Give a family like SEND, a file like chat, or nothing at all for the whole repository`. File selection needs a criterion in `doc.all()`, so a declared-but-unused family reaches no file even though `Workspace::families` lists it. The message no longer claims the family does not exist, but it still tells the person to give a family when they gave one, and never says the family is declared and empty |
 | `issue` is given `--repo` without `--create` | Not an error: the print path returns before `repo` is read, so the flag is silently ignored |
 | `export` is given no scope in a repository with no hi files | Not an error: `files` is an empty list and the payload is still emitted |
 | `INTENT.md` is missing or unreadable during `export` | Not an error: `product` is omitted from the payload |
-| `INTENT.md` cannot be written by `write_index` | `writing <path>` wrapping the underlying I/O error |
+| `INTENT.md` cannot be written by `write_index` | `writing <path>` wrapping the underlying I/O error. The failing operation is the sibling temporary file or the rename, so what has to be writable is the directory; the temporary file is removed on the way out and `INTENT.md` keeps its old bytes |
+| `INTENT.md` is read-only but its directory is writable | Not an error: the atomic rename replaces it, and the file comes back carrying the temporary file's permission bits rather than its own |
 | `INTENT.md` has an opening marker line that is never closed, including markers written in the wrong order | `<path> has an opening <!-- hi:index --> with no matching <!-- /hi:index -->. Fix the markers rather than have hi guess where the block ends`. Nothing is written (hi: INDEX-2.b) |
 | `INTENT.md` holds only the *closing* marker, or holds markers only inside sentences | Not an error: no opening marker line exists, so the existing text is preserved and a fresh `## Features` section carrying the block is appended below it, producing a second `## Features` heading when the file already had one |
 | `INTENT.md` begins with a BOM immediately followed by the opening marker | Not an error: the BOM is not whitespace, so that line is not a marker line to either `index_span` or `has_marker_line` and the append branch runs. `read_product_intent` misses the same line, so the stale block reaches `product` |
+| `INTENT.md` carries the two markers on lines of their own inside a fenced code block | Not an error, and not a refusal: `index_span` has no fence awareness, so the fenced pair is treated as the real block. The generated list is written inside the fence and everything between the fenced opening marker and the next closing marker line is replaced, including prose. Exit 0 (contradicts hi: INDEX-2.a; see tasks.md) |
 
 ## Dependencies
 
@@ -250,9 +291,9 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
 | `anyhow` | `Result`, `bail!`, and `Context` for the fallible verbs |
 | `serde` | `Serialize` derive on the private payload types |
 | `serde_json` | `to_string_pretty` for the export envelope |
-| `std::fs` | `read_to_string` for `INTENT.md`, `write` for the index |
+| `std::fs` | `read_to_string` for `INTENT.md`. The index write goes through `doc::write_atomically`, so this module calls no `fs` write function itself |
 | `std::process::Command` | Spawning `gh issue create` with inherited stdio |
-| `doc` | `Criterion` (`id`, `raw_id`, `text`, `note`, `section`), `Doc` (`criteria`, `retired`, `intent`, `title`, `front.families`, `path`, `all()`, `used_families()`, `name()`), `Section::Retired` |
+| `doc` | `Criterion` (`id`, `raw_id`, `text`, `note`, `section`), `Doc` (`criteria`, `retired`, `intent`, `title`, `front.families`, `path`, `all()`, `used_families()`, `name()`), `Section::Retired`, and `write_atomically` for the `INTENT.md` replacement |
 | `id` | `Id::parse`, `Id::depth`, `Id::parent`, `Id::is_descendant_of`, `Id::family`, and `Display` for error messages |
 | `workspace` | `Workspace` (`docs`, `root`), `Workspace::rel`, `Workspace::families`, `Workspace::find_id`, `Workspace::intent_path` |
 
@@ -270,3 +311,4 @@ non-zero, and `INTENT.md` may not be writable. Error Cases below lists all eight
 | 2026-09-16 | Leif | Verification pass against `src/out.rs`. Corrected the "only three conditions are errors" claim (there are seven), scoped invariant 2 to the splice branch, gave the whole-repo export example the `INTENT.md` its `product` clause assumed, documented that a family/file-stem collision matches both rather than resolving to the file, and added the declared-but-unused family, the ignored `--repo`, and the `retired`-key-is-a-note behaviors. |
 | 2026-09-16 | Claude | Reconciled with the bug-fix pass. `write_index` now matches the `hi:index` markers on whole lines via the new private `index_span` / `has_marker_line` (hi: INDEX-2.a) and refuses an unclosed opening marker instead of appending (hi: INDEX-2.b), so the eighth error case is new and the old "only one marker is not an error" row was wrong. Recorded that the closing marker's newline stays outside the replaced span, added the invariant that this module reads only `criteria`/`retired` and never `Doc::stray`, and noted that fenced and stray id-shaped lines never reach any output here (hi: FILE-9, CHECK-2.e). Public API is unchanged at six exports. |
 | 2026-09-16 | Claude | Verification pass over the reconciliation. Confirmed the six exports, the marker helpers, and every error case against `src/out.rs`; added what the reconciliation missed. The parser now fills `front.families` from a YAML block list too, so a block-style file's declared families reach `export` and `index_block` (invariant 11). Recorded that `INTENT.md` receives none of the BOM stripping, line-ending detection, or atomic replacement the bug-fix pass gave `hi/*.md` (invariant 12), and added the BOM-before-the-marker row to Error Cases. |
+| 2026-09-16 | Claude | Re-verified every claim against `src/out.rs` and `./target/release/hi`. Quoted `export`'s new refusal byte for byte; documented `matches_file`, so a file scope is now the stem, `<stem>.md`, or any path ending in `hi/<stem>.md`; recorded that `write_index` writes through `doc::write_atomically`, which makes invariant 12's no-atomicity claim and the read-only-file error row obsolete and turns a read-only `INTENT.md` into a successful replace. Added two places where the code does not meet a criterion as it now reads: a fenced marker pair is still adopted as the real block (hi: INDEX-2.a), and `issue_markdown` writes the depth indent after the `- `, so a case does not render nested (hi: ISSUE-3.a). Added the ISSUE-5, EXPORT-4, INDEX-1.a, and FILE-12 citations the criteria now support. Public API is unchanged at six exports. |

@@ -17,9 +17,9 @@ to maintain, and it stops being written.
 ## Features
 
 <!-- hi:index -->
-- [capture](hi/capture.md): CAPTURE (15 criteria)
-- [check](hi/check.md): CHECK (12 criteria)
-- [format](hi/format.md): FILE, ID (25 criteria)
-- [generate](hi/generate.md): ISSUE, EXPORT, INDEX (14 criteria)
-- [view](hi/view.md): VIEW (9 criteria)
+- [capture](hi/capture.md): CAPTURE (17 criteria)
+- [check](hi/check.md): CHECK (13 criteria)
+- [format](hi/format.md): FILE, ID (29 criteria)
+- [generate](hi/generate.md): ISSUE, EXPORT, INDEX (19 criteria)
+- [view](hi/view.md): VIEW (11 criteria)
 <!-- /hi:index -->

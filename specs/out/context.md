@@ -6,7 +6,8 @@ spec: out.spec.md
 
 - `out` is the read half of hi. It takes an already-loaded `Workspace` and renders it. It does not
   open, parse, or write any `hi/*.md` file; those belong to `doc`, `workspace`, and `capture`.
-  `INTENT.md` is the single file this module writes.
+  `INTENT.md` is the single file this module writes, through `doc::write_atomically`, which also
+  creates and renames away a sibling `.INTENT.md.hi-tmp`.
 - `hi issue` prints by default and only shells to `gh` behind `--create`. That is deliberate: hi
   must work with no auth, no network, and no tracker integration, because the moment generation
   needs setup it stops being used (hi: ISSUE-1.a, ISSUE-1.b, and DECISIONS.md §6 "Generation").
@@ -25,6 +26,13 @@ spec: out.spec.md
 - Ticket titles get `trim_end_matches('.')`. This removes *every* trailing period, so
   `"it just works..."` becomes `"it just works"`. That is the only text transformation anywhere in
   this module; everything else reproduces human prose verbatim (hi: FILE-4).
+- The `Cases:` list in `issue_markdown` is `format!("- {indent}{} {}\n", ...)`: the depth indent is
+  emitted **after** the list marker. The `indent` local exists only to nest, and in Markdown it
+  cannot, because a list marker must be preceded by its indent. So `SEND-1.a.1` renders as a peer
+  of `SEND-1.a`, and five spaces (depth 4) turn the sentence into an indented code block. ISSUE-3.a
+  asks for exactly the nesting this loses. Anyone moving the indent in front of the bullet should
+  do it together with a test that renders the body, not one that greps it: this is the FILE-1.b
+  lesson from DECISIONS.md §12 on a second surface.
 - A retired criterion is *found* and then refused, not reported as missing. `Workspace::find_id`
   searches both sections precisely so the message can say "is retired" rather than "does not exist"
   (hi: ISSUE-4).
@@ -35,7 +43,15 @@ spec: out.spec.md
   compared to the whole marker, over `split_inclusive('\n')`. Do not put this back to `find()` or
   `contains()`. A substring search matches a marker quoted in a sentence, and the splice then
   rewrites everything from that sentence to the real close, which is exactly the prose INDEX-2
-  exists to protect (hi: INDEX-2.a). The doc comment on `index_span` says so; leave it there.
+  exists to protect. The doc comment on `index_span` says so; leave it there.
+- What whole-line matching does **not** cover, and INDEX-2.a now asks for: a marker written alone
+  on a line inside a fenced code block. `index_span` has no fence state and latches the first
+  opening marker line in the file, so a documented example of the format is adopted as the real
+  block and every byte down to the next closing marker line, prose included, is replaced. Same for
+  two bare opening marker lines above one close. Both exit 0. `doc` already solved the equivalent
+  problem for `hi/*.md` by treating fences as opaque (hi: FILE-9); nothing here does. Fixing it
+  means teaching `index_span` fence state, and it changes `read_product_intent` too, since the two
+  functions agree on the rule by duplication rather than by sharing code.
 - `index_span` deliberately ends the span at `span.start + line.trim_end().len()`: the last
   non-whitespace byte of the closing marker's line, not the end of the line. The closing newline
   stays in the file, so the blank line after the block survives every rewrite. Shortening this to
@@ -45,8 +61,15 @@ spec: out.spec.md
 - An opening marker line with no close is a **refusal**, not an append (hi: INDEX-2.b). The
   `None if has_marker_line(&existing, INDEX_OPEN)` arm has to stay *above* the blank-file and
   append arms, because otherwise a half-edited `INTENT.md` silently grows a second `## Features`
-  section and the person never learns their markers are broken. The bail happens before the single
-  `fs::write`, so a refusal writes nothing.
+  section and the person never learns their markers are broken. The bail happens before the write,
+  so a refusal leaves no temporary file and no change.
+- `write_index` writes through `doc::write_atomically`, not `fs::write`. This is the FILE-8 fix
+  applied to the one file this module owns: `INTENT.md` holds hand-written product prose and there
+  is no second copy of it. Do not route this back through `fs::write` for brevity. Two things
+  follow from the rename that are easy to forget: the *directory* is what must be writable, so a
+  read-only `INTENT.md` is replaced rather than refused, and the replacement carries the temporary
+  file's permission bits. The `.with_context(|| format!("writing {}", path.display()))` wrapper
+  stays, because `write_atomically` returns a bare `io::Error` that names nothing.
 - Only the *opening* marker gates that refusal. A file holding a lone closing marker falls through
   to the append branch: there is no opening marker, so there is nothing to guess past. That
   asymmetry is intentional, not an oversight.
@@ -62,8 +85,9 @@ spec: out.spec.md
   this module exists to serve. `./target/release/hi export generate` prints it as the payload.
 - `src/workspace.rs`: `Workspace::rel`, `find_id`,
   `families`, `intent_path`, and the sorted load order that makes `ls` and `index` output stable.
-- `src/doc.rs`: `Doc`, `Criterion`, `Section`, and the
-  `all()` / `used_families()` / `name()` helpers this module leans on.
+- `src/doc.rs`: `Doc`, `Criterion`, `Section`, the
+  `all()` / `used_families()` / `name()` helpers this module leans on, and `write_atomically`,
+  which `write_index` calls.
 - `src/id.rs`: `Id::depth`, `parent`, `is_descendant_of`,
   which drive indentation, the `parent` field in the payload, and the `Cases:` list.
 - `src/main.rs`: the clap subcommands that call in here,
@@ -82,9 +106,14 @@ two test `index_span` and `has_marker_line` directly, over string literals, whic
 no temporary directory. `write_index` itself is still uncovered inline because it touches the real
 filesystem; `tests/cli.rs` covers it end to end instead, with `index_rewrites_only_the_generated_block`,
 `index_refuses_rather_than_guessing_when_a_marker_is_unclosed`, and
-`index_leaves_a_marker_quoted_in_prose_alone`. `ls` has no coverage anywhere: it only prints. The
-unit-test helper builds a `Workspace` by hand from `Doc::parse`, with `root: /r` and `dir: /r/hi`,
-so no temporary directory is needed there.
+`index_leaves_a_marker_quoted_in_prose_alone`. `tests/cli.rs` also carries
+`export_stdout_is_parseable_json`, `export_rejects_a_scope_that_matches_nothing`,
+`export_accepts_the_path_it_prints` (the stem, file-name, and `hi/<stem>.md` spellings, exit status
+only), and `issue_prints_a_ticket_carrying_the_id`. `ls` has no coverage anywhere: it only prints.
+The unit-test helper builds a `Workspace` by hand from `Doc::parse`, with `root: /r` and
+`dir: /r/hi`, so no temporary directory is needed there. Its `CHAT` fixture is still written in the
+bare, bulletless line form, which is deliberate: it also pins that the parser accepts a
+hand-written file, which is what `strip_bullet` and `strip_emphasis` exist for.
 
 No known blockers.
 
@@ -100,9 +129,18 @@ No known blockers.
 - Non-obvious in `export`: `is_family` comes from `Workspace::families`, which includes frontmatter
   declarations, but file selection additionally requires `doc.all()` to hold a criterion of that
   family. A family declared in frontmatter and used by nothing therefore selects no file, and the
-  export bails with `nothing matches '<scope>', which is not a family or a file in hi/`, a message
-  that flatly contradicts the frontmatter. `hi ls --family <it>` is quieter about the same
+  export bails with `nothing matches '<scope>'. Give a family like SEND, a file like chat, or
+  nothing at all for the whole repository`. That message no longer asserts the family does not
+  exist, but it still answers a correct family name by listing the three things a scope can be, and
+  it never says the family is declared and empty. `hi ls --family <it>` is quieter about the same
   situation: the `no criteria yet` hint, exit 0.
+- Non-obvious in `export`: `matches_file` has three arms, `scope == stem`, `scope == "<stem>.md"`,
+  and `scope.trim_start_matches("./").ends_with("hi/<stem>.md")`. The third is a **suffix test on a
+  string**, not a path resolution, so `/anywhere/hi/chat.md` and even `xhi/chat.md` match, while
+  `hi\chat.md` does not. The point of the arm is that `Workspace::rel` prints `hi/chat.md` with
+  forward slashes on every platform (hi: FILE-12), so the path in `ls` output and in the payload's
+  `file` key can be pasted straight back in as a scope. If this ever grows a fourth arm, remember
+  that `scope` in the payload echoes the raw string, so one file already has four names.
 - Non-obvious in `export`: `ExportCriterion.retired` is `Criterion::note`, and `doc` records a
   `retired:` continuation line wherever it is written. An active criterion with a stray `retired:`
   line therefore ships inside `criteria` carrying a `retired` key, and `hi issue` will still make a
@@ -111,7 +149,8 @@ No known blockers.
 - Non-obvious in `export`: a family scope keeps the family's *retired* criteria too. `keep` is
   applied to both `doc.criteria` and `doc.retired`, and file selection uses `doc.all()`. So a file
   that holds only retired criteria of the scoped family is still included, with an empty `criteria`
-  list and a populated `retired` one.
+  list and a populated `retired` one. EXPORT-4 now states this outright ("Retired criteria come
+  along, kept apart from the live ones"), so it is settled intent rather than an accident.
 - Non-obvious in `ls`: the family filter uses `is_none_or` over `c.id`, so a criterion whose id
   failed to parse is invisible under any family filter but visible in an unfiltered listing. That
   is fine, because `hi check` is where malformed ids get reported.
@@ -126,15 +165,20 @@ No known blockers.
   with no opening marker line at all), and it remains the one place bytes outside the block change:
   it writes `existing.trim_end()`, so trailing blank lines are dropped and a file that already had
   a `## Features` heading gains a second one. That is still not an error and still not reported.
-- Non-obvious in `write_index` and `read_product_intent`: `INTENT.md` gets none of the file hygiene
-  `doc` gained. No BOM is stripped, so a byte-order mark immediately before an opening marker hides
-  that line from both (`U+FEFF` is not whitespace, so `trim()` keeps it) and the append branch runs
-  silently. `Doc::parse` and `holds_hi_files` both strip one. No line ending is detected, so the
-  generated block is always LF; a CRLF file keeps CRLF in its prose and on the closing marker's own
-  line, because that newline is outside the span, and `hi index` stays idempotent over it. And the
-  write is a plain `fs::write`, not `doc::write_atomically`, so `INTENT.md` alone can be left
-  truncated by an interrupted write. All three are the current behavior, not a decision recorded
-  anywhere; see tasks.md before "fixing" one in isolation.
+- Non-obvious in `write_index` and `read_product_intent`: `INTENT.md` gets the atomic write `doc`
+  gained but not the rest of its hygiene. No BOM is stripped, so a byte-order mark immediately
+  before an opening marker hides that line from both (`U+FEFF` is not whitespace, so `trim()` keeps
+  it) and the append branch runs silently. `Doc::parse` and `holds_hi_files` both strip one. No
+  line ending is detected, so the generated block is always LF; a CRLF file keeps CRLF in its prose
+  and on the closing marker's own line, because that newline is outside the span, and `hi index`
+  stays idempotent over it (verified twice over a CRLF fixture). Both are current behavior, not a
+  decision recorded anywhere; see tasks.md before "fixing" one in isolation.
+- Non-obvious in `read_product_intent`: it strips the generated block and nothing else. It does not
+  call `view::strip_comments`, so an HTML comment in `INTENT.md` prose lands in `product` verbatim,
+  including the `<!-- What is this product for, holistically? ... -->` prompt that `write_index`
+  puts in a starter file. A repository where nobody has answered that prompt therefore hands an
+  agent a `product` string consisting of a heading, the prompt, and `## Features`. It is not empty,
+  so the `None` fallback does not catch it.
 - Non-obvious in `index_block` and `export`: the families they report are `doc.front.families`, and
   the parser now fills that from a YAML block list as well as an inline `families: [A, B]`. A
   block-style file therefore lists its *declared* families in both outputs; the `used_families()`

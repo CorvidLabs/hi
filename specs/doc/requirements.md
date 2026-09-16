@@ -12,6 +12,9 @@ spec: doc.spec.md
   would have typed by hand, so that the file stays uniform whoever wrote which line (hi: FILE-3)
 - As someone who greps and diffs the criteria section, I want one criterion to be one line however
   long the sentence runs (hi: FILE-6)
+- As someone who reads the file on GitHub or in a preview rather than in an editor, I want the
+  criteria to render as a nested list rather than as one paragraph of run-together sentences
+  (hi: FILE-1.b)
 - As someone who says ids out loud a year later, I want inserting a criterion to renumber nothing
   around it (hi: ID-1.a)
 - As someone whose feature spans several id families, I want one file to hold all of them, each in
@@ -115,17 +118,29 @@ Acceptance Criteria
 
 ### REQ-doc-003
 
-A criterion SHALL be recognized as a non-indented line whose first whitespace-delimited token is
-id-shaped, extended by the indented non-blank lines that immediately follow it.
+A criterion SHALL be recognized as a line, at any indent, whose first whitespace-delimited token is
+id-shaped once an optional markdown bullet and any surrounding emphasis are stripped, extended by
+the indented non-blank lines that immediately follow it and are not themselves criteria.
 
 Acceptance Criteria
 
+- A leading `- `, `* ` or `+ ` bullet is stripped before the first token is taken, and `*` or `_`
+  characters around that token are stripped before it is tested and before it is stored as `raw_id`.
+  `- **SEND-1**  x`, `- SEND-1  x`, `  - _SEND-1_  x` and `SEND-1  x` are the same criterion.
+- Indentation does not disqualify a line, because hi writes a case indented two spaces under its
+  parent (REQ-doc-019). A file whose criteria are a nested list parses as the same criteria as the
+  same file written flat.
 - Continuation lines are joined into `text` with exactly one space between them, so a wrapped
   sentence reads as one sentence.
-- The first blank line or first unindented line ends the criterion, and `end_line` records its last
-  line.
+- The first blank line, the first unindented line, and the first indented line that is itself
+  criterion-shaped all end the criterion, and `end_line` records its last line. Without that third
+  rule a nested case would be swallowed as its parent's continuation.
 - Prose sitting inside `## Criteria` that does not begin with an id-shaped token is not a criterion
-  and is preserved in `lines`.
+  and is preserved in `lines`. `looks_like_id` requires the first level after the hyphen to be a
+  digit, so an ordinary hyphenated word such as `spec-sync` or `well-formed` stays prose.
+- A lowercase family is id-shaped, because `looks_like_id` is case-insensitive there. The line
+  becomes a criterion whose `Id::parse` failed, so `check` can report it rather than the line reading
+  as prose and vanishing (hi: CHECK-2.d).
 - Both a leading space and a leading tab count as indentation.
 - A line inside a fenced code block is never a criterion, whatever it is shaped like (REQ-doc-013).
 
@@ -136,8 +151,9 @@ error, and SHALL NOT be skipped (hi: CHECK-2.d, ID-4).
 
 Acceptance Criteria
 
-- The criterion has `id == None` and `id_error == Some(..)`, and `raw_id` is the token exactly as
-  written, so the message can quote it back.
+- The criterion has `id == None` and `id_error == Some(..)`, and `raw_id` is the token as written
+  with its bullet and emphasis stripped, so the message quotes back the id rather than its markdown
+  decoration.
 - `line`/`line_no()` point at the real line, so a problem can name the file and the line
   (hi: CHECK-3).
 - Parsing continues past the bad line; one malformed id does not cost the rest of the file.
@@ -195,13 +211,15 @@ Acceptance Criteria
 
 ### REQ-doc-008
 
-A criterion the module writes SHALL be the id, two spaces, and the whole sentence on exactly one
-line, and SHALL NOT be wrapped at any width (hi: FILE-6, FILE-3).
+A criterion the module writes SHALL carry the whole sentence on exactly one line, and SHALL NOT be
+wrapped at any width (hi: FILE-6, FILE-3).
 
 Acceptance Criteria
 
 - `render_criterion` returns a one-element vector for any input, however long the sentence.
-- The line is `{id}  {sentence}` with exactly two spaces after the id.
+- The line is `{indent}- **{id}**  {sentence}` with exactly two spaces between the id and the
+  sentence. The bullet, the emphasis and the indent are REQ-doc-019's business; the one-line rule is
+  this requirement's.
 - Interior whitespace in the supplied sentence, including newlines from a pasted multi-line thought,
   is collapsed to single spaces so the result is one sentence.
 - A whitespace-only sentence still renders one line rather than an empty vector; refusing it belongs
@@ -297,10 +315,14 @@ reported rather than silently ignored (hi: CHECK-2.e).
 
 Acceptance Criteria
 
-- A non-blank, non-indented line outside `## Criteria` and `## Retired` whose first
-  whitespace-delimited token is id-shaped is pushed onto `doc.stray` as `(0-based line index, token)`.
-  This covers the lines before the first heading, under a `# ` heading, and under a `## ` heading the
-  parser does not recognize.
+- A non-blank line outside `## Criteria` and `## Retired`, at any indent, that satisfies
+  REQ-doc-003's criterion test is pushed onto `doc.stray` as `(0-based line index, token)`. This
+  covers the lines before the first heading, under a `# ` heading, and under a `## ` heading the
+  parser does not recognize. Indentation does not exempt a line, because a stray is just as
+  invisible indented as it is flush.
+- The recorded token is stripped of its bullet but not of its emphasis, because the stray branch
+  calls `strip_bullet` alone while `read_criterion` also calls `strip_emphasis`. A stray written
+  `  - **SEND-9**  ...` is therefore recorded, and reported by `check`, as `**SEND-9**`.
 - A line inside `## Intent` is *not* covered: the intent branch of `parse_body` runs above the stray
   branch, so an id-shaped line written there becomes intent prose and is reported by nothing. The
   requirement is not met in that one region; whether it should be is an open decision recorded in
@@ -308,7 +330,7 @@ Acceptance Criteria
 - Such a line produces no `Criterion`: it is not in `criteria`, not in `retired`, and not in `all()`.
 - Its recorded index is shifted along with everything else when `insert` splices lines above it, so a
   later report still names the right line (hi: CHECK-3).
-- A line inside a fenced block is not a stray (REQ-doc-013), and neither is an indented one.
+- A line inside a fenced block is not a stray (REQ-doc-013).
 
 ### REQ-doc-015
 
@@ -361,16 +383,21 @@ Acceptance Criteria
 - Everything already in the file, intent prose included, is left character for character
   (REQ-doc-006), and re-parsing the result finds the same intent, the new criterion and no stray.
 
-### REQ-doc-018
+### REQ-doc-019
 
-`render_criterion` SHALL emit each criterion as a markdown list item, indented two spaces per depth
-level below the first, so that a hi file renders as a list rather than a paragraph (hi: FILE-1.b).
+`render_criterion` SHALL emit each criterion as a markdown list item whose id is bold, indented two
+spaces per depth level below the first, so that a hi file renders as a nested list rather than a
+paragraph of run-together sentences (hi: FILE-1.b).
 
 Acceptance Criteria
 
-- A depth-1 criterion renders as `- ID  sentence` at column 0.
-- A depth-2 criterion renders as `  - ID  sentence`, a depth-3 as `    - ID  sentence`, and so on.
+- A depth-1 criterion renders as `- **ID**  sentence` at column 0.
+- A depth-2 criterion renders as `  - **ID**  sentence`, a depth-3 as `    - **ID**  sentence`, and
+  so on. The indent is `"  "` repeated `id.depth() - 1` times.
+- The id is wrapped in `**` so it reads as a label rather than as the first two words of the
+  sentence wherever the file is rendered.
 - The result is still exactly one line however long the sentence runs (hi: FILE-6).
-- The parser accepts a criterion written without a bullet, and at any indentation, so a file written
-  before this rule or edited by hand is never rejected.
-- A bullet may be `-`, `*` or `+` on input; hi always writes `-`.
+- The parser accepts a criterion written without a bullet, without emphasis, and at any indentation,
+  so a file written before this rule or edited by hand is never rejected (REQ-doc-003).
+- A bullet may be `-`, `*` or `+` on input; hi always writes `-`. Emphasis may be `*` or `_` on
+  input; hi always writes `**`.

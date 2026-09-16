@@ -40,8 +40,10 @@ The format is not frozen. This is 0.x on purpose.
 - `hi export [FAMILY | file]` emits JSON for an agent, intent prose included.
 - `hi index` rewrites only the generated block inside `INTENT.md`.
 - `hi view [--out FILE]` renders one self-contained HTML page for people who do not read markdown.
-- Ships as the `human-intent` crate with a `hi` binary, plus a `fledge-hi` shim and `plugin.toml`
-  so the whole CLI is reachable as `fledge hi`.
+- Ships as the `human-intent` crate with a `hi` binary, plus a `bin/fledge-hi` shell shim and a
+  root `plugin.toml`. The plugin is not bundled with fledge: run
+  `fledge plugins install CorvidLabs/hi` once, which builds from source, and then the whole CLI is
+  reachable as `fledge hi`.
 
 ### Deliberately not built
 

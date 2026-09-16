@@ -47,8 +47,20 @@ spec: doc.spec.md
   fix does not reach. It is not obviously a bug. An unfenced example id in someone's intent prose is
   exactly the thing that would start being flagged if the order were swapped, so it is recorded as a
   decision in `tasks.md` rather than changed here.
-- **A bad id is data, not a parse failure.** `Doc::parse` is infallible. `looks_like_id` decides
+- **Three private helpers decide what a criterion line is, and the order matters.**
+  `is_criterion_line(trimmed)` calls `strip_bullet` (a leading `- `, `* ` or `+ `), takes the first
+  whitespace-delimited token, calls `strip_emphasis` (`trim_matches` over `*` and `_`), and hands
+  the result to `looks_like_id`. `read_criterion` repeats the same three steps to produce `raw_id`,
+  which is why `**SEND-1**` is stored as `SEND-1`. None of the three is `pub`; they are the module's
+  own grammar and nothing outside `doc` should need them. **The stray branch is the one place that
+  does not repeat all three:** it calls `strip_bullet` only, so a stray written `- **SEND-9**  ...`
+  is recorded as `**SEND-9**` and `check` prints it that way. It is a cosmetic inconsistency in a
+  message, not a parse difference, and it is recorded in `tasks.md` rather than fixed here.
+- **A bad id is data, not a parse failure.** `Doc::parse` is infallible. `is_criterion_line` decides
   whether a line *starts* a criterion; `Id::parse` decides whether that criterion's id is *valid*.
+  `looks_like_id` is deliberately case-insensitive on the family and deliberately demands a digit as
+  the first level, so `send-2` is recognized and then rejected with a reason rather than read as
+  prose and lost, while `spec-sync` and `well-formed` stay ordinary words.
   A token that passes the first and fails the second becomes a `Criterion` with `id: None` and
   `id_error: Some(..)`, which is exactly what `check` needs to print a file, a line and a reason
   (hi: CHECK-2.d, CHECK-3). Never "fix" this by skipping the line: the error would disappear from
@@ -66,11 +78,20 @@ spec: doc.spec.md
 - **One blank line separates families, none separates a family's own criteria.** This is the whole
   of the "block" convention, implemented by the `blank_before` flag returned from
   `insertion_point`.
-- **One criterion is one line, and hi never wraps.** `render_criterion` is two statements: collapse
-  the sentence's whitespace, then `format!("{id}  {sentence}")`. There is no width constant. The
-  reasoning is in the source comment and in DECISIONS.md §3 and §10.1: a wrapped criteria section is
-  harder to grep, harder to diff and harder to read as a list, and the list is the point
-  (hi: FILE-6, and FILE-3 for "looks like something I would have typed by hand").
+- **One criterion is one markdown list item, and hi never wraps.** `render_criterion` is three
+  statements: collapse the sentence's whitespace, compute `"  ".repeat(id.depth() - 1)`, then
+  `format!("{indent}- **{id}**  {sentence}")`. There is no width constant. The reasoning is in the
+  source comment and in DECISIONS.md §3, §10.1 and §12: a wrapped criteria section is harder to grep,
+  harder to diff and harder to read as a list, and the list is the point (hi: FILE-6, and FILE-3 for
+  "looks like something I would have typed by hand").
+- **The bullet is not decoration** (hi: FILE-1.b). Markdown joins consecutive plain lines into one
+  paragraph, so a criteria section of bare `SEND-1  ...` lines is one line per criterion in the file
+  and an unreadable wall of run-together sentences everywhere it is actually rendered. That
+  falsified FILE-1, the first thing the format promises, and it passed every test hi had because
+  every test asserted on what the parser recovered rather than on what a person sees. The two-space
+  indent per depth level is what makes a case render nested under its parent, and the `**` around the
+  id is what stops it reading as the first two words of the sentence. DECISIONS.md §12 is the record.
+  Do not "simplify" `render_criterion` back to `format!("{id}  {sentence}")`.
 - **`save` is atomic on purpose** (hi: FILE-8). `write_atomically` creates `.{name}.hi-tmp` beside
   the target, writes, `flush`es, `sync_all`s, and only then `rename`s over the real file; every
   failure path deletes the temp file first. `fs::write` truncates the target before writing, so a
@@ -85,17 +106,27 @@ spec: doc.spec.md
   a criterion used to end up inside the intent prose.
 - **Reading and writing are deliberately asymmetric.** `read_criterion` still accepts indented
   continuation lines and joins them, so a file someone wrapped by hand is never rejected
-  (hi: FILE-1). `render_criterion` never produces one. Do not "fix" the parser to match the writer.
-  The leniency is what keeps a hand-edited file valid.
+  (hi: FILE-1). `render_criterion` never produces one. The same asymmetry covers decoration: the
+  parser takes a bare line, any of three bullets, either emphasis marker and any indent, while the
+  writer only ever emits `{indent}- **{id}**  {sentence}`. Do not "fix" the parser to match the
+  writer. The leniency is what keeps a hand-edited file, and every file written before the list-item
+  rule, valid.
+- **An indented criterion line is a criterion, not a continuation.** `read_criterion`'s loop breaks
+  on `is_criterion_line(next.trim())` before it treats an indented line as a continuation. That one
+  line is what lets a case sit indented under its parent, which is the whole point of the nested
+  list, instead of being swallowed into the parent's sentence. It is also why indentation no longer
+  disqualifies a stray: `parse_body` trims before testing, everywhere.
 
 ## Files to Read First
 
 - `src/doc.rs` is this module, including the `#[cfg(test)]`
   block at the bottom, which is the most precise statement of the insertion rules.
 - `src/id.rs` holds `Id`, `Level`, `IdError`, `looks_like_id`,
-  `Id::parent` and `Id::is_descendant_of`. Everything `insertion_point` does depends on the last two.
-- `DECISIONS.md`, sections 3 (the file), 4 (ids) and 5 (no
-  state, no lifecycle, no evidence). Section 3 is the format this module implements.
+  `Id::parent`, `Id::is_descendant_of` and `Id::depth`. Everything `insertion_point` does depends on
+  the middle two, and `render_criterion`'s indent depends on the last one.
+- `DECISIONS.md`, sections 3 (the file), 4 (ids), 5 (no
+  state, no lifecycle, no evidence) and 12 (a criterion is a markdown list item). Section 3 is the
+  format this module implements and section 12 is the correction that gave criteria their bullets.
 - `hi/format.md` has the `FILE` and `ID` criteria this module
   exists to satisfy, in the author's own words.
 - `src/capture.rs` is the only caller that mutates a document,
@@ -103,11 +134,13 @@ spec: doc.spec.md
 
 ## Current Status
 
-- Implemented and covered by 30 unit tests in `src/doc.rs`. Parsing in both frontmatter styles,
+- Implemented and covered by 32 unit tests in `src/doc.rs`. Parsing in both frontmatter styles,
   fenced-block opacity, retired-section handling, malformed-id recording, stray recording, the four
   reachable insertion-point branches plus the created-section path, frontmatter family declaration,
-  the byte-identical round trip, BOM stripping, CRLF preservation, an atomic save, the one-line rule
-  and whitespace collapsing are each exercised.
+  the byte-identical round trip, BOM stripping, CRLF preservation, an atomic save, the one-line rule,
+  the nested list-item rule, reading a criterion however it was decorated, and whitespace collapsing
+  are each exercised. The end-to-end assertion on the bytes a person actually reads lives in
+  `tests/cli.rs::a_hi_file_renders_as_a_list_not_a_wall_of_text`, not here.
 - `insertion_point`'s last arm, `(self.lines.len(), false)`, is now unreachable: `insert` guarantees
   `criteria_heading` is `Some` before calling it, so the heading branch always fires first. It is
   dead today rather than wrong, and it is the branch that used to append a criterion into the intent

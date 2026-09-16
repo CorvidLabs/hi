@@ -8,7 +8,7 @@ spec: main.spec.md
 - As someone running hi in CI, I want an exit code I can rely on, so that a broken file fails and unfinished intent does not (hi: CHECK-1, CHECK-2)
 - As someone reading a failure, I want the file and line named, so that I can go straight to it (hi: CHECK-3)
 - As an agent, I want `--json` on check and a clean stdout on export, so that I can consume hi's output without parsing prose
-- As someone who types a flag, I want it treated as a flag and not swallowed into my sentence, so that `--root` works even though capture never reaches clap (hi: CAPTURE-8)
+- As someone who types a flag before the id, I want it treated as a flag, so that `--root` works even though capture never reaches clap; and as someone who types one inside a sentence, I want it left alone, so that my words survive (hi: CAPTURE-8)
 - As someone who types something hi cannot handle, I want a plain sentence back rather than a stack trace (hi: CAPTURE-1.c)
 
 ## Acceptance Criteria
@@ -21,8 +21,10 @@ Acceptance Criteria
 
 - `hi SEND-2 "it reaches them"` captures and prints `hi/chat.md  +SEND-2`.
 - The remaining arguments are joined with single spaces to form the sentence.
-- No flag or subcommand name is id-shaped, so `--help`, `-V`, `check`, `ls`, `issue`, `export`, `index` and `view` all reach clap unchanged.
-- The routing test runs on the arguments left after `--root` has been peeled, so `hi --root PATH SEND-2 "<sentence>"` still captures.
+- No flag or subcommand name is id-shaped, so `--help`, `-V`, `check`, `ls`, `issue`, `export`, `index` and `view` all reach clap unchanged. A flag splits to an empty family part, and no subcommand name holds a hyphen.
+- An ordinary hyphenated word is not id-shaped, because the character after the `-` must be a digit, so `spec-sync` and `well-formed` reach clap rather than capture.
+- A wrongly cased id is id-shaped, because the family test ignores case, so `hi send-2 "<sentence>"` routes to capture and is refused there with a reason rather than read as a subcommand (hi: CHECK-2.d).
+- The routing test runs on the arguments left after a leading `--root` has been peeled, so `hi --root PATH SEND-2 "<sentence>"` still captures.
 
 ### REQ-main-002
 
@@ -32,6 +34,7 @@ Acceptance Criteria
 
 - Bare `hi` prints the help text via clap's `arg_required_else_help`.
 - No file is read, created, or written.
+- The exit code is 2, which is clap's own code for "a required argument is missing". Nothing in `main` chooses it, and `bare_invocation_prints_help_and_writes_nothing` asserts on the help text and the untouched `hi/`, not on the code.
 
 ### REQ-main-003
 
@@ -77,15 +80,17 @@ Acceptance Criteria
 
 ### REQ-main-007
 
-The entry point SHALL remove `--root` from the arguments before routing, so that it is honored by capture and never becomes part of a criterion's sentence (hi: CAPTURE-8).
+The entry point SHALL remove a leading `--root` from the arguments before routing, so that it is honored by capture and never becomes part of a criterion's sentence, and SHALL leave everything from the id onward untouched, so that a flag-shaped word in a sentence stays a word (hi: CAPTURE-8).
 
 Acceptance Criteria
 
-- Both `--root PATH` and `--root=PATH` are recognized, wherever they appear in the arguments.
-- `hi --root PATH SEND-2 "it reaches them"` writes `SEND-2  it reaches them` into `PATH`'s workspace, and the written line contains no `--root`.
+- Both `--root PATH` and `--root=PATH` are recognized when they come before the id.
+- `hi --root PATH SEND-2 "it reaches them"` writes `- **SEND-2**  it reaches them` into `PATH`'s workspace, and the written line contains no `--root`.
 - Capture resolves its workspace from that root when one was given, and from the current directory otherwise.
-- The last `--root` seen wins.
-- A `--root` with nothing after it is not peeled, because the arm guards on `index + 1 < args.len()`. Off the capture path clap then reports it as a usage error; after an id it stays in the arguments and is joined into the sentence, so `hi SEND-2 "text" --root` captures `text --root` and exits 0.
+- The peel stops at the first argument that is not a `--root` form, so `hi SEND-2 the --root docs option should be documented` captures the whole sentence, `--root docs` included.
+- Among leading occurrences the last wins.
+- A leading `--root` with nothing after it is not peeled, because the arm guards on `index + 1 < args.len()`. It then leads the tail, which is therefore not id-shaped, so clap reports the missing value as a usage error, exit 2.
+- A `--root` typed after the id is never honored, because the peel has already stopped: `hi SEND-2 "text" --root /elsewhere` captures `text --root /elsewhere` into the current workspace and exits 0.
 - A `--root` naming a path that does not exist is an error from `Workspace::find`'s `canonicalize`, exit 1, on both paths.
 - The non-capture path is unaffected: `Cli::parse()` reads argv for itself, so clap still parses `--root` for every subcommand.
 
@@ -104,8 +109,8 @@ Acceptance Criteria
 ## Constraints
 
 - Capture must stay the default action; requiring a subcommand to write a criterion would cost the reflex that the whole design is built around.
-- The routing pre-parse must never shadow a flag or a subcommand, which is why `looks_like_id` demands an uppercase family and a hyphen.
-- `peel_root` scans the whole argument list rather than only the leading flags, so a criterion sentence containing the bare token `--root` followed by another word loses both. That is the cost of honoring `--root` on a path that never reaches clap.
+- The routing pre-parse must never shadow a flag or a subcommand. What guarantees that is `looks_like_id` demanding a non-empty family before the hyphen and a digit after it: a flag has no family, and no subcommand name here holds a hyphen.
+- `peel_root` reads only the leading flags, so `--root` is honored only ahead of the id. That is the cost of leaving a person's sentence exactly as typed on a path that never reaches clap.
 - No verb may prompt, open an editor, or read stdin.
 - No verb opens a network connection except `hi issue --create`, which shells out to `gh` only when explicitly asked.
 

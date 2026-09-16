@@ -14,10 +14,21 @@ spec: check.spec.md
       message, so `check`'s half of ID-1.c is pinned and not only capture's (REQ-check-005).
 - [ ] Assert in `check`'s own tests that a fenced id-shaped line produces no problem, so the
       guarantee is not left resting entirely on `doc`'s tests (REQ-check-012).
-- [ ] Assert that an unfenced id-shaped line at column 0 under `## Intent` produces no problem and
+- [ ] Assert that an unfenced id-shaped line under `## Intent` produces no problem and
       no criterion, and that the same line under `## Notes` produces one `StrayCriterion`. The
       asymmetry is entirely implicit in the branch order of `doc::parse_body` and nothing anywhere
       pins it (REQ-check-011).
+- [ ] Assert that an indented, bulleted, bolded stray (`  - **SEND-11**  ...`) outside every section
+      is still exactly one `StrayCriterion`. Criteria render as nested list items now, so a real
+      stranded case is indented, and nothing tests that shape (REQ-check-011).
+- [ ] Decide and then pin what a stray's `id` should be. Today `doc` strips the bullet but not the
+      emphasis before recording the token, so a stray reports `**SEND-9**` while a criterion on the
+      same line would report `SEND-9`. Either is defensible; the asymmetry is untested either way,
+      and the fix, if it is one, belongs in `doc::parse_body` rather than here (REQ-check-011).
+- [ ] Assert in `check`'s own tests that `- **send-2**  ...` yields one `UnparseableId` carrying
+      `IdError::BadFamily`. `cli::a_wrongly_cased_id_is_reported_rather_than_read_as_prose` covers it
+      end to end, but nothing in this module's suite would notice if the variant stopped being
+      reachable (REQ-check-005).
 
 ## Gaps
 
@@ -32,6 +43,11 @@ spec: check.spec.md
   pins the `continue` after `UnparseableId`.
 - REQ-check-012 is covered only indirectly, by `doc`'s fence tests. Nothing in `check`'s own suite
   would notice if this module started re-scanning raw lines.
+- Every unit test in this module writes its criteria as bare, flush-left lines (`SEND-1  One.`),
+  which is the shape hi itself no longer produces. `render_criterion` writes
+  `- **SEND-1**  One.` indented by depth, so the suite exercises only the hand-written half of
+  `FILE-14` and never the half the tool emits. The parser treats both identically, verified against
+  the binary, but the tests do not say so.
 - The `## Intent` exception to REQ-check-011 is covered by no test in any module. It is worth a
   second look from product as well as QA: CHECK-2.e says a criterion sitting outside every section
   is an error "because nothing would read it there", and a criterion typed under `## Intent` is read

@@ -24,6 +24,7 @@ the intent sentence `It should feel like texting.`
 | `src/out.rs::index_lists_each_file_with_its_families_and_count` | Unit | REQ-out-010. The generated block contains `[chat](hi/chat.md)`, the family `SEND`, and `(3 criteria)`. |
 | `tests/cli.rs::export_stdout_is_parseable_json` | Integration | REQ-out-006. Runs the real binary in a temp repo: stdout parses as JSON, `hi == 1`, `scope == "repo"`, and the first criterion id is `SEND-1`. |
 | `tests/cli.rs::export_rejects_a_scope_that_matches_nothing` | Integration | REQ-out-009. `hi export NOPE` exits 1 and writes nothing to stdout, so a failed export cannot be piped into a consumer. |
+| `tests/cli.rs::export_accepts_the_path_it_prints` | Integration | REQ-out-007. Runs `hi export` three times over one repo with the scopes `chat`, `chat.md`, and `hi/chat.md`, asserting all three succeed, so the repository-relative path the tool prints is accepted back as a scope. It asserts on the exit status only, not on the payload. |
 | `tests/cli.rs::issue_prints_a_ticket_carrying_the_id` | Integration | REQ-out-002, REQ-out-003. `hi issue SEND-1` succeeds and stdout carries `hi: SEND-1` and the file's intent prose. |
 | `tests/cli.rs::index_rewrites_only_the_generated_block` | Integration | REQ-out-011. `hi index` over an `INTENT.md` with prose and a stale block keeps the prose, drops the stale text, and writes the new bullet. |
 | `tests/cli.rs::index_refuses_rather_than_guessing_when_a_marker_is_unclosed` | Integration | REQ-out-013. An `INTENT.md` with an opening marker and no close makes `hi index` exit 1, and the file is asserted byte-identical to what it was before the run. |
@@ -39,7 +40,7 @@ the intent sentence `It should feel like texting.`
 | REQ-out-004 (`--create` shells to `gh`) | None. Uncovered. See Gaps. |
 | REQ-out-005 (retired never becomes work) | None. Uncovered. See Gaps. |
 | REQ-out-006 (one envelope at every scope) | `export_of_the_whole_repo_includes_every_file`, `export_scoped_to_a_file_keeps_that_file`, `export_stdout_is_parseable_json` |
-| REQ-out-007 (family / file / repo scopes) | `export_of_the_whole_repo_includes_every_file`, `export_scoped_to_a_family_keeps_only_that_family`, `export_scoped_to_a_file_keeps_that_file` |
+| REQ-out-007 (family / file / repo scopes) | `export_of_the_whole_repo_includes_every_file`, `export_scoped_to_a_family_keeps_only_that_family`, `export_scoped_to_a_file_keeps_that_file`, `export_accepts_the_path_it_prints` (the stem, file-name, and `hi/<stem>.md` spellings). The family/file-stem collision is still uncovered. See Gaps |
 | REQ-out-008 (prose in the payload) | `export_of_the_whole_repo_includes_every_file` (file `intent`; `product` is uncovered) |
 | REQ-out-009 (unknown scope refuses) | `export_rejects_an_unknown_scope`, `export_rejects_a_scope_that_matches_nothing` (exit code and empty stdout) |
 | REQ-out-010 (`index_block`) | `index_lists_each_file_with_its_families_and_count` |
@@ -57,12 +58,15 @@ These flows run against this repository's own `hi/` directory, which is the modu
 - [ ] `./target/release/hi ls --family EXPORT`: only `hi/generate.md` appears, and only its
       `EXPORT` lines; files with no `EXPORT` criteria print no heading at all (REQ-out-001).
 - [ ] `./target/release/hi ls --retired`: retired lines appear with a trailing `(retired)` marker
-      (REQ-out-001).
+      (REQ-out-001). This repository currently holds no retired criteria, so the flag changes
+      nothing here; run it in a scratch repo with a `## Retired` section to see the marker.
 - [ ] `./target/release/hi issue EXPORT-1` prints `## I can hand an agent everything it needs to
       write the spec in one command`, then a body containing `hi: EXPORT-1` and the `Generate`
       intent prose (REQ-out-002, REQ-out-003).
-- [ ] `./target/release/hi issue ISSUE-1`: the body carries a `Cases:` list holding `ISSUE-1.a` and
-      `ISSUE-1.b`, and no other family's criteria (REQ-out-003).
+- [ ] `./target/release/hi issue ISSUE-1`: the body carries a `Cases:` list holding `ISSUE-1.a`,
+      `ISSUE-1.a.1`, and `ISSUE-1.b`, and no other family's criteria (REQ-out-003). Note the
+      depth-3 line reads `-   ISSUE-1.a.1 ...`, with the indent after the bullet, so a Markdown
+      renderer shows it level with `ISSUE-1.a` rather than inside it (REQ-out-003, hi: ISSUE-3.a).
 - [ ] `./target/release/hi issue not-an-id` exits 1 with `'not-an-id' is not a valid id: family
       'not' must start with A-Z and contain only A-Z, 0-9, _` (Error Cases).
 - [ ] `./target/release/hi issue NOPE-1` and `./target/release/hi issue EXPORT-9` both print
@@ -78,7 +82,11 @@ These flows run against this repository's own `hi/` directory, which is the modu
 - [ ] `./target/release/hi export | jq '.scope, (.files | length), (.product != null)'` and the same
       for `export EXPORT` and `export generate`: the key set is identical across all three except
       `product`, which is present only at repo scope (REQ-out-006, REQ-out-008).
-- [ ] `./target/release/hi export NOPE` exits 1 naming the scope (REQ-out-009).
+- [ ] `./target/release/hi export generate`, `export generate.md`, and `export hi/generate.md` all
+      succeed and return the same one-file payload; only `.scope` differs, echoing what was typed.
+      `export HI/generate.md` is refused, because the match is case-sensitive (REQ-out-007).
+- [ ] `./target/release/hi export NOPE` exits 1 with `nothing matches 'NOPE'. Give a family like
+      SEND, a file like chat, or nothing at all for the whole repository` (REQ-out-009).
 - [ ] `cp INTENT.md /tmp/intent.before && ./target/release/hi index && diff /tmp/intent.before
       INTENT.md`: the only changed lines are inside the `hi:index` markers (REQ-out-011,
       hi: INDEX-2).
@@ -99,6 +107,14 @@ These flows run against this repository's own `hi/` directory, which is the modu
 - [ ] Put a fenced code block in a hi file containing an id-shaped line, then run
       `./target/release/hi ls`, `hi export`, and `hi index`. The fenced line appears in none of
       them and does not move the criterion count (REQ-out-014, hi: FILE-9).
+- [ ] In a scratch `INTENT.md`, put `<!-- hi:index -->` and `<!-- /hi:index -->` on lines of their
+      own inside a ``` fence, above a real marker pair, and run `hi index`. It exits 0 and writes
+      the generated list *inside the fence*, leaving the real block stale and replacing any prose
+      between the two pairs. That is today's behavior and it contradicts hi: INDEX-2.a; see
+      tasks.md before treating this checkbox as a pass (REQ-out-012).
+- [ ] In a scratch repository, `chmod 444 INTENT.md` and run `hi index`. It succeeds, because the
+      atomic rename needs a writable directory rather than a writable file, and the replacement
+      comes back at the temporary file's mode (REQ-out-011).
 
 ## Edge Cases & Boundary Conditions
 
@@ -108,12 +124,15 @@ These flows run against this repository's own `hi/` directory, which is the modu
 | `ls --family X` where no file holds `X` | Prints only the hint line; no file headings and no blank lines |
 | `ls` over a criterion whose id failed to parse | Rendered at depth 1 using its raw id; invisible under any `--family` filter |
 | `issue` on a criterion with no cases | No `Cases:` section is emitted rather than an empty one |
+| `issue` on a criterion whose cases go more than one level deep | Every descendant is listed, but the depth indent is written after the `- `, so the source line reads `-   SEND-1.a.1 ...` and a Markdown renderer shows one flat list. Contradicts hi: ISSUE-3.a; see tasks.md |
 | `issue` on a criterion in a file with no `## Intent` | No `---` rule and no intent section |
 | `issue` on a criterion whose sentence ends in `...` | All trailing periods are trimmed from the title; the body keeps the sentence verbatim |
 | `issue` on a retired id | `<id> is retired, so it should not become work`, exits 1, and nothing is sent to `gh` even with `--create` |
 | `issue --create` where `gh` exits non-zero | `gh issue create failed`; `gh`'s own diagnostics have already been printed through inherited stdio |
 | `export` with a scope that is both a family and a file stem | Both match. The named file comes through whole, not just that family's slice, and every other file holding that family is also included, filtered to it |
-| `export` with a scope naming a family that frontmatter declares but no criterion uses | Refused with `nothing matches '<scope>', which is not a family or a file in hi/`; no file is selected, so a declared-but-unused family is invisible to `export` |
+| `export` with a scope naming a family that frontmatter declares but no criterion uses | Refused with `nothing matches '<scope>'. Give a family like SEND, a file like chat, or nothing at all for the whole repository`; no file is selected, so a declared-but-unused family is invisible to `export` |
+| `export` with a scope spelled as a path: `hi/chat.md`, `./hi/chat.md`, or `chat.md` | All select `hi/chat.md`, the same as the bare stem. `scope` in the payload is whatever was typed |
+| `export` with a path that merely ends in `hi/<stem>.md`, such as `/anywhere/hi/chat.md` or `xhi/chat.md` | Selected: the path arm is a suffix test, not a path resolution. `HI/chat.md` and `hi\chat.md` are refused, because it is case-sensitive and forward-slash only |
 | `export` where an active criterion carries a `retired:` continuation line | The entry stays in `criteria` and additionally carries a `retired` key holding the note; the key is not a retirement signal |
 | `issue --repo owner/name` without `--create` | The flag is read only on the `--create` path, so it is silently ignored and the ticket is printed |
 | `export` with a family scope over a file holding only that family's retired criteria | The file is included with an empty `criteria` list and a populated `retired` list |
@@ -132,4 +151,8 @@ These flows run against this repository's own `hi/` directory, which is the modu
 | `ls`, `export`, or `index` over a file with an id-shaped line outside every section | Invisible here: this module never reads `Doc::stray`. `hi check` reports it as `stray-criterion` (hi: CHECK-2.e) |
 | `issue` given a zero-padded id such as `SEND-007` | Rejected at parse: `'SEND-007' is not a valid id: level '007' has a leading zero; write it as '7', so the id always means the same thing` (hi: ID-1.c) |
 | `write_index` where `INTENT.md` is whitespace-only | Treated as absent: a full starter file is written |
-| `write_index` where `INTENT.md` is read-only | Fails with `writing <path>` wrapping the I/O error |
+| `write_index` where `INTENT.md` is read-only but its directory is writable | Succeeds. `doc::write_atomically` renames a sibling temp over it, so the mode of the old file never matters; the replacement carries the temp file's permission bits |
+| `write_index` where the directory holding `INTENT.md` is not writable, or the disk is full | Fails with `writing <path>` wrapping the I/O error, the temp file is removed, and `INTENT.md` keeps every byte it had |
+| `write_index` where both markers sit alone on lines inside a fenced code block | The fenced pair is taken as the real block: the list is written inside the fence, the real block downstream is left stale, and prose between the two pairs is replaced. Exit 0, no warning. Contradicts hi: INDEX-2.a; see tasks.md |
+| `write_index` where two bare opening marker lines precede one closing marker | The first opening marker wins, so the prose between the two opening markers is inside the replaced span and is lost. Exit 0 |
+| `export` at repo scope where `INTENT.md` is a freshly generated starter file | `product` is present and carries the `# <root>` heading, the unanswered `<!-- What is this product for ... -->` prompt, and the `## Features` heading. Only the generated block is stripped; `view::strip_comments` is not used here |

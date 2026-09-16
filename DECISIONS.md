@@ -82,7 +82,7 @@ and without it feeling like a security product. It should feel like texting.
 
 ## Retired
 
-SEND-3  Messages auto-delete after 24 hours.
+- **SEND-3**  Messages auto-delete after 24 hours.
         retired: we decided this was a different product
 ```
 
@@ -173,10 +173,10 @@ Rust, `clap 4` derive.
 | Command | Behavior |
 |---|---|
 | `hi` | Print help. |
-| `hi <ID> <sentence>` | Capture. The file is resolved from the ID's family via frontmatter. A new family starts its own file. Appends to `## Criteria`. |
-| `hi check` | Structural validation. Reports everything; exits 1 **only** on a structural error. |
-| `hi ls` | List criteria, optionally filtered by family or file. |
-| `hi issue <ID>` | Print a ticket-shaped markdown block. `--create` shells out to `gh` to open a real issue. |
+| `hi <ID> <sentence>` | Capture. The file is resolved from the ID's family via frontmatter. A new family starts its own file. Writes into `## Criteria`, appending a new criterion and putting a case directly under its parent. |
+| `hi check` | Structural validation. Reports everything; exits 1 **only** on a structural error. `--json` emits the same report as JSON, families named. |
+| `hi ls` | List criteria, grouped by file, optionally filtered to one family with `--family` and including retired ones with `--retired`. |
+| `hi issue <ID>` | Print a ticket-shaped markdown block. `--create` shells out to `gh` to open a real issue, into `--repo owner/name` if you name one. |
 | `hi export [FAMILY \| file]` | JSON payload for an agent. Takes a family, a file, or nothing (the whole repo, including `INTENT.md`). |
 | `hi index` | Regenerate the feature index in `INTENT.md`. |
 | `hi view [--out FILE]` | Write one self-contained HTML page of the intent, for people who do not read markdown. |
@@ -188,7 +188,7 @@ Capture resolves on the ID, and the rule is **a new ID just works; an existing I
 | You type | hi does |
 |---|---|
 | A new ID in a known family | Appends to that family's file. |
-| A new ID in an unknown family | Creates `hi/<family>.md` (family name, lowercased) with frontmatter, and drops it in. No prompt. |
+| A new ID in an unknown family | Creates `hi/<family>.md` (family name, lowercased, underscores written as hyphens, so `SEND_2FA` becomes `hi/send-2fa.md`) with frontmatter, and drops it in. No prompt. |
 | An ID that already exists | Refuses, and suggests the next free number. |
 
 ```console
@@ -196,10 +196,11 @@ $ hi SEND-2 "it reaches them and the mark changes to sent"
 hi/chat.md  +SEND-2
 
 $ hi SEND-2.a "if they blocked me it just never delivers"
-hi/chat.md  +SEND-2.a  (case of SEND-2)
+hi/chat.md  +SEND-2.a
 
 $ hi BILLING-1 "I can see exactly what I paid for"
-hi/billing.md  created · +BILLING-1
+hi/billing.md  created
+hi/billing.md  +BILLING-1
 
 $ hi SEND-2 "something else"
 error: SEND-2 already exists in hi/chat.md:31
@@ -207,8 +208,10 @@ hint:  next free is SEND-3
 exit 1
 ```
 
-A mistyped family creates a stray file rather than an error. Accepted: it is visible in
-`hi check` as a family holding one criterion, and fixing it is a rename.
+A mistyped family creates a stray file rather than an error. Accepted: it is visible as a new file
+holding one criterion in `hi ls`, and as an extra name in the `families` list of
+`hi check --json`, and fixing it is a rename. The plain `hi check` summary counts families without
+naming them, so it is `hi ls` that shows you the typo.
 
 ### Check
 
@@ -223,8 +226,10 @@ intent is the normal state of intent.
 ```console
 $ hi check
 hi/chat.md
-  duplicate ID SEND-2 (lines 14, 31)
-  SEND-1.a has no parent SEND-1
+  15:orphan-case  SEND-1.a has no parent SEND-1
+  31:duplicate-id  duplicate id SEND-2, already declared at hi/chat.md:14
+
+18 criteria · 4 families · 3 files
 2 problems
 exit 1
 
@@ -232,6 +237,9 @@ $ hi check              # unfinished but well-formed
 18 criteria · 4 families · 3 files
 exit 0
 ```
+
+Each problem line is `line:code  message`, so the code is greppable and the line number is the
+first thing you read.
 
 ### Generation
 
@@ -251,20 +259,28 @@ Rust single binaries.
 
 - **Crate** `human-intent`. `hi` is taken on crates.io (v0.1.18, ~21k downloads) but is
   library-only with no binaries, so the `hi` **command** is free.
-- **Binaries** `hi` and `fledge-hi` (a 3-line shim) from **one repo**, plus a root `plugin.toml`.
-  Standalone-plus-plugin is the established norm; a separate `fledge-plugin-hi` repo is not.
+- **Binaries** one, `hi`, from **one repo**. `bin/fledge-hi` is a shell shim rather than a second
+  compiled binary: it execs the `hi` on your `PATH`, or the repo's own `target/release/hi`. A root
+  `plugin.toml` points fledge at it. Standalone-plus-plugin is the established norm; a separate
+  `fledge-plugin-hi` repo is not.
 - **Scaffold** `fledge templates init hi --template rust-cli --org CorvidLabs` (nine files,
   including CI and release workflows).
-- **Install** `cargo install human-intent` · `brew install corvidlabs/tap/hi` · `fledge hi check`.
+- **Install** `cargo install human-intent`, or a release archive, or
+  `fledge plugins install CorvidLabs/hi` for `fledge hi`. The fledge plugin is not bundled with
+  fledge and builds from source, so it needs cargo too. Homebrew was planned and is not built:
+  there is no `hi` formula in `CorvidLabs/homebrew-tap` yet, so `brew install corvidlabs/tap/hi`
+  does not work.
 - Always written as **"hi (Human Intent)"** in anything searchable. Bare `hi` is unsearchable and
   collides with a universal shell greeting.
 
 ### Publishing
 
 The full spec-sync treatment: **public repo, a README that teaches the format in 60 seconds, and a
-docs site at `corvidlabs.xyz/hi`**, with the binary as the reference implementation. The format is
-documented prose. There is no formal grammar and no conformance-vector suite, because the format
-is four rules and a file layout.
+docs site at `corvidlabs.xyz/hi`**, with the binary as the reference implementation. The repo and
+the README shipped with v0.1.0; the docs site has not been built yet and `corvidlabs.xyz/hi` still
+returns 404, so the README is the only documentation there is. The format is documented prose.
+There is no formal grammar and no conformance-vector suite, because the format is four rules and a
+file layout.
 
 ---
 
@@ -280,7 +296,9 @@ These are defaults, not decisions, so flag any you disagree with.
 4. Only two things exit non-zero on content: `hi check` on a structural error, and capture on an
    ID that already exists. No verb ever fails because intent is incomplete.
 5. `hi export` emits one shape at every scope, so a consumer never branches on which scope was
-   asked for.
+   asked for. In practice this holds for everything inside `files`, which is identical at every
+   scope; the whole-repo export adds one extra top-level key, `product`, carrying `INTENT.md`, and
+   a family or file export omits it. Treat `product` as optional and nothing else changes.
 6. A criterion's sentence is prose and hi never rewrites, reflows, or normalizes it.
 
 ---
@@ -340,7 +358,10 @@ The two that mattered most were both data loss, and neither was visible from rea
 - **`hi index` overwrote prose.** Markers were matched by substring, so a sentence that merely
   *mentioned* `<!-- hi:index -->` became the start of the generated block, and everything up to the
   real close marker was replaced. Markers now match whole lines, and an unclosed marker refuses
-  rather than guessing (`INDEX-2.a`, `INDEX-2.b`).
+  rather than guessing (`INDEX-2.a`, `INDEX-2.b`). Whole-line matching is narrower than `INDEX-2.a`
+  reads, and the gap is known and still open: a marker pair written alone on its own lines inside a
+  fenced code block in `INTENT.md` is still taken as the real block, so `hi index` writes the list
+  into your example and leaves the real block stale. `specs/out/` records it.
 
 Three findings were about hi's own promises being false in a corner:
 

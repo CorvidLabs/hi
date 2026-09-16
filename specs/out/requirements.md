@@ -14,6 +14,10 @@ spec: out.spec.md
   trace the work back to the intent it served (hi: ISSUE-2)
 - As a reviewer picking up a ticket, I want the criterion's edge cases in the same body, so the
   ticket is the whole picture rather than one sentence (hi: ISSUE-3)
+- As that same reviewer, I want a case to read as nested under what it is a case of, rather than
+  flattened into a list of peers (hi: ISSUE-3.a)
+- As whoever picks the ticket up, I want the feature's intent prose in the body, so I know why the
+  work exists and not only what to build (hi: ISSUE-5)
 - As someone who changed their mind, I want a retired criterion to refuse to become a ticket, so
   a decision we reversed cannot quietly re-enter the backlog (hi: ISSUE-4)
 - As someone handing a feature to an agent, I want one command that emits the intent prose and
@@ -22,8 +26,12 @@ spec: out.spec.md
   whole product (hi: EXPORT-2)
 - As the author of whatever consumes the payload, I want the same JSON shape at every scope, so
   nothing downstream has to branch on which scope was asked for (hi: EXPORT-3)
+- As someone handing a file to an agent, I want retired criteria to come along kept apart from the
+  live ones, so the agent never writes a spec for something we dropped (hi: EXPORT-4)
 - As the owner of the repository, I want the root file to show what features exist without me
   maintaining a list by hand (hi: INDEX-1)
+- As someone with no root file yet, I want hi to start one with a place for my own prose, rather
+  than refusing until I set it up (hi: INDEX-1.a)
 - As the author of the prose in `INTENT.md`, I want hi to touch only its own generated block, so
   the paragraphs I wrote stay mine (hi: INDEX-2)
 - As someone who wrote *about* the markers in that prose, I want a marker quoted mid-sentence to
@@ -70,14 +78,18 @@ Acceptance Criteria
 ### REQ-out-003
 
 The ticket body SHALL carry the criterion's permanent id, its active cases, and the intent prose of
-the file it lives in (hi: ISSUE-2, ISSUE-3).
+the file it lives in (hi: ISSUE-2, ISSUE-3, ISSUE-5).
 
 Acceptance Criteria
 
 - The body opens with the criterion sentence verbatim, then a line reading `hi: <raw id>`, so a
   closed ticket traces back to the intent it served.
-- Every active criterion whose id is a descendant of the subject appears in a `Cases:` bullet list,
-  indented by its depth relative to the subject.
+- Every active criterion whose id is a descendant of the subject appears in a `Cases:` bullet list.
+- Each case line is `- `, then two spaces per level of depth below the subject, then the raw id, a
+  single space, and the sentence. Because the indent is emitted after the list marker rather than
+  before it, only the source is offset: rendered as Markdown the whole list is one flat level, so a
+  step inside a case reads as a peer of that case. ISSUE-3.a asks for visible nesting and this is
+  not it; the shipped behavior is what is written here, and tasks.md carries the decision.
 - A sibling criterion is not a case and never appears.
 - When the file has non-blank `## Intent` prose, it is appended after a `---` rule under
   `Intent for <file stem>:`.
@@ -132,10 +144,12 @@ Acceptance Criteria
   `criteria`. A consumer reads retirement from which array the entry is in.
 - The only key that varies by scope is `product`, which is the product-level why and belongs to a
   whole-repo export alone.
+- `retired` is always present as an array on every file entry, at every scope, so a consumer reads
+  what was dropped from the same place every time (hi: EXPORT-4).
 
 ### REQ-out-007
 
-`export` SHALL accept a family, a file stem, or no scope at all, selecting the right files and
+`export` SHALL accept a family, a file, or no scope at all, selecting the right files and
 criteria for each (hi: EXPORT-2).
 
 Acceptance Criteria
@@ -143,15 +157,25 @@ Acceptance Criteria
 - With no scope, every hi file in the workspace is included with all of its criteria.
 - With a family scope, only files that hold at least one criterion of that family are included, and
   within them only that family's criteria, active and retired alike.
-- With a file-stem scope, that one file is included with all of its criteria, whatever families
-  they belong to.
+- With a file scope, that one file is included with all of its criteria, whatever families they
+  belong to.
+- A file may be named four ways, all handled by the private `matches_file`: the bare stem (`chat`),
+  the file name (`chat.md`), the repository-relative path (`hi/chat.md`), and that path with a
+  leading `./`. The third spelling is exactly what `ls` and the payload's own `file` key print, so
+  the path hi shows can be pasted back in as a scope.
+- The path form is matched as a suffix, not resolved: any string ending in `hi/<stem>.md` selects
+  the file, including `/anywhere/hi/chat.md` and `xhi/chat.md`. The comparison is case-sensitive
+  and uses the forward slash `Workspace::rel` emits on every platform (hi: FILE-12), so `HI/chat.md`
+  and `hi\chat.md` are refused.
+- `scope` in the payload echoes whichever spelling was asked for, so three spellings of one file
+  give three different `scope` strings and the same `files` array.
 - A scope that is both a family and a file stem matches both, not one: the file it names comes
   through whole rather than as one family's slice, *and* every other file holding that family is
   still included, filtered to that family. The stem only widens the file it names.
 - A family that frontmatter declares but no criterion uses selects no file, because file selection
   requires a matching criterion in `doc.all()`. Such a scope is refused by REQ-out-009's error path.
-- Scope matching is exact and case-sensitive; families are uppercase and file stems are lowercase,
-  so the two namespaces do not collide in practice.
+- Scope matching is case-sensitive, and exact for the family, stem, and file-name forms; families
+  are uppercase and file stems are lowercase, so the two namespaces do not collide in practice.
 
 ### REQ-out-008
 
@@ -166,6 +190,10 @@ Acceptance Criteria
   and not a list it could have derived itself.
 - A missing, unreadable, or effectively empty `INTENT.md` omits `product` rather than failing or
   emitting an empty string.
+- Only the generated block is stripped. `read_product_intent` does not use `view::strip_comments`,
+  so an HTML comment in the prose reaches `product` as written, including the
+  `<!-- What is this product for, holistically? ... -->` prompt in a starter file that nobody has
+  filled in yet, along with the `# <root>` and `## Features` headings around it.
 
 ### REQ-out-009
 
@@ -174,10 +202,12 @@ error.
 
 Acceptance Criteria
 
-- A stated scope that selects no file exits with a message naming the scope and saying it is
-  neither a family nor a file in `hi/`.
+- A stated scope that selects no file exits with exactly
+  `nothing matches '<scope>'. Give a family like SEND, a file like chat, or nothing at all for the
+  whole repository`, which names the scope and then names the three things a scope can be.
 - A family declared only in frontmatter, used by no criterion, selects no file and therefore takes
-  this same path. The message says it is not a family even though the frontmatter declares it.
+  this same path. The message does not claim the family does not exist, but it does tell the person
+  to give a family when they gave one, and it never says the family is declared and empty.
   `hi ls --family <it>` is quieter: it prints the `no criteria yet` hint and exits 0.
 - A whole-repo export of a workspace with no hi files succeeds with an empty `files` list, because
   incomplete intent is the normal state of intent (hi: CHECK-1.b).
@@ -205,7 +235,7 @@ Acceptance Criteria
 ### REQ-out-011
 
 `write_index` SHALL rewrite only the span between the `hi:index` markers, and SHALL create the file
-or the section when they do not exist yet (hi: INDEX-2).
+or the section when they do not exist yet (hi: INDEX-2, INDEX-1.a).
 
 Acceptance Criteria
 
@@ -221,13 +251,18 @@ Acceptance Criteria
   the existing text are lost, to `trim_end`.
 - The function returns the written path relative to the workspace root, so the CLI can report it
   without leaking an absolute path.
-- A write failure names the path it was writing.
+- A write failure names the path it was writing, as `writing <path>` wrapping the I/O error.
 - The generated block is written with `\n` line endings whatever endings the file already uses. A
   CRLF `INTENT.md` keeps CRLF in its prose and on the closing marker's own line (that newline sits
   outside the replaced span) and gains LF inside the block. Running `hi index` twice over such a
   file still changes nothing the second time.
-- The write is one whole-file `fs::write`. `INTENT.md` is not replaced atomically the way
-  `Doc::save` replaces a `hi/*.md` file, so an interrupted write can leave it truncated.
+- The write goes through `doc::write_atomically`, the same sibling-temp-then-rename that
+  `Doc::save` uses for a `hi/*.md` file: `.INTENT.md.hi-tmp` is created, written, flushed, fsynced,
+  and renamed over the target, and is removed if any of that fails. A write that runs out of space
+  therefore leaves `INTENT.md` exactly as it was rather than truncated (hi: FILE-8, INDEX-2).
+- Because the replacement is a rename, the directory has to be writable rather than the file: a
+  read-only `INTENT.md` is replaced successfully, and comes back with the temporary file's
+  permission bits rather than its own.
 
 ### REQ-out-012
 
@@ -243,6 +278,13 @@ Acceptance Criteria
 - Leading or trailing whitespace on a marker's own line does not stop it being recognized.
 - The first opening marker line in the file wins; a second one before the close is inside the block
   and is replaced with it.
+- The whole-line rule is the whole of the protection, and it is narrower than INDEX-2.a now reads.
+  Neither helper tracks fenced code blocks, so a marker pair written on lines of their own inside a
+  ``` fence is adopted as the real block: the generated list lands inside the fence and every byte
+  from the fenced opening marker to the next closing marker line, prose included, is replaced. The
+  same happens to any prose between two bare opening marker lines, since the first one wins. Both
+  exit 0. This is the shipped behavior, recorded here because it is what the code does, not because
+  it is wanted; tasks.md carries the decision.
 - `read_product_intent` strips the block from `product` by the same whole-line rule, so a quoted
   marker does not truncate the product prose either.
 - Recognition runs over the raw file text with no BOM stripping, unlike `Doc::parse` and workspace
@@ -258,9 +300,11 @@ generated block ends (hi: INDEX-2.b).
 Acceptance Criteria
 
 - An `INTENT.md` holding an opening marker line with no closing marker line after it, including
-  the two markers written in the wrong order, exits with a message naming both markers and saying
-  to fix them rather than have hi guess where the block ends.
-- The refusal happens before the write, so the file is left byte for byte as it was.
+  the two markers written in the wrong order, exits with
+  `<path> has an opening <!-- hi:index --> with no matching <!-- /hi:index -->. Fix the markers
+  rather than have hi guess where the block ends`.
+- The refusal happens before the write, so the file is left byte for byte as it was and no
+  temporary file is created.
 - The message names the file, relative to the workspace root.
 - A file holding only a closing marker is not this case: with no opening marker line there is
   nothing to guess past, and the append branch runs.
@@ -290,9 +334,15 @@ Acceptance Criteria
 - No mutation of `hi/*.md`. The only file this module writes is `INTENT.md`, and only inside the
   generated block. Capture owns every edit to a feature file.
 - No prose rewriting. Criterion sentences are reproduced verbatim; trimming trailing `.` from a
-  ticket title is the only text transformation in the module (hi: FILE-4).
+  ticket title is the only text transformation in the module (hi: FILE-4). Bullets and bold around
+  an id are stripped by the parser before this module sees anything, so `ls`, `issue`, and `export`
+  all carry the bare `raw_id` whether the line was written `- **SEND-1**  x` or `SEND-1  x`.
 - Output must stay stable and diffable: paths are printed relative to the workspace root, files are
   walked in the workspace's sorted load order, and the JSON is `serde_json` pretty-printed.
+- Every path this module emits comes from `Workspace::rel`, which joins components with `/` on
+  every platform. `ls` headings, the payload's `file` key, `write_index`'s return value, and the
+  refusal message all read the same on Windows as on Unix, which is what makes the `hi/<stem>.md`
+  form of an `export` scope portable (hi: FILE-12).
 - `export` emits a fixed format version (`hi: 1`) so a consumer can pin to a payload shape.
 - The module must remain panic-free over malformed input: a criterion whose id failed to parse
   still renders, falling back to depth 1.

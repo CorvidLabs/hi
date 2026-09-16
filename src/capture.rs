@@ -8,7 +8,7 @@ use std::fs;
 
 use anyhow::{Result, bail};
 
-use crate::doc::{Doc, new_file_text};
+use crate::doc::{Doc, Section, new_file_text};
 use crate::id::Id;
 use crate::workspace::Workspace;
 
@@ -46,11 +46,19 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
         );
     }
 
-    // A case has to hang off something.
-    if let Some(parent) = id.parent()
-        && workspace.find_id(&parent).is_none()
-    {
-        bail!("{id} needs a parent {parent}, which does not exist yet");
+    // A case has to hang off something, and that something has to be live.
+    // Placing a case under a retired parent would nest it below whatever
+    // criterion happens to sit last, so the file would show it as a case of
+    // something it is not (hi: CAPTURE-4).
+    if let Some(parent) = id.parent() {
+        match workspace.find_id(&parent) {
+            None => bail!("{id} needs a parent {parent}, which does not exist yet"),
+            Some((_, found)) if found.section == Section::Retired => bail!(
+                "{parent} is retired, so {id} has nothing live to hang off.\n\
+                 hint:  bring {parent} back, or write this as its own criterion"
+            ),
+            Some(_) => {}
+        }
     }
 
     // A case belongs beside its parent. Resolving only by declared family
@@ -61,9 +69,15 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
 
     let (index, created_file) = match parent_file.or_else(|| workspace.doc_for_family(&id.family)) {
         Some(index) => (index, false),
-        None => (create_file(workspace, &id.family)?, true),
+        None => start_file(workspace, &id.family)?,
     };
 
+    // Only now does anything touch the disk. Building the new file in memory
+    // first means a failed write leaves no half-made file and loses no thought
+    // (hi: CAPTURE-5).
+    if !workspace.dir.exists() {
+        fs::create_dir_all(&workspace.dir)?;
+    }
     let doc = &mut workspace.docs[index];
     doc.insert(&id, sentence)?;
     doc.save()?;
@@ -76,24 +90,25 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
     })
 }
 
-/// Start a new feature file for a family hi has not seen before.
-fn create_file(workspace: &mut Workspace, family: &str) -> Result<usize> {
-    if !workspace.dir.exists() {
-        fs::create_dir_all(&workspace.dir)?;
-    }
-
+/// Prepare a file for a family hi has not seen before, in memory only.
+///
+/// Returns its index and whether it is genuinely new. Nothing is written here:
+/// the caller saves once the criterion is known to be storable, so a refusal
+/// never leaves a half-made file behind (hi: CAPTURE-5).
+fn start_file(workspace: &mut Workspace, family: &str) -> Result<(usize, bool)> {
     let stem = family.to_ascii_lowercase().replace('_', "-");
     let path = workspace.dir.join(format!("{stem}.md"));
+
     if path.exists() {
-        // The file is there but does not declare the family; adopt it.
-        let doc = Doc::load(&path)?;
-        workspace.docs.push(doc);
-        return Ok(workspace.docs.len() - 1);
+        // The file is there but does not declare the family; adopt it. It was
+        // not created by us, so say so rather than claiming we made it.
+        workspace.docs.push(Doc::load(&path)?);
+        return Ok((workspace.docs.len() - 1, false));
     }
 
-    fs::write(&path, new_file_text(&title_for(family), family))?;
-    workspace.docs.push(Doc::load(&path)?);
-    Ok(workspace.docs.len() - 1)
+    let doc = Doc::parse(path, &new_file_text(&title_for(family), family));
+    workspace.docs.push(doc);
+    Ok((workspace.docs.len() - 1, true))
 }
 
 /// `SEND` becomes `Send`, `TWO_FACTOR` becomes `Two factor`.
@@ -157,6 +172,70 @@ mod tests {
         let message = err.to_string();
         assert!(message.contains("already exists"), "{message}");
         assert!(message.contains("next free is SEND-2"), "{message}");
+    }
+
+    #[test]
+    fn a_refusal_leaves_no_half_made_file() {
+        // The destination file is built in memory, so a failed write cannot
+        // leave an empty scaffold behind and lose the thought (hi: CAPTURE-5).
+        let root = temp_dir("orphanfile");
+        fs::write(
+            root.join("hi/w.md"),
+            "---\nhi: 1\nfamilies: [W]\n---\n\n## Criteria\n\n- **W-1**  One.\n",
+        )
+        .unwrap();
+        // A directory where the file wants to go makes the save fail.
+        fs::create_dir_all(root.join("hi/billing.md")).unwrap();
+        let mut workspace = Workspace::load(&root).unwrap();
+
+        assert!(capture(&mut workspace, "BILLING-1", "I can see what I paid.").is_err());
+        assert!(
+            fs::read_dir(root.join("hi"))
+                .unwrap()
+                .flatten()
+                .all(|e| e.file_name() != "billing.md" || e.path().is_dir()),
+            "no scaffold file may be left behind"
+        );
+    }
+
+    #[test]
+    fn a_retired_criterion_cannot_take_new_cases() {
+        // Otherwise the case nests under whatever sits last, and the file shows
+        // it as a case of something it is not (hi: CAPTURE-4).
+        let root = temp_dir("retiredparent");
+        fs::write(
+            root.join("hi/chat.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  One.\n- **SEND-2**  Two.\n\n## Retired\n\n- **SEND-3**  Gone.\n",
+        )
+        .unwrap();
+        let before = fs::read_to_string(root.join("hi/chat.md")).unwrap();
+        let mut workspace = Workspace::load(&root).unwrap();
+
+        let err = capture(&mut workspace, "SEND-3.a", "A case of the retired one.").unwrap_err();
+        assert!(err.to_string().contains("is retired"), "{err}");
+        assert_eq!(fs::read_to_string(root.join("hi/chat.md")).unwrap(), before);
+    }
+
+    #[test]
+    fn adopting_an_existing_file_does_not_claim_to_have_created_it() {
+        let root = temp_dir("adopt");
+        fs::write(
+            root.join("hi/w.md"),
+            "---\nhi: 1\nfamilies: [W]\n---\n\n## Criteria\n\n- **W-1**  One.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("hi/billing.md"),
+            "---\nhi: 1\nfamilies: []\n---\n\n# Billing\n\n## Intent\n\nHand-written prose.\n\n## Criteria\n\n",
+        )
+        .unwrap();
+        let mut workspace = Workspace::load(&root).unwrap();
+
+        let done = capture(&mut workspace, "BILLING-1", "I can see what I paid.").unwrap();
+        assert!(!done.created_file, "the file was already there");
+        let body = fs::read_to_string(root.join("hi/billing.md")).unwrap();
+        assert!(body.contains("Hand-written prose."), "prose must survive");
+        assert!(body.contains("**BILLING-1**"));
     }
 
     #[test]

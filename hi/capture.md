@@ -24,12 +24,14 @@ something that already exists.
   - **CAPTURE-1.c**  If I type something hi cannot handle, it says so plainly instead of crashing with a stack trace.
 - **CAPTURE-2**  A brand new id just works.
   - **CAPTURE-2.a**  If the family is new, hi starts the file itself rather than asking me where to put it.
+  - **CAPTURE-2.b**  If I hang a case off something that is not there yet, hi says so and names what is missing.
 - **CAPTURE-3**  An id that already exists refuses, and tells me the next free one.
 - **CAPTURE-4**  A case lands directly under its parent, not at the bottom of the file.
   - **CAPTURE-4.a**  A case lands in the file where its parent actually lives, not wherever the family happens to be declared.
 - **CAPTURE-5**  If hi refuses for any reason, nothing is written to disk.
 - **CAPTURE-6**  hi finds my workspace by what is inside it, not by a directory name, so a folder called hi for something else is left alone.
 - **CAPTURE-7**  If a file has no criteria section yet, hi makes one instead of appending wherever the file happens to end.
-- **CAPTURE-8**  A flag I type is a flag, not part of the sentence.
+- **CAPTURE-8**  I put hi's own options before the id, so nothing in my sentence is mistaken for one.
 - **CAPTURE-9**  The sentence I type is the sentence that lands in the file, word for word.
 - **CAPTURE-10**  hi works from any directory inside my repository, and a repository is where it stops looking.
+- **CAPTURE-11**  Every capture tells me which file it landed in, so I never have to go looking.

@@ -9,6 +9,7 @@ db_tables: []
 depends_on:
   - specs/capture/capture.spec.md
   - specs/check/check.spec.md
+  - specs/doc/doc.spec.md
   - specs/id/id.spec.md
   - specs/out/out.spec.md
   - specs/view/view.spec.md
@@ -25,15 +26,23 @@ rendering of `hi check`'s report. It owns no domain logic: every verb delegates 
 module that implements it.
 
 One routing decision is load-bearing. Capture is the default action, so an id-shaped first
-argument is routed to `capture` **before clap parses anything** (`hi SEND-2 "<sentence>"`). Flags
-never look like ids, because `looks_like_id` requires an uppercase-initial family and a hyphen,
-so `--help`, `-V` and every subcommand name pass through to clap untouched. This is what makes
-writing a criterion one command with no subcommand to remember (hi: CAPTURE-1).
+argument is routed to `capture` **before clap parses anything** (`hi SEND-2 "<sentence>"`).
+`looks_like_id` splits on the first `-` and asks for two things: a family that is non-empty and
+begins with an ASCII letter, and a digit immediately after the hyphen. A flag splits to an empty
+family, so `--help`, `-V` and `--json` are never id-shaped; no subcommand name carries a hyphen at
+all, so `check`, `ls`, `issue`, `export`, `index` and `view` pass through to clap untouched. This
+is what makes writing a criterion one command with no subcommand to remember (hi: CAPTURE-1).
+
+The family test is deliberately case-insensitive, so `hi send-2 "<sentence>"` still routes to
+capture and is then refused by `Id::parse` with a reason, rather than being read as a subcommand
+(hi: CHECK-2.d). The digit test is what keeps an ordinary hyphenated word such as `spec-sync` or
+`well-formed` out of the capture route.
 
 Two details of that pre-parse matter. `--root` is peeled out of argv by `peel_root` *before* the
-routing test, so the flag reaches capture as a root rather than being joined into the criterion's
-sentence (hi: CAPTURE-8). And argv is read as `args_os`, because `env::args()` panics on a
-non-UTF-8 argument; a sentence that is not valid UTF-8 becomes a plain error instead of a
+routing test, and only while it leads: the peel stops at the first argument that is not a `--root`
+form, so an option ahead of the id reaches capture as a root, and after the id every token is the
+person's sentence (hi: CAPTURE-8). And argv is read as `args_os`, because `env::args()` panics on
+a non-UTF-8 argument; a sentence that is not valid UTF-8 becomes a plain error instead of a
 backtrace (hi: CAPTURE-1.c).
 
 ## Public API
@@ -60,7 +69,7 @@ backtrace (hi: CAPTURE-1.c).
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `main` | `fn main() -> ExitCode` | Collects `std::env::args_os()`, peels `--root` with `peel_root`, and routes an id-shaped first remaining argument to capture; otherwise parses `Cli` and dispatches. Converts an error into a printed message and exit 1. |
-| `peel_root` (private) | `fn peel_root(args: &[OsString]) -> (Option<PathBuf>, Vec<OsString>)` | Take an optional `--root PATH` or `--root=PATH` out of the arguments, returning the path and everything else in order. Scans the whole slice, and the last occurrence wins. Two shapes fall through rather than being peeled: `--root` with nothing after it, because the arm guards on `index + 1 < args.len()`; and `--root=PATH` whose token is not valid UTF-8, because that arm tests the whole token with `to_str()`. An unpeeled `--root` reaches whichever path the routing test then picks: clap reports it as a usage error, but if an id came first it stays in the captured sentence. |
+| `peel_root` (private) | `fn peel_root(args: &[OsString]) -> (Option<PathBuf>, Vec<OsString>)` | Take a *leading* `--root PATH` or `--root=PATH` out of the arguments, returning the path and everything else in order. The loop consumes `--root` forms from the front and `break`s at the first argument that is not one, so options belong before the id and everything from the id onward is the sentence (hi: CAPTURE-8). Among leading occurrences the last wins. Two shapes are not peeled even in front: `--root` with nothing after it, because the arm guards on `index + 1 < args.len()`; and `--root=PATH` whose token is not valid UTF-8, because that arm tests the whole token with `to_str()`. Either then leads the tail, which is not id-shaped, so clap sees it and reports a usage error. |
 | `fail` (private) | `fn fail(err: anyhow::Error) -> ExitCode` | Print `error: {err:#}` to stderr and return exit 1. The `:#` carries the whole anyhow context chain. |
 | `run_capture` (private) | `fn run_capture(root: Option<&Path>, raw_id: &str, rest: &[String]) -> Result<()>` | Join the remaining argv into a sentence, find the workspace from `root` or the current directory, capture, and print the destination and id. |
 | `run` (private) | `fn run(cli: Cli) -> Result<ExitCode>` | Resolve the workspace from `--root` or the current directory, then dispatch one subcommand. |
@@ -69,10 +78,14 @@ backtrace (hi: CAPTURE-1.c).
 
 ## Invariants
 
-1. An id-shaped first argument (first *after* `--root` has been peeled) always routes to capture,
-   and is never interpreted as a subcommand. `looks_like_id` requires an uppercase-initial family
-   followed by `-` and a non-empty remainder, so no flag and no defined subcommand name can collide
-   with it.
+1. An id-shaped first argument (first *after* a leading `--root` has been peeled) always routes to
+   capture, and is never interpreted as a subcommand. `looks_like_id` requires a family that is
+   non-empty, begins with an ASCII letter of either case, and is otherwise ASCII alphanumeric or
+   `_`; and it requires the character right after the `-` to be a digit. No flag can collide,
+   because a flag's family part is empty, and no defined subcommand name can, because none holds a
+   hyphen. The digit rule is also what keeps `spec-sync` and `well-formed` off the capture route.
+   A token the predicate rejects reaches clap instead, so `hi SEND-a "<sentence>"` is an
+   unrecognized subcommand and exit 2, not an id error.
 2. Bare `hi` with no arguments prints help and does not touch the filesystem: nothing is asked of
    the person, and nothing is written (hi: CAPTURE-1.b).
 3. Exit codes: `0` success, `1` any returned error (a structural problem from `check`, or a refusal
@@ -80,10 +93,12 @@ backtrace (hi: CAPTURE-1.c).
 4. `hi check` exits 1 when and only when `Report::ok()` is false. Every other verb exits 0 on
    success (hi: CHECK-1, CHECK-2).
 5. Errors print to stderr; all normal output prints to stdout, so `hi export <scope> > file` is clean.
-6. `--root` is global and affects every verb, capture included. `peel_root` removes it from argv
-   before the routing test, so a well-formed `--root PATH` or `--root=PATH` is not joined into a
-   criterion's sentence (hi: CAPTURE-8). A `--root` the peel does not recognize still can be. See
-   the `peel_root` row above for the two shapes.
+6. `--root` is global and affects every verb, capture included, **when it comes before the id**.
+   `peel_root` removes a leading `--root PATH` or `--root=PATH` from argv before the routing test,
+   so it is not joined into a criterion's sentence (hi: CAPTURE-8). Past the id the peel has
+   already stopped, so a `--root` inside a sentence stays a word:
+   `hi SEND-2 the --root docs option should be documented` captures the sentence whole, and
+   `hi SEND-2 "text" --root /elsewhere` captures `text --root /elsewhere` and exits 0.
    Because the non-capture path calls `Cli::parse()`, which reads argv again for itself, the
    peeled copy is used only by capture and clap still parses `--root` for the subcommands.
 7. Argv is read as OS strings. A non-UTF-8 argument in a capture sentence is reported as an error
@@ -119,7 +134,22 @@ backtrace (hi: CAPTURE-1.c).
   `--root=/tmp/repo`
 - **Then** `peel_root` removes the flag and its value, the remaining first argument `SEND-2` still
   routes to capture, the workspace is found from `/tmp/repo`, and the written line is
-  `SEND-2  it reaches them` with no `--root` anywhere in it
+  `- **SEND-2**  it reaches them` with no `--root` anywhere in it
+
+#### Scenario: after the id, a flag-shaped word is a word
+
+- **Given** a repository containing `hi/chat.md` that declares family `SEND`
+- **When** the user runs `hi SEND-2 the --root docs option should be documented`
+- **Then** the peel has already stopped at `SEND-2`, so nothing is taken out of the sentence, and
+  the written line is `- **SEND-2**  the --root docs option should be documented` (hi: CAPTURE-8)
+
+#### Scenario: A wrongly cased id is refused rather than read as a subcommand
+
+- **Given** any repository
+- **When** the user runs `hi send-2 "it reaches them"`
+- **Then** `looks_like_id` still recognizes it, capture runs, and stderr reads
+  `error: 'send-2' is not a valid id: family 'send' must start with A-Z and contain only A-Z, 0-9, _`
+  with exit 1 and nothing written (hi: CHECK-2.d)
 
 #### Scenario: An argument that is not valid UTF-8
 
@@ -139,7 +169,8 @@ backtrace (hi: CAPTURE-1.c).
 
 - **Given** a workspace with no structural problems
 - **When** the user runs `hi check`
-- **Then** stdout is a summary like `53 criteria · 8 families · 5 files` and the exit code is 0
+- **Then** stdout is a summary like `89 criteria · 8 families · 5 files`, which is what hi's own
+  repository reports today, and the exit code is 0
 
 #### Scenario: A structural problem fails
 
@@ -159,16 +190,18 @@ backtrace (hi: CAPTURE-1.c).
 
 | Condition | Behavior |
 |-----------|----------|
-| No `hi/` directory holding a hi file, and no `.git`, above the start directory | `error: no hi/ directory found. Run this inside a repository`, exit 1. A `hi/` directory that holds no file with `hi:` frontmatter does not count, so a Hindi locale directory is walked past rather than adopted (hi: CAPTURE-6) |
+| No `hi/` directory holding a hi file, and no `.git`, anywhere from the start directory up to the filesystem root | `error: this is not a repository, and no hi/ directory was found above it. hi anchors to a repository, so run it inside one`, exit 1. A `hi/` directory that holds no file with `hi:` frontmatter does not count, so a Hindi locale directory is walked past rather than adopted (hi: CAPTURE-6). `Workspace::find` tests both conditions at every level on the way up, so the nearest `.git` stops the walk and an outer repository's criteria are never adopted |
 | A capture argument that is not valid UTF-8 | `error: that sentence is not valid UTF-8. hi files are text, so it cannot be stored as written`, exit 1, no panic (hi: CAPTURE-1.c) |
 | `--root` naming a path that does not exist | `error: resolving <path>: No such file or directory (os error 2)`, from the `canonicalize` at the top of `Workspace::find`, exit 1. Same on the capture path and the subcommand path |
 | Capture given an id that already exists | Error naming the file and line, plus the next free id, exit 1 |
 | Capture given a zero-padded number, such as `SEND-007` | Error from `Id::parse` about the leading zero, exit 1, nothing written (hi: ID-1.c) |
-| Capture given a malformed id | `error: '<id>' is not a valid id: <reason>`, exit 1 |
-| Capture given no sentence | `error: a criterion needs a sentence, so say what you actually want`, exit 1 |
+| Capture given a malformed id that is still id-shaped, such as `send-2` or `SEND-1.a.b` | `error: '<id>' is not a valid id: <reason>`, exit 1 |
+| A first argument that is not id-shaped, such as `SEND-a` or `SEND-`, because the character after the `-` is not a digit | Never routed to capture; clap reports it as an unrecognized subcommand, exit 2 |
+| `hi --root SEND-2 "<sentence>"`, a `--root` with its value omitted ahead of an id | `peel_root` takes `SEND-2` as the root, the tail no longer begins with an id, and clap reports `<sentence>` as an unrecognized subcommand, exit 2. Nothing is written |
+| Capture given no sentence | `error: a criterion needs a sentence. Say what you actually want`, exit 1 |
 | `hi check` finds any structural problem | Problems printed to stdout, exit 1 |
 | `hi issue` given an id that does not exist, or a retired one | Error, exit 1 |
-| `hi export` given a scope matching no family or file | Error beginning `nothing matches '<scope>'`, exit 1 |
+| `hi export` given a scope matching no family or file | `error: nothing matches '<scope>'. Give a family like SEND, a file like chat, or nothing at all for the whole repository`, exit 1. A family, a bare stem (`chat`), a file name (`chat.md`) and the repo-relative path (`hi/chat.md`) all match |
 | `hi index` where `INTENT.md` opens a `hi:index` marker and never closes it | Error from `out::write_index`, exit 1, `INTENT.md` untouched (hi: INDEX-2.b) |
 | `gh` missing or failing during `hi issue --create` | Error with context about the GitHub CLI, exit 1 |
 | Unknown subcommand or bad flag | clap usage error, exit 2 |
@@ -183,6 +216,7 @@ backtrace (hi: CAPTURE-1.c).
 | `anyhow` | `Result` and error formatting via `{:#}` |
 | `serde_json` | `to_string_pretty` for `hi check --json` |
 | `crate::id` | `looks_like_id`, for the capture routing decision |
+| `crate::doc` | Nothing is called. `main.rs` declares `mod doc;` because the module tree is rooted here, and every other module reaches it through the crate |
 | `crate::workspace` | `Workspace::find`, for every verb |
 | `crate::capture` | `capture` |
 | `crate::check` | `run`, `Report` |
@@ -202,3 +236,4 @@ backtrace (hi: CAPTURE-1.c).
 | 2026-09-16 | Leif | Initial specification. |
 | 2026-09-16 | Claude | Reconciled with the bug-fix pass: added `peel_root`, the new `run_capture` signature taking a root, and `args_os` reading. Invariant 6 inverted (`--root` now applies to capture too), and a new invariant 7 covers non-UTF-8 argv. Added scenarios and error rows for `--root`, non-UTF-8 arguments, the `holds_hi_files` workspace rule, padded ids, and an unclosed index marker. |
 | 2026-09-16 | Claude | Verification pass. Corrected three claims that the code does not make: an unpeeled `--root` is only a clap usage error off the capture path (after an id it lands in the sentence), a non-UTF-8 `--root` value survives only the separated `--root PATH` form, and `args_os` is an environment call invariant 8 did not name. Added an error row for a `--root` that does not resolve, and `specs/id/id.spec.md` to `depends_on`, which the Consumes table already listed. |
+| 2026-09-16 | Claude | Reconciled with the routing and discovery changes, every claim re-checked against `./target/release/hi`. `peel_root` now consumes `--root` only while it leads and stops at the id, so the "scans the whole slice" claim and everything built on it was rewritten. `looks_like_id` is case-insensitive on the family and requires a digit after the hyphen, so invariant 1 and the Purpose no longer claim an uppercase-initial family; `SEND-a` is now a clap usage error rather than an id error, and `send-2` routes to capture and is refused with a reason. Replaced the stale not-found, empty-sentence and export-scope messages with the strings the binary prints. Added `crate::doc` to Consumes and `depends_on`, three behavioral scenarios, and three error rows. |

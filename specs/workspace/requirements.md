@@ -4,7 +4,8 @@ spec: workspace.spec.md
 
 ## User Stories
 
-- As someone typing `hi SEND-2 "..."` from anywhere inside my repo, I want hi to find the `hi/` directory by itself so that I never have to `cd` to the root or pass a path
+- As someone typing `hi SEND-2 "..."` from anywhere inside my repo, I want hi to find the `hi/` directory by itself so that I never have to `cd` to the root or pass a path (hi: CAPTURE-10)
+- As someone adding hi to a project that sits inside another repository, I want the walk to stop at my own repository so that I never inherit the outer project's criteria as if they were mine (hi: CAPTURE-10)
 - As someone whose repo ships translations, I want a `public/locales/hi/` folder to be left alone so that hi never adopts a Hindi locale bundle as my workspace (hi: CAPTURE-6)
 - As someone whose editor writes a byte-order mark, I want my file to still be found and read so that an invisible byte never makes a valid file disappear (hi: FILE-11)
 - As someone adopting hi on an existing repo, I want the very first `hi FAMILY-1 "..."` to work before `hi/` exists so that installing hi is one command, not a setup ritual
@@ -12,11 +13,11 @@ spec: workspace.spec.md
 - As someone who hand-edits a hi file, I want hi to resolve my family from either the frontmatter or the criteria I actually wrote so that the one machine-facing line stays optional in practice (hi: FILE-2)
 - As someone who keeps several features in one file, I want one file to answer for several families so that `hi/chat.md` can hold `SEND`, `RECEIPT` and `OFFLINE` (hi: FILE-5)
 - As someone who retired a criterion, I want its id to stay spoken for so that hi never hands the same number to two different intentions
-- As someone reading `hi check` or piping `hi export` into an agent, I want file paths printed the same way every run so that output diffs cleanly
+- As someone reading `hi check` or piping `hi export` into an agent, I want file paths printed the same way every run, with forward slashes whatever platform I am on, so that output diffs cleanly and a path pasted into a link still works (hi: FILE-12)
 
 ## Acceptance Criteria
 
-- Discovery walks up from a starting directory and stops at the first ancestor whose `hi/` actually holds a hi file; a `.git` ancestor is remembered as a fallback rather than a stop, and discovery fails with a message that names the problem when it reaches the filesystem root having found neither
+- Discovery walks up from a starting directory and stops at the first ancestor whose `hi/` actually holds a hi file, or failing that at the first ancestor holding a `.git` entry; it fails with a message that names the problem when the ancestors run out with neither found
 - A directory named `hi` that holds no file declaring `hi:` in its frontmatter is not a workspace, whatever else is in it (hi: CAPTURE-6)
 - Loading reads only `*.md` files sitting directly inside `<root>/hi`, in sorted path order
 - A root with no `hi/` directory loads as a valid, empty workspace rather than an error
@@ -24,13 +25,13 @@ spec: workspace.spec.md
 - Family ownership resolves from frontmatter first and from actual criterion use second, so an undeclared family still finds its file (hi: FILE-2)
 - Id lookup, family ownership and next-free numbering all consider retired criteria as well as active ones
 - `families()` returns the sorted, deduplicated union of declared and used families across every doc (hi: FILE-5)
-- Path rendering is relative to `root`, total, and never panics on a path outside it
+- Path rendering is relative to `root`, joined with forward slashes on every platform, total, and never panics on a path outside it (hi: FILE-12)
 - The only failures the module can produce are I/O failures; a structurally broken hi file loads and its problems are left to `hi check`
 
 ## Constraints
 
 - No dependency beyond `std`, `anyhow`, and the sibling `doc` and `id` modules. The `hi/` directory has no manifest format to parse, so nothing else is needed (hi: FILE-1)
-- Discovery must terminate: the ancestor walk ends at the filesystem root. It is no longer bounded by a `.git` entry, so in the worst case, where the start directory has no workspace above it, it examines every ancestor before falling back or failing
+- Discovery must terminate: the ancestor walk ends at a `.git` boundary or at the filesystem root, whichever comes first. In the worst case, where the start directory has neither a workspace nor a repository above it, it examines every ancestor before failing
 - `Doc::parse` is infallible by contract, so this module may not introduce a parse-failure path of its own. `holds_hi_files` keeps that contract by answering `bool`: every I/O or encoding problem it meets reads as "not a hi file", never as an error
 - Recognition reads candidate files off disk during the walk, so it must stay cheap: only files directly inside the candidate `hi/`, only `*.md`, and it stops at the first match
 - Indices are returned as `usize` positions in `docs` rather than borrows, because `capture` needs `&mut` on the doc it resolved. An append, which is the only mutation any consumer makes, leaves them valid; a removal or a reorder would not, and nothing does either
@@ -49,19 +50,20 @@ spec: workspace.spec.md
 ### REQ-workspace-001
 
 `Workspace::find` SHALL locate the workspace by walking up from a starting directory to the
-nearest ancestor whose `hi/` directory actually holds a hi file, and SHALL fall back to the
-nearest ancestor holding a `.git` entry when no such directory exists anywhere above the start.
+nearest ancestor whose `hi/` directory actually holds a hi file, and SHALL stop at the nearest
+ancestor holding a `.git` entry when it meets one first.
 
 Acceptance Criteria
 
 - The starting path is canonicalized first, so a relative path or a symlink resolves before the walk begins.
 - Recognition is tested at each level before the walk moves up, so the *nearest real workspace* wins: a nested project's own `hi/` is preferred over an outer one.
-- A `.git` entry does not end the walk. The nearest ancestor holding one is remembered, and the climb continues, so a farther real `hi/` is preferred over a nearer repository root.
-- Only after the walk reaches the filesystem root having found no workspace is the remembered `.git` ancestor loaded, because a repo root with no `hi/` yet is still the right place to make one (hi: CAPTURE-1.a).
-- The `.git` test is `exists()`, so a `.git` file (a worktree or submodule) marks a fallback root as well as a `.git` directory.
-- Reaching the filesystem root with neither found fails with `no hi/ directory found; run this inside a repository`.
+- Within one level `hi/` is tested before `.git`, so a directory that holds both loads its own workspace and the boundary never gets in the way.
+- A `.git` entry ends the walk and that directory is loaded, because a repository is where hi anchors: a project nested inside another must not adopt the outer project's criteria (hi: CAPTURE-10). A repo root with no `hi/` yet loads as an empty workspace, which is what lets the first capture create the directory (hi: CAPTURE-1.a).
+- The `.git` test is `exists()`, so a `.git` file (a worktree or submodule) is a boundary as well as a `.git` directory.
+- An unrecognized `hi/` does not extend the walk past the boundary: the climb continues past that directory, but the `.git` test still applies at that level and every level above it.
+- Running out of ancestors with neither found fails with `this is not a repository, and no hi/ directory was found above it. hi anchors to a repository, so run it inside one`.
 - A starting path that cannot be canonicalized fails with `resolving <path>` and the underlying I/O error.
-- The starting path is whatever `main` hands over: the current directory, or the value `peel_root` took out of `--root`. `find` walks *up* from it either way, so `--root` is a starting point, not a boundary.
+- The starting path is whatever `main` hands over: the current directory, or the value `peel_root` took out of a *leading* `--root`. `find` walks *up* from it either way, so `--root` is a starting point; the boundary is the `.git` it meets on the way.
 
 ### REQ-workspace-002
 
@@ -149,7 +151,8 @@ NOT fail.
 Acceptance Criteria
 
 - `rel` renders a doc under `root` as a relative path such as `hi/chat.md`, which is the form printed by capture, `hi check` and `hi export`.
-- `rel` returns a path outside `root` unchanged rather than erroring or panicking.
+- `rel` joins the remaining components with `/` rather than the host separator, so the same string comes back on every platform and stays valid in exported JSON, an issue body and a markdown link (hi: FILE-12).
+- `rel` renders a path outside `root` from that path's own components rather than erroring or panicking. The result is a best effort, not a contract: an absolute path outside `root` comes back with a doubled leading separator, and no caller in hi passes one.
 - `intent_path` returns `<root>/INTENT.md` whether or not the file exists, leaving "missing" for the caller to interpret.
 
 ### REQ-workspace-009

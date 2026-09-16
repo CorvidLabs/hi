@@ -14,7 +14,11 @@ spec: capture.spec.md
 - As someone capturing into a file I started by hand, I want hi to make a criteria section rather than appending wherever my file happens to end, so that the criterion is somewhere that will be read back (hi: CAPTURE-7)
 - As someone whose disk can fill up, I want a failed write to leave my file exactly as it was, so that a capture can never destroy criteria I already had (hi: FILE-8)
 - As someone with my own YAML habits, line endings, and editor, I want hi to write my file back in my style, so that a one-line capture is a one-line diff (hi: FILE-7, FILE-10, FILE-11)
-- As the author of `hi check`, I want capture to refuse a case whose parent I have not written yet, so that the ordinary way of mistyping a sub-id does not author the structural error the checker then reports
+- As someone who typed a sentence, I want every word of it to reach the file unchanged, including a word that happens to look like one of hi's own options, so that capture is never quietly editing me (hi: CAPTURE-8, CAPTURE-9)
+- As someone reading the file on GitHub rather than in an editor, I want each criterion to be its own list item with its cases nested under it, so that what I captured reads as a list and not as a paragraph of run-together sentences (hi: FILE-1.b, FILE-1.c)
+- As someone working deep inside a repository, and sometimes inside a repository that sits inside another one, I want capture to anchor to *my* repository, so that I never append to somebody else's criteria (hi: CAPTURE-10)
+- As someone who just captured something, I want to be told which file it landed in, so that I never have to go looking for it (hi: CAPTURE-11)
+- As the author of `hi check`, I want capture to refuse a case whose parent I have not written yet and to name what is missing, so that the ordinary way of mistyping a sub-id does not author the structural error the checker then reports (hi: CAPTURE-2.b)
 
 ## Acceptance Criteria
 
@@ -24,7 +28,8 @@ The capture module SHALL append a well-formed, previously unused criterion id an
 
 Acceptance Criteria
 
-- `capture(workspace, "SEND-2", "It reaches them.")` against a workspace that already holds `SEND-1` in `hi/chat.md` writes the line `SEND-2  It reaches them.` into that file.
+- `capture(workspace, "SEND-2", "It reaches them.")` against a workspace that already holds `SEND-1` in `hi/chat.md` writes the line `- **SEND-2**  It reaches them.` into that file.
+- The line is a markdown list item with the id in bold, indented two spaces for every level below the first, so a top-level criterion starts at column 0 and `SEND-2.a` would start at column 2 (hi: FILE-1.b, FILE-1.c).
 - The returned `Captured` carries `id` rendering as `SEND-2`, `file == "hi/chat.md"`, and `created_file == false`.
 - The file is saved before the call returns; the caller never has to flush anything.
 - Exactly one criterion is added, to exactly one file, per successful call.
@@ -36,7 +41,7 @@ The capture module SHALL start `hi/<family>.md` itself when the id's family is n
 Acceptance Criteria
 
 - `capture(workspace, "BILLING-1", "I can see what I paid.")` creates `hi/billing.md` when no file declares or uses `BILLING`.
-- The new file contains `families: [BILLING]` frontmatter, a `# Billing` title, an `## Intent` prompt, a `## Criteria` heading, and the criterion line.
+- The new file contains `families: [BILLING]` frontmatter, a `# Billing` title, an `## Intent` heading followed by the HTML-comment prompt `<!-- What is this for, and what should it feel like? Write it as a person. -->`, a `## Criteria` heading, and the criterion line `- **BILLING-1**  I can see what I paid.`.
 - The file stem is the family lowercased with underscores replaced by hyphens; the title is the family lowercased with underscores replaced by spaces and the first letter capitalized.
 - `created_file` is `true` so the caller can print the extra `created` line.
 - No prompt, wizard, editor, or stdin read occurs at any point.
@@ -56,11 +61,11 @@ Acceptance Criteria
 
 ### REQ-capture-004
 
-The capture module SHALL refuse a sub-id whose parent criterion does not exist, and SHALL NOT write anything (hi: CAPTURE-5).
+The capture module SHALL refuse a sub-id whose parent criterion does not exist, naming the missing parent, and SHALL NOT write anything (hi: CAPTURE-2.b, CAPTURE-5).
 
 Acceptance Criteria
 
-- `capture(workspace, "SEND-4.a", "An orphan.")` with no `SEND-4` present returns an error containing `needs a parent SEND-4`.
+- `capture(workspace, "SEND-4.a", "An orphan.")` with no `SEND-4` present returns the error `SEND-4.a needs a parent SEND-4, which does not exist yet`, which names the id that is missing rather than only reporting that something is (hi: CAPTURE-2.b).
 - The check runs after the already-exists check and before any file is resolved or created, so no family file is scaffolded for a refused orphan.
 - Existence is judged workspace-wide by `Workspace::find_id`, across every loaded file and both `## Criteria` and `## Retired`.
 - That workspace-wide scope no longer disagrees with `check`'s per-file orphan rule, because the accepted sub-id is then written into the very file `find_id` found its parent in (REQ-capture-010). `src/check.rs` builds `present` from that file's `doc.all()`, so the parent is present there by construction.
@@ -74,7 +79,7 @@ Acceptance Criteria
 - An id failing the grammar in `id::Id::parse` (bad family charset, missing hyphen, empty level, or broken number/letter alternation) returns `'<raw_id>' is not a valid id` followed by `<reason>`, carrying the underlying `IdError` text.
 - `SEND-1.a.b` and `send-1` are both rejected.
 - A zero-padded numeric level is rejected with `IdError::PaddedLevel`, so `SEND-007` refuses rather than becoming a second spelling of `SEND-7` (hi: ID-1.c).
-- A sentence that is empty or whitespace-only returns `a criterion needs a sentence` and then `say what you actually want`.
+- A sentence that is empty or whitespace-only returns `a criterion needs a sentence. Say what you actually want`.
 - The sentence is trimmed before the emptiness test, so `"   "` is empty. A sentence of nothing but a newline or tabs is empty for the same reason.
 - Id validation precedes sentence validation, so an input that fails both is reported as a bad id.
 
@@ -94,29 +99,35 @@ The capture module SHALL place a new case or step directly beneath its parent cr
 
 Acceptance Criteria
 
-- After capturing `SEND-1.a` into a file holding `SEND-1`, the offset of `SEND-1.a  ` in the file text is greater than the offset of `SEND-1  ` and no unrelated criterion separates them.
+- After capturing `SEND-1.a` into a file holding `SEND-1`, the offset of `SEND-1.a` in the file text is greater than the offset of `SEND-1 ` and no unrelated criterion separates them.
+- The case is written two spaces further in than its parent, so it renders as a nested list item rather than a sibling (hi: FILE-1.b).
 - Placement is delegated to `Doc::insert`; capture itself computes no line numbers.
 - A top-level id with no parent joins its family's block rather than starting a new one, when that family already has a block.
+- The one departure: when the parent exists only in `## Retired`, `Doc::insert`'s `insertion_point` does not find it (it scans `self.criteria` only), so the line joins the end of the family's active block while still carrying its own depth's indent, and renders as a case of whichever active criterion is last. Reproduced against the release binary; see Edge Cases in `testing.md`.
 
 ### REQ-capture-008
 
-The capture module SHALL require no initialization step, creating the `hi/` directory on demand (hi: CAPTURE-1, CAPTURE-1.a).
+The capture module SHALL require no initialization step, creating the `hi/` directory on demand, and SHALL anchor to the repository it is run inside (hi: CAPTURE-1, CAPTURE-1.a, CAPTURE-10).
 
 Acceptance Criteria
 
 - When `workspace.dir` does not exist, it is created with `fs::create_dir_all` as part of starting the first family file.
-- A first capture in a repository with no `hi/` directory succeeds in one command. `Workspace::find` only accepts a `hi/` directory that `holds_hi_files`, meaning one holding a `.md` file with a `hi:` frontmatter key (hi: CAPTURE-6), so an absent or still-empty `hi/` is reached through the `.git` fallback, and `capture` then creates the directory and the file.
+- A first capture in a repository with no `hi/` directory succeeds in one command. `Workspace::find` only accepts a `hi/` directory that `holds_hi_files`, meaning one holding a `.md` file with a `hi:` frontmatter key (hi: CAPTURE-6), so an absent or still-empty `hi/` is reached through the `.git` branch, and `capture` then creates the directory and the file.
+- That `.git` branch is a boundary, not just a fallback: `Workspace::find` returns at the first directory holding one, so a repository nested inside another captures into its own root and never adopts the outer project's criteria (hi: CAPTURE-10, covered by `cli::a_repository_is_a_boundary_for_discovery`).
+- Capture works from any directory inside the repository, because `find` walks up from the start directory (or from `--root`, when one was given).
+- When neither a qualifying `hi/` nor a `.git` is found anywhere above the start directory, `Workspace::find` fails before `capture` is called, with `this is not a repository, and no hi/ directory was found above it. hi anchors to a repository, so run it inside one`, and the process exits 1.
 - No configuration file, lockfile, cache, or state file is created, read, or required.
 
 ### REQ-capture-009
 
-The capture module SHALL report the outcome of a successful capture as data, leaving all rendering to the caller.
+The capture module SHALL report the outcome of a successful capture as data, including the file it landed in, leaving all rendering to the caller (hi: CAPTURE-11).
 
 Acceptance Criteria
 
 - `Captured` exposes `id`, `file`, and `created_file` as public fields and derives `Debug`.
-- `file` is produced through `Workspace::rel`, so it is relative to the workspace root and identical no matter which directory the command ran from.
-- `capture` prints nothing itself; `src/main.rs` prints `<file>  created` and `<file>  +<id>` from the returned value.
+- `file` is produced through `Workspace::rel`, so it is relative to the workspace root and identical no matter which directory the command ran from, and it names the file the line actually landed in rather than the one the family is declared in.
+- `Workspace::rel` joins path components with a forward slash on every platform, because the same string is printed, exported as JSON and used in markdown links (hi: FILE-12).
+- `capture` prints nothing itself; `src/main.rs` prints `<file>  created` and `<file>  +<id>` from the returned value, so every capture ends by naming its destination (hi: CAPTURE-11).
 
 ### REQ-capture-010
 
@@ -166,19 +177,21 @@ Acceptance Criteria
 ## Constraints
 
 - hi holds intent and identity only. Capture stores no lifecycle, status, checkbox, timestamp, author, or evidence link alongside the criterion. The line is an id and a sentence and nothing else.
-- Capture never rewords, judges, capitalizes or punctuates the person's English, and never drops or adds a word. It trims the sentence; `doc::render_criterion` then writes it as exactly one line however long it runs, collapsing interior whitespace runs to single spaces so a pasted multi-line thought becomes one sentence (hi: FILE-6; DECISIONS.md §10.1). Nothing wraps, so there is no continuation line to author.
+- Capture never rewords, judges, capitalizes or punctuates the person's English, and never drops or adds a word (hi: CAPTURE-9). It trims the sentence; `doc::render_criterion` then writes it as exactly one line however long it runs, collapsing interior whitespace runs to single spaces so a pasted multi-line thought becomes one sentence (hi: FILE-6; DECISIONS.md §10.1). Nothing wraps, so there is no continuation line to author.
+- That line is a markdown list item, `- **<id>**  <sentence>`, indented two spaces per level below the first. The bullet and the bold id are structure, not decoration: without them a block of criteria is joined into one run-together paragraph by every markdown renderer, which is what DECISIONS.md §12 records as having falsified FILE-1 (hi: FILE-1.b, FILE-1.c). The parser accepts the bare form, and a bullet with no emphasis, so a hand-edited file is still read (hi: FILE-14); capture itself always writes the list form.
+- Nothing typed after the id is ever treated as an option. `peel_root` consumes a `--root` only while it still leads the argument vector, so a sentence mentioning `--root` keeps it (hi: CAPTURE-8, CAPTURE-9).
 - Ids are permanent and append-first. Capture never renumbers, reorders, edits, or deletes an existing criterion.
 - The only content condition that makes capture fail is an id that is already spoken for. Incomplete intent (a criterion with no spec, no ticket, and no test) is never an error here.
 - Interactivity is forbidden. No prompt, no wizard, no required field, no editor, no stdin (hi: CAPTURE-1.b).
 - Capture depends only on `std`, `anyhow`, and the sibling `id`, `doc`, and `workspace` modules. It shells out to nothing and reaches the network never.
-- Error text is part of the contract: `refuses_an_id_that_already_exists` asserts on `already exists` and `next free is SEND-2`, `refuses_a_case_with_no_parent` asserts on `needs a parent SEND-4`, and `tests/cli.rs` asserts the same two strings plus `leading zero` through the real binary on stderr with exit 1.
+- Error text is part of the contract: `refuses_an_id_that_already_exists` asserts on `already exists` and `next free is SEND-2`, `refuses_a_case_with_no_parent` asserts on `needs a parent SEND-4`, and `tests/cli.rs` asserts the same two strings plus `leading zero`, `not valid UTF-8` and `not a repository` through the real binary on stderr with exit 1.
 
 ## Out of Scope
 
-- The id grammar, alternation rule, parent derivation, the padded-level rule, and `IdError` text all live in `src/id.rs` (`specs/id/`).
-- Line rendering and whitespace collapsing, insertion-point arithmetic, section creation, fence opacity, BOM and line-ending handling, frontmatter parsing and rewriting, and atomic serialization belong to `src/doc.rs` (`specs/doc/`).
-- Locating the repository, the `holds_hi_files` test and the `.git` fallback, loading every `hi/*.md`, family lookup, next-free computation, and relative-path display sit in `src/workspace.rs` (`specs/workspace/`).
+- The id grammar, alternation rule, parent derivation, the padded-level rule, `IdError` text, and `looks_like_id` (its case-insensitive family test and its leading-digit rule for the first level) all live in `src/id.rs` (`specs/id/`).
+- Line rendering and the list-item form, whitespace collapsing, bullet and emphasis stripping on the way back in, insertion-point arithmetic, section creation, fence opacity, BOM and line-ending handling, frontmatter parsing and rewriting, and atomic serialization belong to `src/doc.rs` (`specs/doc/`).
+- Locating the repository, the `holds_hi_files` test, the `.git` boundary and the message when neither is found, loading every `hi/*.md`, family lookup, next-free computation, and relative-path display (including its forward slashes) sit in `src/workspace.rs` (`specs/workspace/`).
 - Detecting duplicates, orphans, retired-id collisions, broken alternation, and stray criteria across the whole repository, and the exit code for them, are `src/check.rs`'s job (`specs/check/`).
 - Listing, ticket generation, JSON export, and the `INTENT.md` index come from `src/out.rs` (`specs/out/`).
-- CLI argument routing, the id-shaped-first-argument dispatch, `peel_root`'s handling of `--root`, the `args_os` non-UTF-8 guard, and process exit codes are handled in `src/main.rs` (hi: CAPTURE-8, CAPTURE-1.c).
+- CLI argument routing, the id-shaped-first-argument dispatch, `peel_root`'s leading-only handling of `--root`, the `args_os` non-UTF-8 guard, and process exit codes are handled in `src/main.rs` (hi: CAPTURE-8, CAPTURE-1.c).
 - Retiring a criterion. Capture only ever adds; moving a criterion to `## Retired` is a hand edit.

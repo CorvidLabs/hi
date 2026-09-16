@@ -91,7 +91,10 @@ pub fn issue_markdown(doc: &Doc, criterion: &Criterion) -> (String, String) {
             for case in cases {
                 let depth = case.id.as_ref().map(|i| i.depth()).unwrap_or(1);
                 let indent = "  ".repeat(depth.saturating_sub(id.depth()).saturating_sub(1));
-                body.push_str(&format!("- {indent}{} {}\n", case.raw_id, case.text));
+                // The indent goes before the bullet. After it, markdown reads
+                // the spaces as content and renders a flat list, or a code
+                // block once there are four of them (hi: ISSUE-3.a).
+                body.push_str(&format!("{indent}- **{}**  {}\n", case.raw_id, case.text));
             }
         }
     }
@@ -302,10 +305,32 @@ fn read_product_intent(workspace: &Workspace) -> Option<String> {
 fn index_span(existing: &str) -> Option<std::ops::Range<usize>> {
     let mut open: Option<std::ops::Range<usize>> = None;
     let mut offset = 0usize;
+    // A fence makes its contents an example, not structure. Without this, a
+    // person who documents the format inside their own INTENT.md gets the
+    // generated list written into their example (hi: INDEX-2.a).
+    let mut fence: Option<(char, usize)> = None;
 
     for line in existing.split_inclusive('\n') {
         let trimmed = line.trim();
         let span = offset..offset + line.len();
+
+        if let Some(marker) = trimmed.chars().next().filter(|c| *c == '`' || *c == '~') {
+            let run = trimmed.chars().take_while(|c| *c == marker).count();
+            if run >= 3 {
+                match fence {
+                    None => fence = Some((marker, run)),
+                    Some((opened, width)) if opened == marker && run >= width => fence = None,
+                    Some(_) => {}
+                }
+                offset += line.len();
+                continue;
+            }
+        }
+        if fence.is_some() {
+            offset += line.len();
+            continue;
+        }
+
         if trimmed == INDEX_OPEN {
             if open.is_none() {
                 open = Some(span);
@@ -324,7 +349,25 @@ fn index_span(existing: &str) -> Option<std::ops::Range<usize>> {
 
 /// True when a marker appears alone on a line, rather than quoted in prose.
 fn has_marker_line(existing: &str, marker: &str) -> bool {
-    existing.lines().any(|line| line.trim() == marker)
+    let mut fence: Option<(char, usize)> = None;
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if let Some(ch) = trimmed.chars().next().filter(|c| *c == '`' || *c == '~') {
+            let run = trimmed.chars().take_while(|c| *c == ch).count();
+            if run >= 3 {
+                match fence {
+                    None => fence = Some((ch, run)),
+                    Some((opened, width)) if opened == ch && run >= width => fence = None,
+                    Some(_) => {}
+                }
+                continue;
+            }
+        }
+        if fence.is_none() && trimmed == marker {
+            return true;
+        }
+    }
+    false
 }
 
 /// The generated feature list that sits inside INTENT.md.
@@ -482,6 +525,29 @@ mod tests {
         // The close marker's own newline stays outside the span, so whatever
         // follows the block keeps its blank line.
         assert!(prose[span.end..].starts_with('\n'));
+    }
+
+    #[test]
+    fn a_marker_inside_a_fence_is_an_example_not_the_block() {
+        let prose = "# Product\n\nDocumenting the format:\n\n```markdown\n<!-- hi:index -->\n- [chat](hi/chat.md)\n<!-- /hi:index -->\n```\n\n## Features\n\n<!-- hi:index -->\nstale\n<!-- /hi:index -->\n";
+        let span = index_span(prose).expect("the real block, not the example");
+        assert!(
+            prose[span.clone()].contains("stale"),
+            "the span must be the real block: {:?}",
+            &prose[span.clone()]
+        );
+        assert!(
+            prose[..span.start].contains("```markdown"),
+            "the fenced example must be left before the span"
+        );
+    }
+
+    #[test]
+    fn an_unclosed_marker_inside_a_fence_does_not_trigger_a_refusal() {
+        assert!(!has_marker_line(
+            "# P\n\n```\n<!-- hi:index -->\n```\n",
+            INDEX_OPEN
+        ));
     }
 
     #[test]

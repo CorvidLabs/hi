@@ -13,6 +13,10 @@ spec: doc.spec.md
       were taken: the `# ` branch of `parse_body` now records `criteria_end`, so a new family still
       appends below the existing block, and an id-shaped line outside every section is collected on
       `doc.stray` for `check` to report (hi: CHECK-2.e).
+- [ ] Make the stray branch strip emphasis the way `read_criterion` does. `parse_body` calls
+      `strip_bullet` alone, so a stray written `- **SEND-9**  ...` is recorded, and printed by
+      `hi check`, as `**SEND-9**` rather than `SEND-9`. It is a message-only wart (nothing parses the
+      token), but it is the one place the criterion-line grammar is not applied in full.
 - [ ] Decide whether a file carrying both a `families:` and a `family:` entry should be supported.
       Today both append to `front.families` but only the last entry's span is recorded, so a rewrite
       replaces that one and leaves the earlier line duplicating families on the next parse.
@@ -51,6 +55,12 @@ spec: doc.spec.md
   sibling modules.
 - No test covers a criterion line whose continuation is tab-indented, nor `render_criterion` with a
   whitespace-only sentence.
+- REQ-doc-019 says a `*` or `+` bullet is accepted on input, and nothing tests either.
+  `reads_a_criterion_however_it_was_decorated` covers a bare line, a `- ` bullet, `**bold**` and
+  `_italic_` only.
+- No test covers an indented id-shaped line outside every section. Both stray tests put the line
+  flush at column 0, so the fact that indentation no longer exempts a stray, and the fact that the
+  recorded token keeps its emphasis, are both unasserted. Verified by hand against the built binary.
 - No test asserts that a BOM'd file round-trips without the BOM, only that the BOM does not hide the
   frontmatter.
 - No test covers an id-shaped line inside `## Intent`. `records_a_criterion_stranded_outside_every_section`

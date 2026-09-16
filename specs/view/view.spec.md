@@ -18,7 +18,9 @@ depends_on:
 Renders the whole workspace as one self-contained HTML page for people who do not read markdown.
 The raw `hi/*.md` files are written by whoever holds the intent; this is the artifact everyone else
 reads: the product why first, each feature's prose, then its criteria as a plain list with ids
-present but visually quiet, and retired criteria folded away (hi: VIEW-1, VIEW-1.a, VIEW-4).
+present but visually quiet, and retired criteria folded away (hi: VIEW-1, VIEW-1.a, VIEW-4). Each
+criterion is its own list item and its id is a separate element from its sentence, with whitespace
+between them, so text copied off the page keeps the two apart (hi: VIEW-1.d).
 
 It also owns the only markdown rendering in the crate. A criterion sentence may carry inline
 `` `code` ``, `**bold**`, `*italic*` and `[links](url)`; everything is HTML-escaped **before** any
@@ -29,9 +31,11 @@ template hi writes into every new file carries a prompt comment, and neither it 
 reaches the page. Prose that is empty once the comments are gone produces no block at all, rather
 than an empty one (hi: VIEW-1.c).
 
-The page is one file with no build step, no bundler, and no network dependency beyond an optional
-Google Fonts stylesheet, and it renders correctly without it (hi: VIEW-2). Colors come from the
-CorvidLabs brand tokens and are defined for light and dark in all three theme states.
+The page is one file with no build step, no bundler and no network access whatsoever. Every byte of
+CSS is inline, there is no `<link>`, `<script>`, `@import` or absolute URL anywhere in the document,
+and the type is a system font stack, so opening the page discloses the reader to nobody
+(hi: VIEW-2). It is a single centered column that reads at phone width (hi: VIEW-2.a). Colors come
+from the CorvidLabs brand tokens and are defined for light and dark in all three theme states.
 
 ## Public API
 
@@ -57,14 +61,14 @@ CorvidLabs brand tokens and are defined for light and dark in all three theme st
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `inline_markdown` | `inline_markdown(raw: &str) -> String` | HTML-escape `raw`, then render `` `code` ``, `**bold**`, `*italic*` and `[text](url)`. Unmatched markers are left as literal text. Only `http://`, `https://` and root-relative URLs become links. |
+| `inline_markdown` | `inline_markdown(raw: &str) -> String` | HTML-escape `raw`, then render `` `code` ``, `**bold**`, `*italic*` and `[text](url)`. Unmatched markers are left as literal text, and markers do not nest: the first one to open takes everything up to its close verbatim. Only `http://`, `https://` and root-relative URLs become links. |
 | `render` | `render(workspace: &Workspace, product_intent: Option<&str>) -> String` | Build the full document: head, tokens, lead prose, one section per doc, footer with counts. |
-| `write` | `write(workspace: &Workspace, out: Option<&str>) -> Result<String>` | Read `INTENT.md` for the lead prose, strip its generated index, render, write to `out` or `intent.html`, and return the repository-relative path. |
+| `write` | `write(workspace: &Workspace, out: Option<&str>) -> Result<String>` | Read `INTENT.md` for the lead prose, strip its generated index, render, write to `out` or `intent.html`, and return the path as `Workspace::rel` prints it: repository-relative, forward slashes on every platform. |
 | `escape` (private) | `escape(raw: &str) -> String` | Escape `&`, `<`, `>`, `"` and `'`. |
 | `find_from` / `find_pair` (private) | `(&[char], usize, char) -> Option<usize>` / `(&[char], usize) -> Option<usize>` | Locate a closing single marker, or a closing `**`. |
 | `strip_comments` (private) | `strip_comments(raw: &str) -> String` | Remove every HTML comment span, from `<!--` to `-->`. An unterminated `<!--` drops the remainder of the prose, as a browser would. |
 | `paragraphs` (private) | `paragraphs(raw: &str) -> String` | Strip comments, split what is left on blank lines, drop blocks that are now empty, join each block's lines with a space, and render it as one `<p>`. Returns an empty string when nothing survives. |
-| `criteria_list` / `feature_section` (private) | `(&[Criterion]) -> String` / `(&Doc) -> String` | Render one list of criteria, and one feature's whole section. |
+| `criteria_list` / `feature_section` (private) | `(&[Criterion]) -> String` / `(&Doc) -> String` | Render one list of criteria, and one feature's whole section. Each criterion is one `<li class="d<depth>">` holding a `cid` span and a `ctext` span separated by a newline (hi: VIEW-1.d). |
 | `strip_index` (private) | `strip_index(raw: String) -> String` | Remove the `hi:index` block, the H1 and the `## Features` heading from `INTENT.md`. |
 
 ## Invariants
@@ -77,24 +81,40 @@ CorvidLabs brand tokens and are defined for light and dark in all three theme st
    `javascript:` included, renders as literal text.
 4. An unmatched marker is literal. `2 * 3 is 6` and ``a `b`` render unchanged.
 5. `**` is tried before `*`, so bold never renders as an italic wrapping a stray asterisk.
-6. The page is self-contained: all CSS is inline and there is no script. The only external
-   reference is a Google Fonts stylesheet, and the page is fully legible without it (hi: VIEW-2).
-7. Colors are defined on bare `:root` for light, and redefined under both
+6. Markers do not nest. The scan is single-pass and the first marker to open consumes everything up
+   to its close without re-interpreting it, so `` **a `b` c** `` renders `<strong>a `b` c</strong>`
+   with the backticks visible, and `` `x **y** z` `` renders `<code>x **y** z</code>` with the
+   asterisks visible.
+7. The page is self-contained and fetches nothing. All CSS is inline; the document contains no
+   `<script>`, no `<link>`, no `<iframe>`, no `@import` and no `http://` or `https://` reference at
+   all. The font stacks name a branded family first, but only as one the reader may already have
+   installed locally; nothing is ever downloaded (hi: VIEW-2).
+8. Colors are defined on bare `:root` for light, and redefined under both
    `@media (prefers-color-scheme: dark)` guarded by `:root:not([data-theme="light"])` and
    `:root[data-theme="dark"]`, so the page is correct in all three theme states.
-8. Case depth is rendered as indentation, capped at four levels so a deep id cannot push text off
+9. Case depth is rendered as indentation, capped at four levels so a deep id cannot push text off
    a narrow screen (hi: VIEW-1.b).
-9. Retired criteria appear inside a collapsed `<details>`, present but not noise (hi: VIEW-4).
-10. Prose passes through `strip_comments` before it is split into paragraphs, so no HTML comment
+10. Retired criteria appear inside a collapsed `<details>`, present but not noise (hi: VIEW-4).
+11. Prose passes through `strip_comments` before it is split into paragraphs, so no HTML comment
     span, including the prompt in hi's own new-file template, ever reaches the page. An
     unterminated `<!--` drops everything after it, the way a browser would (hi: VIEW-1.c).
-11. A prose block that is empty once comments are stripped emits nothing: no `<div class="intent">`
+12. A prose block that is empty once comments are stripped emits nothing: no `<div class="intent">`
     for a feature and no `<div class="lead">` for the product. The page never carries an empty
     wrapper element.
-12. `view` never rewrites, reorders or reformats a `hi/*.md` file: it reads the workspace and writes
+13. `view` never rewrites, reorders or reformats a `hi/*.md` file: it reads the workspace and writes
     exactly one file, the output page. That path is the caller's; `out` is joined to the
-    repository root and is not otherwise constrained.
-13. The page shows no status, because hi stores none. It renders intent, not progress.
+    repository root and is not otherwise constrained, so an absolute path or one with `..` writes
+    outside it.
+14. The page shows no status, because hi stores none. It renders intent, not progress (hi: VIEW-5).
+15. A criterion's id and its sentence are two sibling spans with a newline between them, inside one
+    `<li>` per criterion. No two spans anywhere on the page are adjacent with no whitespace, so
+    copied text and any html-to-text conversion read `SEND-1 I hit enter`, never `SEND-1I hit
+    enter`, and one criterion never runs into the next. Flex layout ignores that whitespace, so the
+    rendered line is unchanged (hi: VIEW-1.d).
+16. The page reads at phone width: one column capped at 760px inside a 20px body gutter, headings
+    sized with `clamp()` so they shrink rather than overflow, and below 560px the id stacks above
+    its sentence while the depth indents drop to 16/32/48px. No rule in the layout exceeds the
+    viewport, though nothing wraps an unbroken token longer than the column (hi: VIEW-2.a).
 
 ## Behavioral Examples
 
@@ -107,9 +127,11 @@ CorvidLabs brand tokens and are defined for light and dark in all three theme st
 
 #### Scenario: Inline markdown in a sentence
 
-- **Given** the criterion `VIEW-3  A criterion can use **bold**, `code`, and links.`
+- **Given** `VIEW-3` in hi's own `hi/view.md`, whose sentence carries a `**bold**` span, an
+  `*italic*` span, a backtick-quoted `code` span and a link
 - **When** it is rendered
-- **Then** the output carries `<strong>bold</strong>` and `<code>code</code>`
+- **Then** the output carries `<strong>bold</strong>`, `<em>italic</em>` and `<code>code</code>`,
+  and the surrounding text is unchanged
 
 #### Scenario: A sentence that looks like markup
 
@@ -138,6 +160,13 @@ CorvidLabs brand tokens and are defined for light and dark in all three theme st
 - **Then** the active criterion is in the main list and the retired one is inside a
   `<details>` summarised as `1 retired`
 
+#### Scenario: The page is pasted into an email
+
+- **Given** a rendered page with several criteria
+- **When** a reader selects the list and copies it into a plain-text field
+- **Then** each criterion arrives on its own line with its id separated from its sentence, because
+  every `</span>` is followed by a newline before the next `<span>`
+
 ## Error Cases
 
 | Condition | Behavior |
@@ -148,10 +177,11 @@ CorvidLabs brand tokens and are defined for light and dark in all three theme st
 | A feature's prose is only an HTML comment | Same as no prose: no intent block, criteria unaffected |
 | A comment in prose is never closed | Everything from `<!--` to the end of that prose is dropped |
 | `INTENT.md` has an opening `hi:index` marker with no close | `strip_index` drops the rest of the file from the lead prose. `view` only reads, so unlike `out::write_index` it has nothing to refuse |
-| `INTENT.md` holds a fenced example containing a marker, an H1 or `## Features` on its own line | Treated as the real thing and stripped. `strip_index` is not fence-aware, and neither is `out`'s marker search; only `doc`'s parser treats a fence as opaque |
+| `INTENT.md` holds a fenced example containing a marker, an H1 or `## Features` on its own line | Treated as the real thing and stripped. An H1 or `## Features` loses only its own line; an opening `hi:index` marker starts stripping there, so everything down to the next real closing marker leaves the lead prose. `strip_index` is not fence-aware, and neither is `out`'s marker search; only `doc`'s parser treats a fence as opaque |
 | `INTENT.md` begins with a UTF-8 BOM | It is not stripped here. `str::trim` does not remove U+FEFF, so the first line is not recognised as the H1 and renders as lead prose. `Doc::parse` and workspace discovery strip a BOM; this read does not |
 | A feature file has no criteria | The section renders `Nothing written down yet.` |
-| The output path cannot be written | `Err` with context `writing <path>`; exit 1 from `main` |
+| The output path cannot be written, for instance `--out nope/page.html` where `nope/` does not exist | `Err` with context `writing <absolute path>`, printed as `error: writing <path>: No such file or directory (os error 2)`; exit 1 from `main`. The module creates no directories |
+| `--out` is absolute, or climbs out of the repository with `..` | `Path::join` takes it as given and the page is written there. The printed path comes back from `Workspace::rel`, which cannot relativize it: `--out ../outside.html` prints `../outside.html` and an absolute path prints with a doubled leading slash, for example `//tmp/page.html` |
 | A criterion's id failed to parse | It renders at depth 1 with its raw id text, escaped |
 
 ## Dependencies
@@ -178,3 +208,4 @@ CorvidLabs brand tokens and are defined for light and dark in all three theme st
 | 2026-09-16 | Leif | Initial specification. |
 | 2026-09-16 | Claude | Reconciled with the bug-fix pass: documented `strip_comments`, the comment-free prose guarantee (hi: VIEW-1.c), and the omission of empty lead/intent blocks; added the matching invariants, scenario, error rows, REQ-view-008 and the two new tests. |
 | 2026-09-16 | Claude | Verification pass: recorded that `strip_index` is not fence-aware and that `INTENT.md` is read without stripping a BOM; narrowed the read-only invariant to what the code enforces; corrected the phone-width indentation bullet and the dark-theme assertion note in `testing.md`. |
+| 2026-09-16 | Claude | Drift pass against the shipped binary: the page no longer links Google Fonts and fetches nothing, so the self-containment claims in the purpose, invariant 7, REQ-view-003, the notes and the manual checks were rewritten; added invariants and requirements for copy fidelity (hi: VIEW-1.d) and phone reading (hi: VIEW-2.a) and cited hi: VIEW-5 on the no-status invariant; recorded the `--out` paths that escape the root; corrected the count and roster of unit tests; corrected the nested-marker claim, which said code wins inside bold when in fact markers do not nest at all; noted that `doc::write_atomically` is now public, so it is no longer the reason `write` uses a plain `fs::write`. |

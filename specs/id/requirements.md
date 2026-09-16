@@ -33,7 +33,9 @@ spec: id.spec.md
 - `parent`, `is_descendant_of`, `depth`, and `root_number` are derived from `levels` alone and never
   consult a file, a workspace, or any stored state
 - `looks_like_id` accepts every string `Id::parse` accepts, plus id-shaped strings that `parse`
-  rejects, and rejects ordinary prose words such as `Given`, `I`, and `well-formed`
+  rejects (a wrongly cased family such as `send-2`, a padded or malformed level such as `SEND-007`),
+  and rejects ordinary prose words such as `Given`, `I`, `well-formed`, and `spec-sync`, because the
+  first level must start with a digit
 - The module compiles against `std::fmt` only, with no sibling module, no external crate, and no I/O
 
 ### REQ-id-001
@@ -151,15 +153,26 @@ Acceptance Criteria
 ### REQ-id-009
 
 `looks_like_id` SHALL recognize id-shaped tokens without committing to their validity, so a
-malformed id is reported rather than silently read as prose (hi: CHECK-2.d).
+malformed id is reported rather than silently read as prose (hi: CHECK-2.d). A token is id-shaped
+when its family is non-empty, starts with an ASCII letter of either case, and is otherwise ASCII
+alphanumeric or `_`, and when the text after the first hyphen starts with an ASCII digit.
 
 Acceptance Criteria
 
 - `SEND-1` and `SEND-1.a` are id-shaped.
-- `SEND-a.b` and `SEND-007` are id-shaped although `Id::parse` rejects them, so `doc` records the
-  `IdError` and `check` reports it at its file and line (hi: CHECK-3).
-- `I`, `Given`, and `well-formed` are not id-shaped, so ordinary prose in a `## Criteria` section is
-  never captured as a criterion.
+- `send-2`, `Send-3`, `SEND-007`, `SEND-1a`, and `SEND-1.a.b` are id-shaped although `Id::parse`
+  rejects them, so `doc` records the `IdError` and `check` reports it at its file and line
+  (hi: CHECK-3). The family test is case-insensitive precisely so a lowercase id is refused with a
+  reason instead of vanishing into prose.
+- `I`, `Given`, `well-formed`, `spec-sync`, and `co-authored` are not id-shaped, so ordinary prose in
+  a `## Criteria` section is never captured as a criterion. The first-level digit rule is the whole
+  of that distinction.
+- `SEND-a`, `SEND-a.b`, and `1ST-4` are **not** id-shaped either, so an alternation break at depth 1
+  and a family that starts with a digit are read as prose and never reported by `check`. That is the
+  accepted cost of the previous bullet, recorded in the spec as invariant 13; those errors surface
+  only when the id arrives as a command-line argument.
+- The predicate does not call `valid_family`; it writes its own family test, which differs from
+  `parse`'s only in accepting either case.
 - `doc` applies the same predicate outside every section, so a criterion-shaped line stranded above
   `## Criteria` is recorded as a stray and reported rather than silently vanishing (hi: CHECK-2.e),
   while a line inside a fenced code block never reaches the predicate at all (hi: FILE-9).
@@ -194,7 +207,7 @@ Acceptance Criteria
   `SEND-1.a.1`.
 - The check runs before the `u32` parse, so the padded text is still available to name in the error.
 - The error sentence names the unpadded spelling to write instead:
-  "level '007' has a leading zero. Write it as '7', so the id always means the same thing".
+  "level '007' has a leading zero; write it as '7', so the id always means the same thing".
 - `SEND-0` parses as `Number(0)`: a single zero is a number, not padding. `SEND-7` and `SEND-10`
   parse unchanged.
 - `looks_like_id("SEND-007")` is still `true`, so a padded id already written in a file is reported
@@ -218,8 +231,15 @@ Acceptance Criteria
   `Level` does derive `Ord`.
 - `IdError::Alternation::expected` is a `&'static str` written into the user-facing sentence;
   changing its wording changes `hi check` output that tests assert on.
-- Everything is ASCII by construction: `is_ascii_uppercase`, `is_ascii_digit`, and
-  `is_ascii_lowercase`. No Unicode case folding or normalization is performed.
+- `looks_like_id`'s first-level-digit rule is what tells an id from an ordinary hyphenated word, and
+  it is load-bearing for every hi file that contains the words `spec-sync` or `well-formed`.
+  Loosening it turns prose into criteria; keeping it means `SEND-a` and `1ST-4` cannot be reported
+  from a file. Neither side of that trade is free, and the rule as written chooses silence on
+  malformed ids over noise on ordinary prose.
+- Everything is ASCII by construction: `is_ascii_uppercase`, `is_ascii_digit` and
+  `is_ascii_lowercase` in `parse`, plus `is_ascii_alphabetic` and `is_ascii_alphanumeric` in
+  `looks_like_id`. No Unicode case folding or normalization is performed, so a family written in
+  non-ASCII letters is not id-shaped and is read as prose.
 - Depth is unbounded by the grammar; alternation is the only structural limit.
 
 ## Out of Scope

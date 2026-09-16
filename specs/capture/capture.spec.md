@@ -35,7 +35,9 @@ family, so a case is never stranded in a different file from the criterion it is
 
 Capture stores no state beyond the criterion sentence itself, records no lifecycle, and binds no
 evidence. It has one failure mode that is about content (an id that is already spoken for), and
-that failure is the only reason it refuses work that is otherwise well-formed.
+that failure is the only reason it refuses work that is otherwise well-formed. The words the person
+typed are the words that land in the file (hi: CAPTURE-9), and the file capture wrote to is always
+named back to them (hi: CAPTURE-11).
 
 ## Public API
 
@@ -84,7 +86,8 @@ that failure is the only reason it refuses work that is otherwise well-formed.
    nested.
 6. A sub-id may only be captured when its parent already exists **somewhere in the workspace**.
    The check is `Workspace::find_id(&id.parent())`, which spans every loaded file and both
-   sections.
+   sections. The refusal names the missing parent rather than just reporting a failure
+   (hi: CAPTURE-2.b).
 7. **The destination is the parent's file first.** `capture` computes
    `parent_file = id.parent().and_then(|p| workspace.find_id(&p).map(|(index, _)| index))` and only
    falls back to `workspace.doc_for_family(&id.family)` when the id has no parent or the parent was
@@ -101,19 +104,36 @@ that failure is the only reason it refuses work that is otherwise well-formed.
 9. A missing `hi/` directory is created on demand by `create_file`, with `fs::create_dir_all`.
    There is no init step (hi: CAPTURE-1, CAPTURE-1.a). Capture is handed an already-located
    `Workspace`; `Workspace::find` only treats a `hi/` directory as the workspace when it actually
-   holds a file with `hi:` frontmatter (hi: CAPTURE-6), and otherwise falls back to the repository
-   root, which is what leaves a fresh repository's first capture a single command.
-   `holds_hi_files` strips a leading BOM before it looks for that key, so an editor-written marker
+   holds a file with `hi:` frontmatter (hi: CAPTURE-6), and otherwise anchors to the repository
+   root it is standing in, which is what leaves a fresh repository's first capture a single
+   command. `holds_hi_files` strips a leading BOM before it looks for that key, so an editor-written marker
    hides a workspace from discovery no more than it hides frontmatter from the parser
    (hi: FILE-11).
+
+   **A repository is where discovery stops.** `Workspace::find` walks up from the start directory,
+   and at each level it takes a `hi/` that `holds_hi_files` first and a `.git` beside it second.
+   The `.git` test does not merely supply a fallback root: it *ends* the walk, so a repository
+   nested inside another one captures into its own root instead of adopting the outer project's
+   criteria (hi: CAPTURE-10; `cli::a_repository_is_a_boundary_for_discovery`). When neither a
+   qualifying `hi/` nor a `.git` is found anywhere above the start directory, discovery fails
+   before capture is reached, with `this is not a repository, and no hi/ directory was found above
+   it. hi anchors to a repository, so run it inside one`.
 10. Capture reads no input other than its two arguments and the files already on disk. It never
     reads stdin, never blocks on a prompt, and never opens an editor (hi: CAPTURE-1.b).
-11. Capture trims the sentence and changes nothing else about it. `doc::render_criterion` then
-    emits it as **exactly one line**, `<id>  <sentence>`, however long the sentence runs, with
-    interior whitespace runs collapsed to single spaces so a pasted multi-line thought becomes one
-    sentence (hi: FILE-6; DECISIONS.md §10.1). There is no wrapping, no wrap width and no
-    continuation line on write; indented continuation lines are a *parsing* concession for
-    hand-edited files. No word is reworded, capitalized, punctuated, added or dropped.
+11. Capture trims the sentence and changes nothing else about it (hi: CAPTURE-9). No word is
+    reworded, capitalized, punctuated, added or dropped. `doc::render_criterion` then emits it as
+    **exactly one line**, a markdown list item of the form `- **<id>**  <sentence>` indented two
+    spaces for every level below the first, so `SEND-1` is written at column 0 and `SEND-1.a` two
+    spaces in. Interior whitespace runs collapse to single spaces, so a pasted multi-line thought
+    becomes one sentence, and the line is never wrapped however long it runs (hi: FILE-6;
+    DECISIONS.md §10.1 and §12). The bullet is not decoration: a block of bare lines is joined into
+    a single run-together paragraph by every markdown renderer, so the list item is what makes the
+    file read as a list wherever it is actually looked at, and the bold id is what keeps it reading
+    as a label rather than as the first words of the sentence (hi: FILE-1.b, FILE-1.c). There is no
+    wrap width and no continuation line on write; both a bare line and an indented continuation are
+    *parsing* concessions for hand-edited files (hi: FILE-14), which is why a fixture written as
+    `SEND-1  I hit enter.` still parses even though capture would have written
+    `- **SEND-1**  I hit enter.`.
 12. Exactly one criterion is added per successful call, to exactly one file, and that file is
     saved before `capture` returns.
 13. A case lands directly beneath its parent rather than at the bottom of the file, because
@@ -125,8 +145,17 @@ that failure is the only reason it refuses work that is otherwise well-formed.
     and records the append point at the end of that block, so a criterion for a family the file
     declares but has not used yet opens its block at the bottom of `## Criteria`, above the later
     heading, instead of at the top of the block.
-14. `Captured.file` is always repository-relative via `Workspace::rel`, so output is stable
-    regardless of where the command was run from.
+
+    The one shape where placement does not hold is a parent that lives only in `## Retired`:
+    `insertion_point` scans `self.criteria` only, so the new line joins the end of the family's
+    *active* block while `render_criterion` still indents it by its own depth, and it therefore
+    renders as a nested item under whichever active criterion happens to be last. Nothing reports
+    it. Recorded in Edge Cases in `testing.md`, with the open decision in `tasks.md`.
+14. `Captured.file` is always repository-relative via `Workspace::rel`, so the path printed back is
+    stable regardless of where the command was run from and always names the file the criterion
+    actually landed in (hi: CAPTURE-11). `rel` joins components with a forward slash on every
+    platform rather than the host separator, because the same strings reach `hi export` JSON,
+    `hi issue` bodies and markdown links (hi: FILE-12).
 15. Capture never renumbers, edits, reorders or deletes an existing criterion. Its only mutations
     are the inserted line, the `## Criteria` heading `Doc::insert` opens when the file had none,
     and the frontmatter `families:` entry `Doc::insert` adds when the file did not declare the
@@ -154,23 +183,24 @@ that failure is the only reason it refuses work that is otherwise well-formed.
 
 - **Given** `hi/chat.md` declares `families: [SEND]` and holds `SEND-1`
 - **When** `capture(workspace, "SEND-2", "It reaches them.")` runs
-- **Then** `hi/chat.md` gains the line `SEND-2  It reaches them.`, and the returned `Captured` has
-  `id == SEND-2`, `file == "hi/chat.md"` and `created_file == false`
+- **Then** `hi/chat.md` gains the line `- **SEND-2**  It reaches them.`, and the returned `Captured`
+  has `id == SEND-2`, `file == "hi/chat.md"` and `created_file == false`
 
 #### Scenario: A new family starts its own file, without a question
 
 - **Given** no file in `hi/` declares or uses the family `BILLING`
 - **When** `capture(workspace, "BILLING-1", "I can see what I paid.")` runs
 - **Then** `hi/billing.md` is created containing `families: [BILLING]`, `# Billing` and
-  `BILLING-1  I can see what I paid.`; `created_file` is `true`; nothing was asked of the person
-  (hi: CAPTURE-2.a, CAPTURE-1.b)
+  `- **BILLING-1**  I can see what I paid.`; `created_file` is `true`; nothing was asked of the
+  person (hi: CAPTURE-2.a, CAPTURE-1.b)
 
-#### Scenario: A case lands under its parent
+#### Scenario: A case lands under its parent, and renders as a nested list item
 
 - **Given** `hi/chat.md` holds `SEND-1` followed by other content
 - **When** `capture(workspace, "SEND-1.a", "If I have no connection it queues.")` runs
-- **Then** the new `SEND-1.a` line appears after `SEND-1` in the file, not at the end of it
-  (hi: CAPTURE-4)
+- **Then** the new line appears after `SEND-1` in the file, not at the end of it, and it is written
+  as `  - **SEND-1.a**  If I have no connection it queues.`, indented two spaces so it renders
+  nested under its parent rather than as a sibling (hi: CAPTURE-4, FILE-1.b)
 
 #### Scenario: A case lands in the file that holds its parent, not the one that declares the family
 
@@ -198,10 +228,19 @@ that failure is the only reason it refuses work that is otherwise well-formed.
 
 #### Scenario: Capture into a repository with no `hi/` yet
 
-- **Given** a workspace whose `hi/` directory does not exist
-- **When** `capture` is called with the first id of a new family
-- **Then** `hi/` is created, the family file is created inside it, and the criterion is written,
-  with no prior `init` command (hi: CAPTURE-1, CAPTURE-1.a)
+- **Given** a directory holding a `.git` and no `hi/` at all
+- **When** `capture` is called from anywhere inside it with the first id of a new family
+- **Then** `Workspace::find` stops at the `.git` and anchors there, `hi/` is created, the family
+  file is created inside it, and the criterion is written, with no prior `init` command
+  (hi: CAPTURE-1, CAPTURE-1.a, CAPTURE-10)
+
+#### Scenario: Outside a repository, capture says so rather than guessing
+
+- **Given** a directory with no qualifying `hi/` and no `.git` anywhere above it
+- **When** any command runs, capture included
+- **Then** `Workspace::find` fails before capture is reached with `this is not a repository, and no
+  hi/ directory was found above it. hi anchors to a repository, so run it inside one`, `main`
+  prints it as `error: <message>`, and the process exits 1 (hi: CAPTURE-10)
 
 #### Scenario: A family whose file already exists but does not declare it
 
@@ -219,6 +258,15 @@ that failure is the only reason it refuses work that is otherwise well-formed.
   last content line, records that heading, and places the criterion under it, never appending it
   into the trailing prose (hi: CAPTURE-7)
 
+#### Scenario: A flag-looking word after the id stays a word
+
+- **Given** any workspace
+- **When** `hi SEND-2 the --root docs option should be documented` runs
+- **Then** `peel_root` stops at the first argument that is not a leading `--root`, so nothing is
+  taken out of the sentence, and the file gains
+  `- **SEND-2**  the --root docs option should be documented`. `--root` is capture's start
+  directory only when it comes *before* the id (hi: CAPTURE-8, CAPTURE-9)
+
 #### Scenario: A zero-padded number
 
 - **Given** any workspace
@@ -234,12 +282,13 @@ that failure is the only reason it refuses work that is otherwise well-formed.
 |-----------|----------|
 | `raw_id` does not parse as an id (bad family charset, missing hyphen, empty or non-alternating level) | Returns `'<raw_id>' is not a valid id`, followed by the `<IdError>` text; nothing is read further and nothing is written |
 | `raw_id` carries a zero-padded numeric level, e.g. `SEND-007` | Same path, with `IdError::PaddedLevel` supplying the reason `level '007' has a leading zero` and the instruction to `write it as '7', so the id always means the same thing`; nothing is written (hi: ID-1.c) |
-| Sentence is empty or whitespace-only | Returns `a criterion needs a sentence`, followed by `say what you actually want`; nothing is written |
+| Sentence is empty or whitespace-only | Returns `a criterion needs a sentence. Say what you actually want`; nothing is written |
 | The id already exists, active or retired, in any file | Returns `<id> already exists in <file>:<line>` plus a second line `hint:  next free is <FAMILY-n>`; nothing is written (hi: CAPTURE-3) |
-| The id is a sub-id and its parent does not exist | Returns `<id> needs a parent <parent>, which does not exist yet`; nothing is written |
+| The id is a sub-id and its parent does not exist | Returns `<id> needs a parent <parent>, which does not exist yet`, naming the missing parent; nothing is written (hi: CAPTURE-2.b) |
+| Discovery never reaches capture, because there is no qualifying `hi/` and no `.git` above the start directory | `Workspace::find` returns `this is not a repository, and no hi/ directory was found above it. hi anchors to a repository, so run it inside one`; `capture` is never called (hi: CAPTURE-10) |
 | `hi/` cannot be created, or the new family file cannot be written | The underlying `std::io::Error` propagates through `anyhow`; the criterion is not inserted |
 | An existing file with the target stem cannot be read while being adopted | `Doc::load`'s error propagates as `reading <path>`; the criterion is not inserted. Nothing in `Doc::parse` can fail, so a malformed file is adopted rather than rejected |
-| An adopted file has no frontmatter block | `Doc::insert`'s `rewrite_families` refuses with `<absolute path> has no frontmatter`, followed by an instruction to add a `---`, `hi: 1`, `---` block at the top. Nothing is written. The adopted file is not scaffolded over and not saved. Note the in-memory `Doc` has already been mutated (a `## Criteria` section may have been opened and the criterion line spliced in) at that point, but nothing reaches disk because `save` is never reached |
+| An adopted file has no frontmatter block | `Doc::insert`'s `rewrite_families` refuses with ``<absolute path> has no frontmatter, so add `---\nhi: 1\n---` at the top`` (the `\n` is literal in the message). Nothing is written. The adopted file is not scaffolded over and not saved. Note the in-memory `Doc` has already been mutated (a `## Criteria` section may have been opened and the criterion line spliced in) at that point, but nothing reaches disk because `save` is never reached |
 | `Doc::save` fails on a full disk, on a quota, or on a rename that cannot complete | `write_atomically` deletes its `.<name>.hi-tmp` sibling and the error propagates as `writing <path>`. The destination file is left byte-for-byte as it was; it is never truncated first (hi: FILE-8) |
 | `Doc::insert` or `Doc::save` fails after a *new* family file was written | The error propagates. The scaffolded family file has already been written by `create_file`'s `fs::write` at that point and remains on disk, empty of criteria |
 
@@ -259,7 +308,7 @@ that failure is the only reason it refuses work that is otherwise well-formed.
 
 | Module | What is used |
 |--------|-------------|
-| `main` (`src/main.rs`) | `capture::capture` in `run_capture(root, raw_id, rest)`, the default action when the first CLI argument is id-shaped; reads `Captured.created_file`, `Captured.file` and `Captured.id` to print `<file>  created` and `<file>  +<id>`. `main` reads `args_os` and peels `--root`/`--root=PATH` out with `peel_root` before the id-shaped test, so the flag becomes capture's start directory instead of words in the sentence (hi: CAPTURE-8), and a non-UTF-8 argument is reported with a message beginning `that sentence is not valid UTF-8` rather than panicking (hi: CAPTURE-1.c) |
+| `main` (`src/main.rs`) | `capture::capture` in `run_capture(root, raw_id, rest)`, the default action when the first CLI argument is id-shaped; reads `Captured.created_file`, `Captured.file` and `Captured.id` to print `<file>  created` and `<file>  +<id>` (hi: CAPTURE-11). `main` reads `args_os` and peels a **leading** `--root PATH` or `--root=PATH` out with `peel_root` before the id-shaped test, so the flag becomes capture's start directory instead of words in the sentence; `peel_root` breaks at the first argument that is not one of those two forms, so from the id onward every argument, `--root` included, is sentence (hi: CAPTURE-8, CAPTURE-9). A non-UTF-8 argument is reported as `that sentence is not valid UTF-8. hi files are text, so it cannot be stored as written` rather than panicking (hi: CAPTURE-1.c) |
 
 ## Change Log
 
@@ -269,3 +318,4 @@ that failure is the only reason it refuses work that is otherwise well-formed.
 | 2026-09-16 | Leif | Verification pass against source: corrected the rendering invariant (one line, whitespace collapsed, no wrapping), narrowed the orphan-prevention claim to match `check`'s per-file rule, fixed the duplicate-id example's line number, and added the no-frontmatter adoption error case. |
 | 2026-09-16 | Claude | Reconciled with the bug-fix pass: destination now resolves to the parent's file before the declared family (hi: CAPTURE-4.a), which closes the capture/`check` orphan seam the old invariant 6 described; `Doc::insert` opens a `## Criteria` section when the file has none (hi: CAPTURE-7); `Doc::save` is atomic (hi: FILE-8); frontmatter style is preserved on rewrite (hi: FILE-7); fenced and stray criterion-shaped lines are invisible to the duplicate check (hi: FILE-9, CHECK-2.e); zero-padded ids refuse (hi: ID-1.c); workspace discovery requires real hi files (hi: CAPTURE-6); `main` peels `--root` and reads `args_os` (hi: CAPTURE-8, CAPTURE-1.c); line endings and BOM (hi: FILE-10, FILE-11). |
 | 2026-09-16 | Claude | Verification pass over that reconciliation: corrected invariant 17, because `Doc::to_text` terminates every non-empty file with the detected line ending, so a destination that had no trailing newline gains one rather than having its shape restored (reproduced against the built binary); recorded that `holds_hi_files` also strips a BOM (invariant 9) and that a `# ` heading fixes the append point at the end of the criteria block (invariant 13). |
+| 2026-09-16 | Claude | Re-verified every claim against `src/capture.rs` and the release binary after the crate moved under the specs. Corrected the rendering invariant and every example that still quoted the old bare `ID  sentence` line: `doc::render_criterion` now writes `- **ID**  sentence`, indented two spaces per level (hi: FILE-1.b, FILE-1.c; DECISIONS.md §12), and the bare form survives only as a parsing concession (hi: FILE-14). Replaced the stale not-found message with `this is not a repository, and no hi/ directory was found above it...` and recorded that `Workspace::find` now *stops* at a `.git` rather than walking past it (hi: CAPTURE-10). Recorded that `peel_root` consumes only a leading `--root`, so a flag-looking word after the id stays in the sentence (hi: CAPTURE-8, CAPTURE-9). Fixed the empty-sentence message, which reads `Say what you actually want` with a capital S, and quoted the no-frontmatter refusal in full. Added the citations the module had grown into: CAPTURE-2.b (the refusal names the missing parent), CAPTURE-9, CAPTURE-10, CAPTURE-11, FILE-12 (`Workspace::rel` uses forward slashes on every platform) and FILE-14. Recorded that a case under a retired parent renders as a child of an unrelated active criterion. |

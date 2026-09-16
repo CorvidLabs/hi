@@ -35,7 +35,8 @@ spec: check.spec.md
 - `problems` is sorted by file then line, so repeated runs are byte identical
 - `Report::ok()` is true exactly when `problems` is empty, and is the only input to the exit code
 - `run` takes an already-parsed `&Workspace`, performs no I/O, and returns `Report` rather than
-  `Result`, so no input can make it fail or panic
+  `Result`, so no input can make it fail or panic and one run reports every problem in every file
+  (hi: CHECK-5)
 - `Kind`, `Problem`, and `Report` all derive `Serialize`, with `Kind` in kebab-case, so JSON output
   and text output describe the same findings
 - Findings are limited to what `doc` parsed: an id-shaped line inside a fenced code block, or
@@ -55,7 +56,8 @@ spec: check.spec.md
 - Line numbers are 1-based in every `Problem`, while `Criterion::line` is 0-based. `line_no()` is
   the only correct source
 - File paths must go through `Workspace::rel`, never `Path::display` on the absolute path, so that
-  output does not embed a machine-specific prefix
+  output does not embed a machine-specific prefix and the separator is a forward slash on every
+  platform (hi: FILE-12)
 - Whether a problem is *found* must stay independent of document order, which is why retired ids
   are collected in a pass of their own before any criterion is judged. Which of two duplicate
   sightings is *reported* does follow `workspace.docs` order, and that order is fixed by
@@ -133,21 +135,30 @@ a valid id, and SHALL skip that criterion for every other check (hi: CHECK-2.d).
 
 Acceptance Criteria
 
-- The problem's `id` field carries the raw token exactly as written, not a normalized form.
-- The message quotes the token and appends the `IdError` reason, or `not a valid id` when no reason
-  is available.
-- `SEND-1.a.b` (a case of a case) is reported, since levels alternate number, letter, number.
+- The problem's `id` field carries the raw token as it means, not as it was decorated: `doc` strips
+  a bullet marker and markdown emphasis, so `- **send-2**  ...` reports the id `send-2`. Nothing
+  else is normalized, and the case is left exactly as written.
+- The message is `'<token>' is not a valid id: ` followed by the `IdError` reason, or by
+  `not a valid id` when no reason is available.
+- `SEND-1.a.b` (a case of a case) is reported, since levels alternate number, letter, number. So is
+  `SEND-1.2`, a number where a letter belongs.
 - `SEND-007` is reported, carrying `IdError::PaddedLevel`: a zero-padded number would parse to a
   different spelling than it was written, so `SEND-007` and `SEND-7` must never be two names for one
   line (hi: ID-1.c).
+- `send-2` and `Send-3` are reported, carrying `IdError::BadFamily`. `looks_like_id` is
+  case-insensitive on the family so a line plainly meant as a criterion is refused with a reason
+  rather than read as prose and lost (hi: CHECK-2.d).
 - Exactly one problem is produced for that line: it is never also a duplicate, orphan, retired
   collision, or undeclared family.
-- Prose is unaffected, because `doc` only offers lines whose first token is id-shaped.
+- Prose is unaffected, because `doc` only offers a line whose leading token, once a bullet marker
+  and markdown emphasis are stripped, satisfies `looks_like_id`: a family that starts with an ASCII letter and continues in letters, digits and underscores, a
+  hyphen, and a first level beginning with a digit. `spec-sync`, `well-formed` and `SEND-a` are
+  ordinary words and reach this module as nothing at all.
 
 ### REQ-check-006
 
 `run` SHALL report an `UndeclaredFamily` problem when an active criterion uses a family that its
-file's frontmatter `families` list does not declare (hi: CHECK-2).
+file's frontmatter `families` list does not declare (hi: CHECK-2.f).
 
 Acceptance Criteria
 
@@ -155,7 +166,7 @@ Acceptance Criteria
   parsed from whichever frontmatter style the file uses. An inline `families: [SEND]` and a YAML
   block `families:` / `  - SEND` produce the same list, so neither is falsely reported (hi: FILE-7).
 - Only criteria in `## Criteria` are checked; retired criteria are exempt.
-- The message names the family and points at the frontmatter list.
+- The message is `family <FAMILY> is not in this file's frontmatter families list`.
 - The problem exists because frontmatter is the declared home of a family: `Doc::insert` adds a
   family to `families` whenever capture writes a criterion for one the frontmatter lacks, so a file
   that uses a family without declaring it has drifted from the shape capture maintains, and
@@ -202,6 +213,10 @@ Acceptance Criteria
 - `ok()` is the only thing this module contributes to the exit code: `main.rs` maps `true` to
   `ExitCode::SUCCESS` and `false` to `1`. A failure to find or load the workspace exits `1` before
   `run` is ever called, and is `workspace`'s error path, not a `Report`.
+- `Workspace::find` stops at a `.git` boundary, so inside a repository that has no `hi/` directory
+  it loads an empty workspace rather than adopting an outer repository's criteria. `hi check` there
+  reports `0 criteria · 0 families · 0 files` and exits `0`; the not-a-repository error path is
+  reached only when no `hi/` and no `.git` is found all the way up (hi: CHECK-1).
 
 ### REQ-check-010
 
@@ -224,17 +239,24 @@ Acceptance Criteria
 
 Acceptance Criteria
 
-- A line at column 0 whose first token satisfies `looks_like_id`, appearing where `Doc` has no open
-  section and is not collecting `## Intent` prose, is reported with its 1-based line number and the
-  token as the id.
+- A line whose leading token satisfies `looks_like_id`, appearing where `Doc` has no open section
+  and is not collecting `## Intent` prose, is reported with its 1-based line number and the token as
+  the id.
 - The common cause is a `# ` heading closing the section above it; `Doc::parse_body` records these
   in `Doc::stray` as it parses. A `## ` heading `doc` does not recognize (`## Notes`, say) leaves
   the same gap.
 - A line under `## Intent` is never a stray. `Doc::parse_body` routes every line of an intent
   section into `Doc::intent` before the stray branch is reached, so an id written into the intent
   stays prose and survives for `view` and `export`.
-- Ordinary prose outside a section is not reported. Only a genuinely id-shaped token is.
-- Indented lines are never reported, because an indented line is a continuation, not a criterion.
+- Ordinary prose outside a section is not reported. Only a genuinely id-shaped token is, which an
+  ordinary hyphenated word such as `spec-sync` or `well-formed` is not.
+- Indentation is immaterial. `Doc::parse_body` tests every line trimmed, so a nested list item such
+  as `  - **SEND-11**  ...` outside every section is reported exactly as a flush-left one would be.
+  Criteria are rendered as nested list items, so indentation cannot be the thing that distinguishes
+  a criterion from a continuation; the id-shaped leading token is.
+- The recorded token has a leading `- `, `* ` or `+ ` bullet removed but keeps any markdown
+  emphasis, so `- **SEND-9**  ...` is reported with the id `**SEND-9**`. A stray is never handed to
+  `Id::parse`, so nothing normalizes it the way `Criterion::raw_id` is normalized.
 - The problem is reported once per stray line, and the stray line is not counted as a criterion.
 - The stray token is never handed to `Id::parse`, so a stray takes no part in the duplicate, orphan,
   retired-collision, unparseable or undeclared-family checks.
