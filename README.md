@@ -6,6 +6,8 @@
 
 Rust · single binary · no network, no model, no API key
 
+**[See a live page](https://corvidlabs.github.io/hi)** · [Docs](https://corvidlabs.xyz/hi) · [Install](#install)
+
 </div>
 
 ---
