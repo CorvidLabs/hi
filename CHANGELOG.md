@@ -7,6 +7,50 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## [0.3.2] 2026-09-16
+
+### Two defects an audit found, and the drift around them
+
+**`hi` no longer panics on an empty file.** A zero-byte `hi/*.md` yields
+no lines at all, so the insert spliced past the end of an empty buffer
+and aborted with a backtrace at exit 101, instead of the "no
+frontmatter" refusal every other unusable file gets. An empty file is
+what `touch`, a crashed editor or a partial checkout leaves behind
+(`CAPTURE-12`).
+
+**`hi export` and `hi issue` no longer pass hi's own starter prompt off
+as your prose.** A day-one repository exported
+`"intent": "<!-- What is this for... -->"` for every file, and a
+`product` ending in the generated `## Features` heading, and `hi issue`
+printed that question back as the author's intent. `hi view` and
+`hi check` already refused to; the two verbs that feed an agent and a
+tracker did not. `view::strip_comments` and `view::strip_index` are now
+public and all three read prose the same way (`EXPORT-5`, `ISSUE-6`).
+
+Both have regression tests.
+
+### The counts stop drifting
+
+`INTENT.md`'s generated index had fallen five criteria behind, and
+nothing caught it, so three published surfaces each claimed a different
+total. `fledge lanes run verify` now regenerates the index and fails if
+that changed anything. The README and the docs site no longer restate a
+total by hand: the count per feature is generated into `INTENT.md`, and
+a number maintained in three places by hand is a number that ends up
+saying three different things.
+
+### Specs that lied about the code
+
+`specs/out/` documented two bugs as current behavior that the code fixed
+in 0.2.0, with open tasks asking someone to implement what already
+ships. An agent working from those specs, which is the workflow hi
+exists to feed, would have regressed them.
+
+`specs/view/view.spec.md` claimed only `src/view.rs`, leaving the five
+`include_str!` assets outside the gate, including the CSS that carried
+the `[hidden]` bug for four releases. spec-sync goes from 61% to 100%
+file coverage.
+
 ## [0.3.1] 2026-09-16
 
 ### Linux arm64 binaries, and the page is published

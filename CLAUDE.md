@@ -117,7 +117,7 @@ gitignored.
 
 ## Releasing
 
-v0.3.1 is out: the repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
+v0.3.2 is out: the repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
 Homebrew tap, and every tagged release carries binaries for Linux and macOS (both architectures
 each) and Windows. The docs are at corvidlabs.xyz/hi, and corvidlabs.github.io/hi publishes this
 repository's own `hi view` output on every push to `main`.
