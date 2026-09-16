@@ -1,0 +1,22 @@
+[plugin]
+name = "hi"
+version = "0.1.0"
+description = "Human Intent; acceptance criteria in human words, with permanent ids"
+author = "CorvidLabs"
+license = "MIT"
+
+# Install: fledge plugins install CorvidLabs/hi
+# Usage:   fledge hi check
+#          fledge hi export SEND
+[[commands]]
+name = "hi"
+description = "Capture and check human intent as acceptance criteria"
+binary = "bin/fledge-hi"
+
+[hooks]
+build = "cargo build --release"
+
+[capabilities]
+exec = false
+store = false
+metadata = true

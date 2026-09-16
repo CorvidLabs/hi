@@ -1,0 +1,1107 @@
+<title>Human Intent Formats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;700;900&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   CorvidLabs Brand Tokens · Brand Kit v1.3
+   Imported values, not re-derived. Light is the default.
+   ============================================================ */
+:root {
+    color-scheme: light;
+
+    --ink: #15181B;
+    --paper: #FAF9F6;
+    --surface: #FFFFFF;
+    --surface-strong: #DCDAD2;
+
+    --sheen: #0E6F66;
+    --sheen-strong: #0B5750;
+    --sheen-bright: #45D0BC;
+    --steel: #1E6FA8;
+
+    --text-muted: #34383D;
+    --text-faint: #50555B;
+    --sheen-hover: #0B5750;
+
+    --ink-70: rgba(21, 24, 27, 0.72);
+    --ink-60: rgba(21, 24, 27, 0.62);
+    --ink-45: rgba(21, 24, 27, 0.45);
+    --ink-12: rgba(21, 24, 27, 0.12);
+    --ink-06: rgba(21, 24, 27, 0.06);
+    --hairline: var(--ink-12);
+
+    --danger: #84241E;
+    --warning: #8A5A00;
+    --success: #2F6B3A;
+
+    --code-keyword: #0B5750;
+    --code-string: #2F6B3A;
+    --code-number: #8A5A00;
+    --code-comment: rgba(21, 24, 27, 0.50);
+
+    --iridescence: linear-gradient(90deg, #0E6F66 0%, #1799A3 55%, #1E6FA8 100%);
+
+    --font-display: "Schibsted Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-mono: "Spline Sans Mono", "SF Mono", ui-monospace, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --ink: #F4F3EF;
+        --paper: #131619;
+        --surface: #1B1F23;
+        --surface-strong: #272C31;
+        --sheen: #45D0BC;
+        --sheen-strong: #45D0BC;
+        --sheen-bright: #45D0BC;
+        --text-muted: #C8C6BE;
+        --text-faint: #A3A199;
+        --sheen-hover: #63D9C7;
+        --ink-70: rgba(244, 243, 239, 0.78);
+        --ink-60: rgba(244, 243, 239, 0.68);
+        --ink-45: rgba(244, 243, 239, 0.55);
+        --ink-12: rgba(244, 243, 239, 0.15);
+        --ink-06: rgba(244, 243, 239, 0.08);
+        --danger: #F08A7D;
+        --warning: #E0B05A;
+        --success: #6FC98A;
+        --code-keyword: #45D0BC;
+        --code-string: #6FC98A;
+        --code-number: #E0B05A;
+        --code-comment: rgba(244, 243, 239, 0.50);
+    }
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --ink: #F4F3EF;
+    --paper: #131619;
+    --surface: #1B1F23;
+    --surface-strong: #272C31;
+    --sheen: #45D0BC;
+    --sheen-strong: #45D0BC;
+    --sheen-bright: #45D0BC;
+    --text-muted: #C8C6BE;
+    --text-faint: #A3A199;
+    --sheen-hover: #63D9C7;
+    --ink-70: rgba(244, 243, 239, 0.78);
+    --ink-60: rgba(244, 243, 239, 0.68);
+    --ink-45: rgba(244, 243, 239, 0.55);
+    --ink-12: rgba(244, 243, 239, 0.15);
+    --ink-06: rgba(244, 243, 239, 0.08);
+    --danger: #F08A7D;
+    --warning: #E0B05A;
+    --success: #6FC98A;
+    --code-keyword: #45D0BC;
+    --code-string: #6FC98A;
+    --code-number: #E0B05A;
+    --code-comment: rgba(244, 243, 239, 0.50);
+}
+
+/* ============================================================ */
+
+* { box-sizing: border-box; }
+
+body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-display);
+    font-size: 17px;
+    line-height: 1.6;
+    margin: 0;
+    padding-block: 0 72px;
+    padding-left: 20px;
+    padding-right: 20px;
+    -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 860px; margin: 0 auto; }
+.prose { max-width: 66ch; }
+
+/* --- Masthead --- */
+
+.masthead { padding-block: 56px 0; }
+
+.eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--sheen-strong);
+    margin: 0 0 20px;
+}
+
+h1 {
+    font-size: clamp(38px, 7vw, 62px);
+    font-weight: 900;
+    letter-spacing: -0.028em;
+    line-height: 1.02;
+    text-wrap: balance;
+    margin: 0 0 24px;
+}
+
+.standfirst {
+    font-size: clamp(18px, 2.4vw, 21px);
+    line-height: 1.5;
+    color: var(--text-muted);
+    max-width: 62ch;
+    margin: 0;
+}
+
+.standfirst strong { color: var(--ink); font-weight: 500; }
+
+.rule {
+    height: 5px;
+    border: 0;
+    border-radius: 3px;
+    background: var(--iridescence);
+    margin: 40px 0;
+}
+
+/* --- Pipeline --- */
+
+.pipeline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 8px;
+    margin: 0 0 12px;
+}
+
+.stage {
+    flex: 1 1 130px;
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+    padding: 14px 14px 16px;
+    background: var(--surface);
+}
+
+.stage.owned {
+    border-color: var(--sheen);
+    border-width: 1.5px;
+    background: color-mix(in srgb, var(--sheen) 7%, var(--surface));
+}
+
+.stage-owner {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 7px;
+}
+
+.stage.owned .stage-owner { color: var(--sheen-strong); }
+
+.stage-name { font-size: 16px; font-weight: 700; margin: 0 0 3px; letter-spacing: -0.01em; }
+.stage-note { font-size: 13px; line-height: 1.4; color: var(--text-faint); margin: 0; }
+
+.pipeline-caption {
+    font-size: 13.5px;
+    color: var(--text-faint);
+    margin: 0 0 8px;
+}
+
+/* --- Sections --- */
+
+section { padding-block: 52px 0; }
+
+h2 {
+    font-size: clamp(26px, 4vw, 33px);
+    font-weight: 700;
+    letter-spacing: -0.022em;
+    line-height: 1.12;
+    text-wrap: balance;
+    margin: 0 0 8px;
+}
+
+.section-kicker {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 14px;
+}
+
+h3 {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.012em;
+    margin: 36px 0 10px;
+}
+
+p { margin: 0 0 18px; }
+
+a { color: var(--sheen); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: var(--sheen-hover); }
+a:focus-visible { outline: 2px solid var(--sheen); outline-offset: 2px; border-radius: 2px; }
+
+code {
+    font-family: var(--font-mono);
+    font-size: 0.87em;
+    background: var(--ink-06);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+/* --- Evidence quote --- */
+
+.evidence {
+    border-left: 3px solid var(--surface-strong);
+    padding: 4px 0 4px 20px;
+    margin: 0 0 20px;
+}
+
+.evidence p { margin: 0 0 8px; font-size: 15.5px; line-height: 1.55; color: var(--text-muted); }
+.evidence p:last-child { margin: 0; }
+
+.cite {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-faint);
+    display: block;
+}
+
+/* --- Figure: bars --- */
+
+figure {
+    margin: 0 0 28px;
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    padding: 22px 22px 18px;
+    background: var(--surface);
+}
+
+figcaption {
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: var(--text-faint);
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--hairline);
+}
+
+.fig-title { font-size: 16px; font-weight: 700; margin: 0 0 3px; letter-spacing: -0.008em; }
+.fig-sub { font-size: 13px; color: var(--text-faint); margin: 0 0 20px; }
+
+.bars { display: flex; flex-direction: column; gap: 11px; }
+
+.bar-row {
+    display: grid;
+    grid-template-columns: minmax(96px, 168px) 1fr auto;
+    gap: 12px;
+    align-items: center;
+}
+
+.bar-label { font-size: 13.5px; line-height: 1.25; color: var(--text-muted); }
+
+.bar-track { background: var(--ink-06); border-radius: 3px; height: 15px; position: relative; }
+
+.bar-fill {
+    height: 100%;
+    background: var(--sheen);
+    border-radius: 3px;
+    min-width: 3px;
+}
+
+.bar-fill.nil { background: var(--ink-12); }
+
+.bar-value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    white-space: nowrap;
+}
+
+.bar-value .n { color: var(--text-faint); font-size: 11.5px; }
+
+/* --- Figure: meter --- */
+
+.meter {
+    display: flex;
+    height: 40px;
+    border-radius: 4px;
+    overflow: hidden;
+    gap: 2px;
+    background: var(--surface);
+}
+
+.meter-seg {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.meter-seg.bad { background: color-mix(in srgb, var(--danger) 16%, var(--surface)); color: var(--danger); flex: 90 1 0; }
+.meter-seg.good { background: color-mix(in srgb, var(--sheen) 18%, var(--surface)); color: var(--sheen-strong); flex: 10 1 0; }
+
+.meter-key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--text-faint);
+}
+
+/* --- Stat row --- */
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 2px;
+    background: var(--hairline);
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0 0 28px;
+}
+
+.stat { background: var(--surface); padding: 20px 18px 18px; }
+
+.stat-num {
+    font-size: 40px;
+    font-weight: 900;
+    letter-spacing: -0.035em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    margin: 0 0 8px;
+}
+
+.stat-num.warn { color: var(--danger); }
+
+.stat-label { font-size: 13.5px; line-height: 1.38; color: var(--text-muted); margin: 0; }
+
+/* --- Format entries --- */
+
+.fmt {
+    border: 1px solid var(--hairline);
+    border-radius: 4px;
+    background: var(--surface);
+    margin: 0 0 16px;
+    overflow: hidden;
+}
+
+.fmt-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 14px;
+    padding: 18px 20px 14px;
+}
+
+.fmt-name { font-size: 20px; font-weight: 700; letter-spacing: -0.015em; margin: 0; }
+
+.fmt-origin {
+    font-size: 13px;
+    color: var(--text-faint);
+    margin: 0;
+    flex: 1 1 200px;
+}
+
+.chip {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+
+.chip.adopt { background: color-mix(in srgb, var(--success) 15%, var(--surface)); color: var(--success); }
+.chip.borrow { background: color-mix(in srgb, var(--warning) 17%, var(--surface)); color: var(--warning); }
+.chip.avoid { background: color-mix(in srgb, var(--danger) 14%, var(--surface)); color: var(--danger); }
+
+pre {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.62;
+    background: var(--ink-06);
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+    margin: 0;
+    padding: 16px 20px;
+    overflow-x: auto;
+    white-space: pre;
+    tab-size: 2;
+}
+
+pre .kw { color: var(--code-keyword); font-weight: 500; }
+pre .id { color: var(--code-number); }
+pre .cm { color: var(--code-comment); }
+pre .str { color: var(--code-string); }
+
+.fmt-body { padding: 16px 20px 18px; }
+
+.pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px 26px;
+    margin: 0 0 14px;
+}
+
+.pair h4 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 5px;
+}
+
+.pair p { font-size: 14.5px; line-height: 1.5; color: var(--text-muted); margin: 0; }
+
+.takeaway {
+    font-size: 14.5px;
+    line-height: 1.5;
+    margin: 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--hairline);
+}
+
+.takeaway b {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--sheen-strong);
+    display: block;
+    margin-bottom: 4px;
+}
+
+/* --- Table --- */
+
+.table-scroll { overflow-x: auto; margin: 0 0 12px; border: 1px solid var(--hairline); border-radius: 4px; }
+
+table { border-collapse: collapse; width: 100%; min-width: 660px; font-size: 14px; background: var(--surface); }
+
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+
+thead th {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    white-space: nowrap;
+}
+
+tbody tr:last-child td { border-bottom: 0; }
+
+tbody th { font-weight: 700; white-space: nowrap; font-size: 14px; }
+
+td.mark { text-align: center; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.yes { color: var(--success); font-weight: 500; }
+.no { color: var(--text-faint); }
+.part { color: var(--warning); font-weight: 500; }
+
+/* --- Proposal --- */
+
+.proposal {
+    border: 1.5px solid var(--sheen);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--sheen) 5%, var(--surface));
+    overflow: hidden;
+    margin: 0 0 22px;
+}
+
+.proposal pre { background: transparent; border-top: 0; border-bottom: 1px solid var(--ink-12); }
+
+.proposal-note { padding: 16px 20px 18px; font-size: 14.5px; line-height: 1.5; color: var(--text-muted); margin: 0; }
+
+ol.rules, ul.plain { margin: 0 0 20px; padding-left: 22px; }
+ol.rules li, ul.plain li { margin-bottom: 11px; line-height: 1.55; }
+ol.rules li::marker { font-family: var(--font-mono); font-size: 13px; color: var(--text-faint); }
+
+.open-q {
+    border-top: 1px solid var(--hairline);
+    padding-top: 10px;
+    margin-top: 28px;
+}
+
+.open-q li { font-size: 15px; }
+
+footer {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1px solid var(--hairline);
+    font-size: 13.5px;
+    color: var(--text-faint);
+}
+
+footer p { margin: 0 0 8px; }
+
+@media (max-width: 560px) {
+    .bar-row { grid-template-columns: 1fr auto; }
+    .bar-track { grid-column: 1 / -1; grid-row: 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+    <p class="eyebrow">CorvidLabs · hi (Human Intent)</p>
+    <h1>Acceptance criteria formats</h1>
+    <p class="standfirst">A survey of every serious format for writing down what a human actually wants, and what <strong>hi</strong> should take from each. The short version: the sentence grammar everyone argues about is <strong>not</strong> the thing that makes criteria work. The measurable outcome is.</p>
+    <hr class="rule">
+</header>
+
+<p class="pipeline-caption">Where hi sits. Intent is captured once, in human words, and everything downstream is generated from it.</p>
+
+<div class="pipeline">
+    <div class="stage owned">
+        <p class="stage-owner">hi</p>
+        <p class="stage-name">Talk</p>
+        <p class="stage-note">Speak or type it. No format required yet.</p>
+    </div>
+    <div class="stage owned">
+        <p class="stage-owner">hi</p>
+        <p class="stage-name">Criteria</p>
+        <p class="stage-note">Numbered lines with permanent IDs.</p>
+    </div>
+    <div class="stage">
+        <p class="stage-owner">gh · fledge work</p>
+        <p class="stage-name">Tickets</p>
+        <p class="stage-note">Issues and branches generated per criterion.</p>
+    </div>
+    <div class="stage">
+        <p class="stage-owner">spec-sync</p>
+        <p class="stage-name">Specs</p>
+        <p class="stage-note">Module contracts checked against code.</p>
+    </div>
+    <div class="stage">
+        <p class="stage-owner">agent · human</p>
+        <p class="stage-name">Code</p>
+        <p class="stage-note">Evidence flows back to the criterion.</p>
+    </div>
+</div>
+
+<section>
+    <p class="section-kicker">Start here</p>
+    <h2>What we already have, honestly</h2>
+    <div class="prose">
+        <p>spec-sync occupies more of this territory than it first appears, and any design that ignores that ships a second CorvidLabs acceptance-criteria format into the same repos.</p>
+        <p>It already has: <code>requirements.md</code> companions with a literal <code>## Acceptance&nbsp;Criteria</code> heading; <code>REQ-&lt;module&gt;-&lt;number&gt;</code> IDs validated to contain <code>SHALL</code>; and a <code>ChangeRecord.acceptance_criteria</code> field on the change lifecycle, settable with <code>specsync change answer &lt;id&gt; acceptance_criteria "&lt;text&gt;"</code>. The change document itself already has an <code>## Intent</code> section.</p>
+        <p>So "spec-sync owns the contract, hi owns the intent" is only half true. What those criteria genuinely lack is <strong>identity</strong>. A criterion is an untyped string in one change's ledger, checked for nothing but non-emptiness. It cannot be referenced, cannot be counted, cannot be marked met, and does not survive the change that created it.</p>
+        <p>The second problem is drift in the other direction. Left inside a spec, acceptance criteria stop describing what a person wanted:</p>
+    </div>
+    <div class="evidence">
+        <p>"Discovery retains at most 10,000 spec snapshots, at most 4 MiB per spec, and at most 64 MiB of spec bytes cumulatively."</p>
+        <p>"The retained project capability used to open the specs directory is also the sole authority for mapped-source snapshots, so replacing the ambient project-root name cannot mix different project identities in one validation result."</p>
+        <span class="cite">spec-sync/specs/cmd_issues/requirements.md, under "## Acceptance Criteria"</span>
+    </div>
+    <div class="prose">
+        <p>Both lines are correct and both belong in a spec. Neither is something a human ever said they wanted. That gap between what was asked for and what got written down is the whole reason hi exists.</p>
+    </div>
+</section>
+
+<section>
+    <p class="section-kicker">The evidence</p>
+    <h2>Syntax is not the problem</h2>
+    <div class="prose">
+        <p>Before picking a grammar, look at what happens when AI tooling actually ships one. We classified <strong>291 acceptance criteria</strong> pulled from seven public repositories using Kiro-style spec-driven <code>requirements.md</code> files (the largest deployment of EARS-for-agents in the wild).</p>
+        <p>Almost none of it is EARS.</p>
+    </div>
+
+    <figure>
+        <p class="fig-title">Which pattern each criterion actually used</p>
+        <p class="fig-sub">291 criteria · 7 public Kiro/spec-driven repositories</p>
+        <div class="bars">
+            <div class="bar-row">
+                <div class="bar-label">"WHEN&nbsp;... THEN&nbsp;... SHALL" <span style="color:var(--danger)">(not EARS)</span></div>
+                <div class="bar-track"><div class="bar-fill" style="width:81.1%"></div></div>
+                <div class="bar-value">81.1%<span class="n"> · 236</span></div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">WHERE (optional feature)</div>
+                <div class="bar-track"><div class="bar-fill" style="width:3.8%"></div></div>
+                <div class="bar-value">3.8%<span class="n"> · 11</span></div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">WHEN (true event-driven)</div>
+                <div class="bar-track"><div class="bar-fill" style="width:1.4%"></div></div>
+                <div class="bar-value">1.4%<span class="n"> · 4</span></div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">WHILE (state-driven)</div>
+                <div class="bar-track"><div class="bar-fill" style="width:0.7%"></div></div>
+                <div class="bar-value">0.7%<span class="n"> · 2</span></div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">Ubiquitous (plain "shall")</div>
+                <div class="bar-track"><div class="bar-fill nil" style="width:3px"></div></div>
+                <div class="bar-value">0%<span class="n"> · 0</span></div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">Other / unclassified</div>
+                <div class="bar-track"><div class="bar-fill" style="width:13.1%"></div></div>
+                <div class="bar-value">13.1%<span class="n"> · 38</span></div>
+            </div>
+        </div>
+        <figcaption>Real EARS uses <code>WHEN &lt;trigger&gt;, the &lt;system&gt; shall &lt;response&gt;</code> and reserves <code>IF/THEN</code> for unwanted behaviour. The dominant pattern is a hybrid of the two that belongs to neither. It is syntax theatre that parses as compliant and carries no more meaning than a plain sentence.</figcaption>
+    </figure>
+
+    <figure>
+        <p class="fig-title">How many criteria name something you could actually measure</p>
+        <p class="fig-sub">Anywhere in the line: a number, a unit, a threshold, or a quoted literal</p>
+        <div class="meter">
+            <div class="meter-seg bad">90.0% with none</div>
+            <div class="meter-seg good">10.0%</div>
+        </div>
+        <div class="meter-key">
+            <span>262 of 291 contain no measurable anchor whatsoever</span>
+            <span>29 of 291 do</span>
+        </div>
+        <figcaption>Verbatim examples of the 90%: <em>"WHEN displaying question content THEN the system SHALL provide high-quality descriptions with scientific accuracy."</em> · <em>"WHEN targeting the audience THEN the system SHALL use engaging, discovery-focused language appropriate for ages 13-17."</em> Both are perfectly well-formed. Neither can be passed or failed.</figcaption>
+    </figure>
+
+    <div class="stats">
+        <div class="stat">
+            <p class="stat-num warn">37.5%</p>
+            <p class="stat-label">contain <code>and</code> / <code>or</code> (compound criteria that can half-pass)</p>
+        </div>
+        <div class="stat">
+            <p class="stat-num warn">33.7%</p>
+            <p class="stat-label">are passive-voice, with no named actor</p>
+        </div>
+        <div class="stat">
+            <p class="stat-num warn">8.6%</p>
+            <p class="stat-label">use vague pronouns with no clear referent</p>
+        </div>
+    </div>
+
+    <div class="prose">
+        <p>The conclusion that should drive every other decision: <strong>a format that enforces sentence shape gets gamed in four lines out of five, while nine in ten criteria stay unverifiable.</strong> Whatever hi checks first, it must not be keyword conformance.</p>
+    </div>
+</section>
+
+<section>
+    <p class="section-kicker">The survey</p>
+    <h2>Seven formats, and what each one is good for</h2>
+
+    <div class="fmt">
+        <div class="fmt-head">
+            <p class="fmt-name">EARS</p>
+            <p class="fmt-origin">Mavin et&nbsp;al., Rolls-Royce, 2009 · Airbus, NASA, Bosch, Intel, Siemens</p>
+            <span class="chip borrow">Borrow the shapes</span>
+        </div>
+<pre><span class="cm"># Five patterns and one combinator. The whole grammar.</span>
+
+<span class="cm">ubiquitous  </span>The &lt;system&gt; <span class="kw">shall</span> &lt;response&gt;.
+<span class="cm">state       </span><span class="kw">While</span> &lt;precondition&gt;, the &lt;system&gt; <span class="kw">shall</span> &lt;response&gt;.
+<span class="cm">event       </span><span class="kw">When</span> &lt;trigger&gt;, the &lt;system&gt; <span class="kw">shall</span> &lt;response&gt;.
+<span class="cm">optional    </span><span class="kw">Where</span> &lt;feature&gt;, the &lt;system&gt; <span class="kw">shall</span> &lt;response&gt;.
+<span class="cm">unwanted    </span><span class="kw">If</span> &lt;trigger&gt;, <span class="kw">then</span> the &lt;system&gt; <span class="kw">shall</span> &lt;response&gt;.
+<span class="cm">complex     </span><span class="kw">While</span> &lt;precondition&gt;, <span class="kw">when</span> &lt;trigger&gt;, the &lt;system&gt; <span class="kw">shall</span> &lt;response&gt;.
+
+<span class="cm">// "While there is no card in the ATM, the ATM shall</span>
+<span class="cm">//  display 'insert card to begin'."</span></pre>
+        <div class="fmt-body">
+            <div class="pair">
+                <div>
+                    <h4>Works</h4>
+                    <p>Deterministically parseable: zero-or-many preconditions, at most one trigger, exactly one system, one-or-more responses. Seventeen years of safety-critical use. It covers rule-shaped and scenario-shaped criteria in one grammar, which no other format does.</p>
+                </div>
+                <div>
+                    <h4>Breaks</h4>
+                    <p>Unwieldy past three preconditions, and its own authors say it is wrong for anything better expressed as a table, a formula, or a state machine. And as measured above, conformance is trivially faked.</p>
+                </div>
+            </div>
+            <p class="takeaway"><b>For hi</b>Take the five shapes as suggestions the linter can recognise and offer, never as a gate. A criterion that reads naturally and names a measurable outcome beats one that matches a template and doesn't.</p>
+        </div>
+    </div>
+
+    <div class="fmt">
+        <div class="fmt-head">
+            <p class="fmt-name">Volere fit criterion</p>
+            <p class="fmt-origin">Robertson &amp; Robertson · the "snow card"</p>
+            <span class="chip adopt">Adopt</span>
+        </div>
+<pre><span class="id">Description</span>   The product shall identify all outstanding
+              books on loan to a Borrower.
+
+<span class="id">Rationale</span>     Need to know which loans are overdue when
+              deciding whether to extend one.
+
+<span class="id">Fit Criterion</span> The Outstanding Book Loans for a Borrower are
+              those where the Loan Expiry Date is before
+              or equal to Today's Date.</pre>
+        <div class="fmt-body">
+            <div class="pair">
+                <div>
+                    <h4>Works</h4>
+                    <p>This is the primitive everyone else is missing. The requirement sentence stays human and intent-shaped; a <em>separate</em> field carries the machine-checkable predicate. Their rule is the sharpest test in the whole field: <em>if you cannot write a fit criterion, the requirement is ambiguous or not yet understood.</em></p>
+                </div>
+                <div>
+                    <h4>Breaks</h4>
+                    <p>The full snow card has thirteen fields. Nobody fills in thirteen fields. Taken whole it is exactly the ceremony that gets abandoned in week three.</p>
+                </div>
+            </div>
+            <p class="takeaway"><b>For hi</b>Take three fields, not thirteen: the human sentence, the fit criterion, and how it gets verified. This is the single highest-value borrowing in this document.</p>
+        </div>
+    </div>
+
+    <div class="fmt">
+        <div class="fmt-head">
+            <p class="fmt-name">RFC 2119 / 8174</p>
+            <p class="fmt-origin">IETF BCP 14 · MUST / SHOULD / MAY</p>
+            <span class="chip adopt">Adopt</span>
+        </div>
+<pre><span class="kw">MUST</span>    absolute requirement
+<span class="kw">SHOULD</span>  valid reasons may exist to ignore this, but the
+        full implications must be understood and weighed
+<span class="kw">MAY</span>     truly optional
+
+<span class="cm"># RFC 8174: the words carry these meanings ONLY when</span>
+<span class="cm"># capitalised. Lowercase "should" is just English.</span></pre>
+        <div class="fmt-body">
+            <div class="pair">
+                <div>
+                    <h4>Works</h4>
+                    <p>Gives a clean answer to "is this criterion blocking?", which CI needs. The capitalisation rule also kills a measured class of false positives. One study found 16 of 19 and 29 of 37 "loophole" lint findings came from flagging the modal <em>should</em>.</p>
+                </div>
+                <div>
+                    <h4>Breaks</h4>
+                    <p>Reading as legalese if it lands in the sentence. RFC 2119 itself warns the keywords "MUST only be used where it is actually required"; sprinkling SHALL over everything is how spec prose starts sounding inhuman.</p>
+                </div>
+            </div>
+            <p class="takeaway"><b>For hi</b>Make strength an explicit field with three values, not a word buried in the prose. The human writes "it has to"; the file records <code>must</code>.</p>
+        </div>
+    </div>
+
+    <div class="fmt">
+        <div class="fmt-head">
+            <p class="fmt-name">Gherkin / Given-When-Then</p>
+            <p class="fmt-origin">Cucumber, SpecFlow, Reqnroll · 20 years of BDD</p>
+            <span class="chip borrow">Borrow the shape only</span>
+        </div>
+<pre><span class="kw">Scenario:</span> A registered user logs in
+  <span class="kw">Given</span> I am on the sign-in screen
+  <span class="kw">When</span> "Bob" logs in
+  <span class="kw">Then</span> I land on my own timeline
+
+<span class="cm"># The grammar is fine. The mandatory step-definition</span>
+<span class="cm"># layer underneath it is what kills projects.</span></pre>
+        <div class="fmt-body">
+            <div class="pair">
+                <div>
+                    <h4>Works</h4>
+                    <p>Concrete examples are the best cure for ambiguity ever found, and Given-When-Then is the most widely understood way to write one. Tooling exists in every language.</p>
+                </div>
+                <div>
+                    <h4>Breaks</h4>
+                    <p>Every documented failure traces to the glue code, not the grammar: step-definition explosion, a global step namespace where expressions silently collide, shared World state causing flakes, and stakeholders who stop reading feature files after two sprints. Tricentis killed SpecFlow on 2024-12-31; SmartBear handed Cucumber to the Open Source Collective.</p>
+                </div>
+            </div>
+            <p class="takeaway"><b>For hi</b>Examples attach to a criterion as illustrations of its fit criterion: optional, additive, never a parallel artifact with its own maintenance cost. A criterion is never required to have executable glue to be valid.</p>
+        </div>
+    </div>
+
+    <div class="fmt">
+        <div class="fmt-head">
+            <p class="fmt-name">OpenFastTrace</p>
+            <p class="fmt-origin">Open-source requirement tracing · markdown-native</p>
+            <span class="chip adopt">Adopt the ID model</span>
+        </div>
+<pre><span class="cm">### Markdown Import</span>
+<span class="id">`feat~markdown-import~1`</span>        <span class="cm">← type ~ name ~ revision</span>
+
+OFT imports specification items from Markdown files.
+
+<span class="kw">Needs:</span> req
+
+<span class="cm"># Coverage is claimed from the source file itself:</span>
+<span class="cm">// [impl-&gt;dsn~validate-authentication-request~1]</span>
+
+<span class="cm"># Bump the revision when the meaning changes, and every</span>
+<span class="cm"># downstream claim that still points at ~1 breaks loudly.</span></pre>
+        <div class="fmt-body">
+            <div class="pair">
+                <div>
+                    <h4>Works</h4>
+                    <p>The <code>~revision</code> suffix is the best answer anyone has to rot: intent changes, the revision bumps, and every stale coverage claim surfaces immediately instead of silently lying. Coverage tags work across 30+ languages, plus markdown and Gherkin. Its stated posture is explicitly anti-compliance-theatre.</p>
+                </div>
+                <div>
+                    <h4>Breaks</h4>
+                    <p>It has no concept of intent, of a fit criterion, or of whether a criterion is any good. It traces links; it does not judge content.</p>
+                </div>
+            </div>
+            <p class="takeaway"><b>For hi</b>Take the identity model wholesale. That means opaque IDs, never reused, with a revision that invalidates downstream claims. Take the status vocabulary too. Spend hi's own effort on the layer OFT deliberately doesn't have.</p>
+        </div>
+    </div>
+
+    <div class="fmt">
+        <div class="fmt-head">
+            <p class="fmt-name">Kiro requirements.md</p>
+            <p class="fmt-origin">AWS · EARS-flavoured, agent-generated</p>
+            <span class="chip avoid">Avoid the ID scheme</span>
+        </div>
+<pre><span class="cm">### Requirement 2</span>
+<span class="kw">User Story:</span> As a reader, I want &lt;goal&gt;
+
+<span class="kw">Acceptance Criteria</span>
+1. WHEN the user starts the quiz THEN the system SHALL
+   present exactly 9 questions: 3 easy, 3 medium, 3 hard
+2. WHEN targeting the audience THEN the system SHALL use
+   engaging, discovery-focused language
+
+<span class="cm"># Referenced elsewhere as: _Requirements: 1.1, 2.3_</span>
+<span class="cm"># Insert a requirement above and every one of those</span>
+<span class="cm"># references silently points somewhere else.</span></pre>
+        <div class="fmt-body">
+            <div class="pair">
+                <div>
+                    <h4>Works</h4>
+                    <p>The three-file split (requirements, design, tasks) is a genuinely good separation, and it put spec-driven development in front of a large audience. Criterion 1 above is exactly right: a number, a breakdown, no wiggle room.</p>
+                </div>
+                <div>
+                    <h4>Breaks</h4>
+                    <p>IDs are positional. <code>1.1</code> means "first criterion of the first requirement", so inserting anything renumbers everything below it and every back-reference repoints with no error. Criterion 2 above shows the other half: well-formed, and impossible to fail.</p>
+                </div>
+            </div>
+            <p class="takeaway"><b>For hi</b>This is the format to define ourselves against. Positional IDs are the specific mistake hi's permanent, append-only identity exists to avoid.</p>
+        </div>
+    </div>
+
+    <div class="fmt">
+        <div class="fmt-head">
+            <p class="fmt-name">GitHub spec-kit</p>
+            <p class="fmt-origin">Constitution → spec → plan → tasks</p>
+            <span class="chip borrow">Borrow two primitives</span>
+        </div>
+<pre><span class="id">**FR-006**</span>: System MUST authenticate users via
+  <span class="str">[NEEDS CLARIFICATION: auth method not specified.</span>
+<span class="str">   Email/password, SSO, OAuth?]</span>
+
+<span class="id">**SC-001**</span>: Users can complete account creation in
+  under 2 minutes
+
+<span class="cm"># Review markers: [Gap] [Ambiguity] [Conflict] [Assumption]</span></pre>
+        <div class="fmt-body">
+            <div class="pair">
+                <div>
+                    <h4>Works</h4>
+                    <p><code>[NEEDS CLARIFICATION]</code> is the best idea in the whole field: it turns "the human hasn't decided yet" from invisible prose into a countable, blocking state. Its review framing, "test the requirements, not the implementation", is the right instinct.</p>
+                </div>
+                <div>
+                    <h4>Breaks</h4>
+                    <p>Volume. The loudest recurring complaint is verbatim: <em>"spec-kit created a LOT of markdown files for me to review. They were repetitive... tedious to review."</em> and <em>"I'd rather review code than all these markdown files."</em></p>
+                </div>
+            </div>
+            <p class="takeaway"><b>For hi</b>Take the clarification marker and the <code>[Gap] [Ambiguity] [Conflict] [Assumption]</code> vocabulary. Ship one small file, never a directory tree.</p>
+        </div>
+    </div>
+</section>
+
+<section>
+    <p class="section-kicker">Side by side</p>
+    <h2>Scorecard</h2>
+    <div class="prose">
+        <p>Scored on the six things that matter for hi specifically: a human speaking first, and everything else generated after.</p>
+    </div>
+    <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Format</th>
+                    <th>Speakable</th>
+                    <th>Stable IDs</th>
+                    <th>Measurable outcome</th>
+                    <th>Verification binding</th>
+                    <th>Agent-writable</th>
+                    <th>Ceremony</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <th>EARS</th>
+                    <td class="mark part">partly</td>
+                    <td class="mark no">none</td>
+                    <td class="mark no">no</td>
+                    <td class="mark no">no</td>
+                    <td class="mark yes">yes</td>
+                    <td class="mark yes">low</td>
+                </tr>
+                <tr>
+                    <th>Volere</th>
+                    <td class="mark yes">yes</td>
+                    <td class="mark part">numbered</td>
+                    <td class="mark yes">required</td>
+                    <td class="mark no">no</td>
+                    <td class="mark part">partly</td>
+                    <td class="mark no">high</td>
+                </tr>
+                <tr>
+                    <th>RFC 2119</th>
+                    <td class="mark no">no</td>
+                    <td class="mark no">n/a</td>
+                    <td class="mark no">no</td>
+                    <td class="mark no">no</td>
+                    <td class="mark yes">yes</td>
+                    <td class="mark yes">low</td>
+                </tr>
+                <tr>
+                    <th>Gherkin</th>
+                    <td class="mark part">partly</td>
+                    <td class="mark no">none</td>
+                    <td class="mark part">by example</td>
+                    <td class="mark part">via glue</td>
+                    <td class="mark yes">yes</td>
+                    <td class="mark no">high</td>
+                </tr>
+                <tr>
+                    <th>OpenFastTrace</th>
+                    <td class="mark no">no</td>
+                    <td class="mark yes">permanent</td>
+                    <td class="mark no">no</td>
+                    <td class="mark yes">yes</td>
+                    <td class="mark part">partly</td>
+                    <td class="mark part">medium</td>
+                </tr>
+                <tr>
+                    <th>Kiro</th>
+                    <td class="mark part">partly</td>
+                    <td class="mark no">positional</td>
+                    <td class="mark no">no</td>
+                    <td class="mark no">no</td>
+                    <td class="mark yes">yes</td>
+                    <td class="mark part">medium</td>
+                </tr>
+                <tr>
+                    <th>spec-kit</th>
+                    <td class="mark part">partly</td>
+                    <td class="mark part">sequential</td>
+                    <td class="mark part">SC only</td>
+                    <td class="mark no">no</td>
+                    <td class="mark yes">yes</td>
+                    <td class="mark no">high</td>
+                </tr>
+                <tr>
+                    <th>spec-sync today</th>
+                    <td class="mark no">no</td>
+                    <td class="mark no">untyped string</td>
+                    <td class="mark no">no</td>
+                    <td class="mark part">prose</td>
+                    <td class="mark yes">yes</td>
+                    <td class="mark yes">low</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="prose">
+        <p>No row has all six. The <em>Stable IDs</em> and <em>Verification binding</em> columns are empty almost everywhere, and nothing at all scores well on <em>Speakable</em> plus <em>Measurable outcome</em> together. That intersection is the opening.</p>
+    </div>
+</section>
+
+<section>
+    <p class="section-kicker">The proposal</p>
+    <h2>What hi should be</h2>
+    <div class="prose">
+        <p>Human lines, numbered by feature, with permanent identifiers. You can dictate the left-hand side of this file and never think about the format at all.</p>
+    </div>
+
+    <div class="proposal">
+<pre><span class="cm"># hi · corvid-chat</span>
+
+<span class="cm">## Intent</span>
+I want to talk to people I trust without anyone in the middle
+being able to read it, and without it feeling like a security
+product. It should feel like texting.
+
+<span class="cm">## A · Send a message to someone I already trust</span>
+
+<span class="id">A.1</span>  I type a message and hit enter → it shows up in the thread
+     right away, marked as sending.
+     <span class="kw">fit:</span> visible in thread before any network round-trip
+     <span class="kw">by:</span>  test ChatThread.optimisticAppend
+
+<span class="id">A.2</span>  It reaches them → the mark changes to sent. I never have
+     to wonder whether it went.
+     <span class="kw">fit:</span> delivery receipt flips state within 5s on a live link
+     <span class="kw">by:</span>  test Delivery.receiptFlipsState
+
+<span class="id">A.3</span>  If I have no connection → it queues and tells me so.
+     It does not silently disappear.
+     <span class="kw">fit:</span> queued count visible; zero dropped across 100 sends
+     <span class="kw">by:</span>  test Outbox.survivesOffline
+
+<span class="id">A.4</span>  <span class="str">[NEEDS CLARIFICATION: what happens to a queued message</span>
+<span class="str">     if I delete the thread before it sends?]</span>
+
+<span class="cm">## B · Add someone new</span>
+
+<span class="id">B.1</span>  I paste in their code → they show up in my list.
+     <span class="kw">fit:</span> contact appears without app restart
+     <span class="kw">by:</span>  test Contacts.addByCode</pre>
+        <p class="proposal-note">Everything to the left of <code>fit:</code> is what a person says out loud. Everything after it is what makes the line checkable, and it is only required when you claim the criterion is <em>met</em>, never when you write it down.</p>
+    </div>
+
+    <h3>The rules that make it work</h3>
+    <ol class="rules">
+        <li><strong>Permanent IDs, append-only.</strong> <code>A.3</code> is a name, not a position. New criteria append to the end of their group and never renumber anything. A retired criterion is marked retired and keeps its ID forever; the number is never reused.</li>
+        <li><strong>Revisions invalidate claims.</strong> When the meaning of a criterion changes, it becomes <code>A.3~2</code> and every piece of evidence still pointing at <code>~1</code> is reported stale. This is OpenFastTrace's mechanism, and it is the only proven answer to intent quietly rotting away from code.</li>
+        <li><strong>Capture is free, claiming is not.</strong> You can write (or dictate) a bare line with no <code>fit:</code> at all and it is a valid criterion in <em>draft</em>. It cannot move to <em>met</em> without one. This is the whole design: zero friction at the moment of thinking, real rigour at the moment of claiming done.</li>
+        <li><strong>Two lint tiers, two exit codes.</strong> Structural problems fail: unparseable line, claimed-met with no fit criterion, evidence pointing at a revision that no longer exists. Style smells only warn: vague adjectives, compound <code>and</code>/<code>or</code>, passive voice, missing actor. Smell detection measures roughly 59% precision at 82% recall, and a two-in-five false-alarm rate on a blocking gate is how a tool gets disabled in a week.</li>
+        <li><strong>Suppression is first-class.</strong> Any warning can be rejected inline and stays rejected, and any rule can be turned off per project. Copy the spell-checker model exactly.</li>
+        <li><strong>One file.</strong> Not a directory tree. The loudest complaint about every tool in this space is the volume of markdown it generates for humans to review.</li>
+    </ol>
+
+    <h3>What comes out of it</h3>
+    <div class="prose">
+        <p>The file is the source; tickets and specs are generated views of it, which is what makes the human-first ordering pay for itself.</p>
+    </div>
+    <ul class="plain">
+        <li><strong>Tickets.</strong> A criterion is already the right size for an issue. Its ID is the permanent link back, so a closed ticket can be traced to the exact line of intent it satisfied, and a reopened criterion can find its old ticket.</li>
+        <li><strong>Specs.</strong> A group of criteria becomes the seed for a spec-sync module: <code>## A</code> maps to a requirement, its <code>fit:</code> lines map to acceptance criteria, and <code>fledge spec new</code> takes it from there. hi writes the <em>why</em>; spec-sync owns the <em>contract</em>.</li>
+        <li><strong>Evidence.</strong> <code>by:</code> is a binding, not prose. It is a test id, a command with an expected exit code, or an explicit human sign-off. That is the field that separates a criterion from a wish.</li>
+    </ul>
+
+    <div class="prose">
+        <p>And because the human half of the file is just sentences, dictation works without any adaptation. Local speech-to-text with an LLM cleanup pass is a solved problem, so this is a prompt rather than a feature.</p>
+    </div>
+</section>
+
+<section>
+    <p class="section-kicker">Before we build</p>
+    <h2>Two things to settle</h2>
+    <div class="prose">
+        <p><strong>The name has a collision.</strong> <code>hi</code> on crates.io is taken and actively maintained (v0.1.18, ~21k downloads), but it is library-only with no binaries, so the <code>hi</code> <em>command</em> is free. Publish the crate as <code>hi-cli</code> with <code>[[bin]] name = "hi"</code>, and always write it as "hi (Human Intent)" in anything searchable. Homebrew core has no <code>hi</code> formula.</p>
+        <p><strong>Don't claim to be first.</strong> PoHI, FITPAC, codespec and agent-spec all make adjacent claims. The defensible claim is narrower and fully verifiable: <em>no acceptance-criteria format in this space has permanent criterion identity and a machine-resolvable verification binding, and no two of them can exchange a criterion without a human retyping it.</em></p>
+    </div>
+    <div class="open-q">
+        <ul class="plain">
+            <li>Does <code>fit:</code> stay optional at capture time, or does <code>hi</code> prompt for it immediately while the thought is fresh?</li>
+            <li>Standalone binary, fledge plugin, or a binary that fledge wraps?</li>
+            <li>Does hi write its own file, or add criterion IDs to the <code>## Acceptance Criteria</code> section spec-sync already has?</li>
+        </ul>
+    </div>
+</section>
+
+<footer>
+    <p>Sources: Mavin et&nbsp;al. (EARS, RE'09) · Volere Requirements Specification Template · IETF RFC 2119 / RFC 8174 · INCOSE Guide for Writing Requirements · Femmer et&nbsp;al., "Rapid Quality Assurance with Requirements Smells" · OpenFastTrace · AWS Kiro · GitHub spec-kit · Cucumber documentation · NaPiRE survey (228 companies, 10 countries).</p>
+    <p>The 291-criterion corpus was classified from seven public repositories using Kiro-style spec-driven requirements files. Percentages are of all 291 lines.</p>
+    <p>CorvidLabs · Brand Kit v1.3 · drafted for the <code>hi</code> repo, not yet a standard.</p>
+</footer>
+
+</div>

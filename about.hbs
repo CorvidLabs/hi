@@ -1,0 +1,19 @@
+# Third-party licenses
+
+`hi` is MIT licensed. The binary statically links the crates below, whose licenses are reproduced
+here to satisfy their notice requirements. Regenerate this file with `cargo about generate
+about.hbs > THIRD-PARTY-LICENSES.md`.
+
+{{#each licenses}}
+## {{name}}
+
+Used by:
+{{#each used_by}}
+- {{crate.name}} {{crate.version}}
+{{/each}}
+
+```
+{{text}}
+```
+
+{{/each}}

@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          cp ../../../LICENSE .
+          cp ../../../THIRD-PARTY-LICENSES.md .
+          cp ../../../README.md .
+          tar czf ../../../hi-${{ matrix.target }}.tar.gz hi LICENSE THIRD-PARTY-LICENSES.md README.md
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          cp ../../../LICENSE .
+          cp ../../../THIRD-PARTY-LICENSES.md .
+          cp ../../../README.md .
+          7z a ../../../hi-${{ matrix.target }}.zip hi.exe LICENSE THIRD-PARTY-LICENSES.md README.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            hi-*.tar.gz
+            hi-*.zip

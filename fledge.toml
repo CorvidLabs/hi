@@ -1,0 +1,16 @@
+# Project task definitions for fledge.
+# Docs: https://github.com/CorvidLabs/fledge#task-runner
+
+[tasks]
+build = "cargo build --release"
+test = "cargo test"
+lint = "cargo clippy --all-targets -- -D warnings"
+fmt = "cargo fmt --check"
+spec = "specsync check"
+# hi checks its own intent files with its own binary.
+intent = "cargo run --quiet -- check"
+plugin-validate = "fledge plugins validate . --strict"
+
+[lanes.verify]
+description = "The single gate: format, lint, tests, hi's own intent, and specs"
+steps = [{ parallel = ["fmt", "lint"] }, "test", "intent", "spec", "plugin-validate"]

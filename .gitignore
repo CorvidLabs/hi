@@ -1,0 +1,5 @@
+/target
+
+# spec-sync hash cache (regenerated locally)
+.specsync/hashes.json
+intent.html

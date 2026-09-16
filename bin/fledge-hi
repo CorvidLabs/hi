@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Thin shim so `fledge hi ...` runs the same binary as `hi ...`.
+set -euo pipefail
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+PLUGIN_DIR="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
+
+# Prefer an installed `hi`, fall back to this checkout's release build.
+if command -v hi >/dev/null 2>&1; then
+  exec hi "$@"
+elif [ -x "$PLUGIN_DIR/target/release/hi" ]; then
+  exec "$PLUGIN_DIR/target/release/hi" "$@"
+else
+  echo "error: hi is not built. Run 'cargo build --release' in $PLUGIN_DIR" >&2
+  exit 1
+fi

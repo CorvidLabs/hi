@@ -1,0 +1,8 @@
+# cargo-about configuration.
+# Regenerate the notice file with:  cargo about generate about.hbs > THIRD-PARTY-LICENSES.md
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+]

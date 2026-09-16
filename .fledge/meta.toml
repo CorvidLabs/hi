@@ -1,0 +1,28 @@
+[source]
+template = "rust-cli"
+fledge_version = "1.7.0"
+created = "2026-09-15"
+
+[variables]
+author = "Leif"
+date = "2026-09-15"
+description = "A new Rust CLI"
+github_org = "CorvidLabs"
+license = "MIT"
+project_name = "hi"
+project_name_camel = "hi"
+project_name_kebab = "hi"
+project_name_pascal = "Hi"
+project_name_snake = "hi"
+year = "2026"
+
+[files]
+".github/workflows/ci.yml" = "f68bd2e929b8a014d11f9a232b3fbfddc83bef1b2c53854b9b8aa634ab3b7f8e"
+".github/workflows/release.yml" = "918d3bb53ac585929fcf7000546d1f9a67bddbffe3d47edb8d40efc10592385a"
+".gitignore" = "2ebe6cb6f5289849dce5a8a6cdd77e06b1385302c862982f8e181c4782d19214"
+"CLAUDE.md" = "d997f75ef45761a64eb1bfa425c4a9bf8ac83921203c5fe87837e166a5f397ad"
+"Cargo.toml" = "8a61e40b204e7982ad4fbfd3d316924c17ef9e118a16c19a36ffc65b15b94090"
+LICENSE = "86483780a33837fefa73cfdfcdb51924534aa7fcebae31568d605ed1e5c5f543"
+"README.md" = "504b1c75816fa2d2ace7c09a28dc8882d6c1b4188b8d4728fb2788ecffa7e6b1"
+"fledge.toml" = "7ca2f7bd54545a15f7c2110e0cf9297d8c8d606c992462e34bf268be82f34643"
+"src/main.rs" = "3220b5314d7b64b0111a57baa88151d0aae311351535a5714be9eaf875f8eeb3"
