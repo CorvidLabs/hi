@@ -69,8 +69,10 @@ That is the whole format. Four rules:
 3. **Letters are cases, numbers are steps**, alternating strictly: `SEND-1.a.1.b`. Reading an id
    tells you what kind of thing it is.
 4. **Ids are permanent and append-first.** hi never renumbers anything, refuses an id that is
-   already taken, and keeps a retired id reserved. It cannot stop you renumbering a file by hand,
-   so permanence is a convention the tool supports rather than one it enforces.
+   already taken, and keeps a retired id reserved, including one written somewhere hi cannot parse.
+   Captures running at the same time all land rather than overwriting each other. It cannot stop
+   you renumbering a file by hand, so permanence is a convention the tool supports rather than one
+   it enforces; what it can do is refuse to be the one that breaks it.
 
 There is no fifth rule about who the sentence speaks for. Notice that `SEND-1` says *I* and
 `SPEND-1` says *an operator*, and that the difference is in the sentence, where anyone can read it.
@@ -273,6 +275,11 @@ OpenFastTrace, Kiro, spec-kit. GitHub shows that file as source, so save it and 
 browser. Read that page as history rather than documentation. It was written before any code
 existed and argues for a stricter product than the one that shipped, with evidence bindings and a
 lifecycle that were later cut; DECISIONS.md records why.
+
+This is the one promise the format rests on, because the whole point of an id is that it can be
+quoted somewhere hi will never see. Four ways hi's own verbs could quietly reuse one were found and
+closed in 0.4.0, three of which `hi check` had reported as fine; [DECISIONS.md](DECISIONS.md) §26
+records them and what they say about the design.
 
 `hi check` fails on exactly six things, all structural: a duplicate id, a case with no parent, an
 id that collides with a retired one, a line shaped like an id that is not a valid one, a family a
