@@ -237,6 +237,11 @@ is now wrong:
 
 > Written before any of it was built, which is the point. None of this exists yet.
 
+**Keep the role short enough to be a name.** hi's own criteria say `developer`,
+`reader`, `maintainer` and `agent`. If your role does not fit comfortably as a label, it is a
+description of what someone is doing rather than a name for who they are, and the sentence will
+read better with a shorter one.
+
 **Name the person, not the permission.** If your codebase says `admin`, the role is still probably
 `operator`. `admin` is a permission bit; an operator is someone with a job to do. The person is
 what the criterion is about.

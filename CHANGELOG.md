@@ -7,6 +7,22 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## [0.2.5] 2026-09-16
+
+### The roles were jargon
+
+hi's own criteria used "person writing intent" for 56 of them, which renders on
+the page as a four-word chip reading PERSON WRITING INTENT. That is not a
+person. "Intent" is this project's word for the thing, not a name anybody would
+call themselves, and the README's own rule is to name the person rather than
+describe them.
+
+Now four roles: developer, reader, maintainer, agent. This changes only hi's
+own criteria, not the format, which has always been free-form on purpose.
+
+The lesson generalises. If a role does not fit comfortably in a chip, it is a
+description rather than a name.
+
 ## [0.2.4] 2026-09-16
 
 ### The role label was never styled
