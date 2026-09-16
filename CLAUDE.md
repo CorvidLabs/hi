@@ -117,11 +117,25 @@ gitignored.
 
 ## Releasing
 
-v0.1.0 is out: the repo is public, `human-intent` is on crates.io, and the v0.1.0 release carries
-binaries for Linux, macOS and Windows. There is no Homebrew formula.
+v0.3.0 is out: the repo is public, `human-intent` is on crates.io, and every tagged release carries
+binaries for Linux, macOS (both architectures) and Windows. There is no Homebrew formula.
+
+**v0.2.4 and v0.2.5 are tagged on GitHub but were never published to crates.io.** Both `cargo
+publish` runs failed on a dirty tree and the failure was not noticed. 0.3.0 closed the gap, and the
+lesson is the rule below: read what `cargo publish` actually printed, and check the registry.
 
 `release.yml` fires on a `v*` tag, so **tagging is the release**. Bump `Cargo.toml`, update
-`CHANGELOG.md`, tag, then `cargo publish` separately. The format is not frozen; this is 0.x.
+`CHANGELOG.md`, commit, push, tag, then `cargo publish` separately. The format is not frozen; this
+is 0.x.
 
-There is unreleased work on `main`; crates.io is at 0.2.3 and `Cargo.toml` is ahead of it. `CHANGELOG.md` holds them under Unreleased, with no version
-number and no date, because the version is decided at tag time and nowhere else.
+**Publish from a clean tree, and verify the registry afterwards.** `cargo publish` refuses a dirty
+working tree, and that refusal is easy to miss in a wall of output. Run `cargo publish --dry-run`
+first, and confirm the version really landed:
+
+```bash
+curl -s -A "release-check" https://crates.io/api/v1/crates/human-intent | \
+  python3 -c "import json,sys; print(json.load(sys.stdin)['crate']['max_version'])"
+```
+
+Unreleased work sits under an `Unreleased` heading in `CHANGELOG.md` with no version number and no
+date, because the version is decided at tag time and nowhere else.

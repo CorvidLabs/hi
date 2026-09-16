@@ -291,12 +291,12 @@ on their own product to find it, and the first fix we shipped for it was the wro
 
 ## Status
 
-**v0.2.3** on [crates.io](https://crates.io/crates/human-intent), with binaries for Linux, macOS
-and Windows. The format is deliberately not frozen: this is 0.x, and `HI/1` may still change before
-a 1.0 that commits to it, as §24 just demonstrated.
+**v0.3.0** on [crates.io](https://crates.io/crates/human-intent), with binaries for Linux, macOS
+and Windows on the [release page](https://github.com/CorvidLabs/hi/releases). The format is
+deliberately not frozen: this is 0.x, and `HI/1` may still change before a 1.0 that commits to it,
+as §24 just demonstrated by removing a rule that four releases had required.
 
-`main` is ahead of the published crate. Removing the role prefix is the visible part; build from
-source for it. [CHANGELOG.md](CHANGELOG.md) lists what is unreleased.
+[CHANGELOG.md](CHANGELOG.md) has the history. There is no Homebrew formula and no docs site yet.
 
 ## License
 
