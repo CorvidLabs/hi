@@ -50,6 +50,9 @@ pub struct Problem {
 /// Everything `hi check` found.
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
+    /// A note about the product-level intent, when there is something to say.
+    /// Never a problem: hi does not fail on unfinished intent (hi: CHECK-1).
+    pub note: Option<String>,
     pub files: usize,
     pub criteria: usize,
     pub retired: usize,
@@ -61,6 +64,32 @@ impl Report {
     pub fn ok(&self) -> bool {
         self.problems.is_empty()
     }
+}
+
+/// What to say about the product-level intent, if anything.
+fn product_intent_note(workspace: &Workspace) -> Option<String> {
+    if workspace.docs.is_empty() {
+        return None;
+    }
+    let path = workspace.intent_path();
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Some("no INTENT.md yet. `hi index` starts one for the product-level why".into());
+    };
+    // Strip the generated index and the starter comment; if nothing human is
+    // left, the why has not been written.
+    let prose: String = raw
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("<!--") && !l.trim_start().starts_with("- ["))
+        .filter(|l| !l.trim().starts_with('#'))
+        .filter(|l| !l.contains("hi:index"))
+        .filter(|l| !l.trim_start().starts_with("Write it as a person"))
+        .collect::<Vec<_>>()
+        .join("")
+        .trim()
+        .to_string();
+    prose
+        .is_empty()
+        .then(|| format!("{} has no product-level why yet", workspace.rel(&path)))
 }
 
 /// Run every structural check across the workspace.
@@ -188,6 +217,7 @@ pub fn run(workspace: &Workspace) -> Report {
     problems.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
 
     Report {
+        note: product_intent_note(workspace),
         files: workspace.docs.len(),
         criteria: workspace.criteria_count(),
         retired: workspace.docs.iter().map(|d| d.retired.len()).sum(),

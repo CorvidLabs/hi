@@ -47,6 +47,7 @@ atomic write goes through. Error Cases below lists all eight.
 | `issue` | Resolve an id and print its ticket, or hand the same ticket to `gh issue create` when `create` is set. |
 | `export` | Build the agent payload as pretty-printed JSON for a family, a file named by its stem, its file name, or any path ending in `hi/<stem>.md`, or the whole repository. |
 | `index_block` | Build the generated feature list: one Markdown bullet per hi file, with its families and active-criterion count. |
+| `starter_intent` | The opening of a product-level `INTENT.md`: a title and a prompt for the holistic why. Shared with `capture`, which creates the file on the first capture so nobody has to discover it (hi: INDEX-3). |
 | `write_index` | Rewrite the generated block inside `INTENT.md`, matching the `hi:index` markers on whole lines only, creating the file or the `## Features` section when they do not exist yet, and refusing when an opening marker has no close; the replacement goes through `doc::write_atomically`, and the path written is returned relative to the workspace root. |
 
 ### Structs & Enums

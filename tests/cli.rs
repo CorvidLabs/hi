@@ -555,3 +555,112 @@ fn export_accepts_the_path_it_prints() {
         );
     }
 }
+
+#[test]
+fn retire_moves_a_criterion_and_its_cases_out_of_the_way() {
+    let repo = Repo::new("retire");
+    repo.write(
+        "hi/chat.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  As a member, I can send a message.\n  - **SEND-1.a**  As a member, if I am offline it queues.\n- **SEND-2**  As an operator, I can see the queue depth.\n",
+    );
+    let out = repo.run(&["retire", "SEND-1", "different product"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("retired"), "{}", stdout(&out));
+
+    let body = repo.read("hi/chat.md");
+    assert!(body.contains("## Retired"));
+    assert!(body.contains("retired: different product"));
+    // The case went with its parent, so nothing is orphaned.
+    assert!(
+        repo.run(&["check"]).status.success(),
+        "check must still pass"
+    );
+
+    // And the id stays spoken for.
+    let again = repo.run(&["SEND-1", "something else"]);
+    assert_eq!(again.status.code(), Some(1), "a retired id is not free");
+}
+
+#[test]
+fn retire_works_without_a_reason() {
+    let repo = Repo::with_chat("retirebare");
+    assert!(repo.run(&["retire", "SEND-1"]).status.success());
+    let body = repo.read("hi/chat.md");
+    assert!(body.contains("## Retired"));
+    assert!(!body.contains("retired:"), "no reason given, so no note");
+}
+
+#[test]
+fn the_first_capture_starts_the_product_intent_file() {
+    let repo = Repo::new("intentfile");
+    fs::create_dir_all(repo.root.join(".git")).unwrap();
+    let out = repo.run(&[
+        "SPEND-1",
+        "As an operator, I can cap what the bot spends in a day",
+    ]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(
+        repo.root.join("INTENT.md").exists(),
+        "the product-level why must exist from the first capture"
+    );
+    assert!(
+        stdout(&out).contains("INTENT.md"),
+        "and hi must say so: {}",
+        stdout(&out)
+    );
+
+    // check mentions it while it is still unwritten, and never fails.
+    let check = repo.run(&["check"]);
+    assert!(check.status.success());
+    assert!(
+        stdout(&check).contains("no product-level why"),
+        "{}",
+        stdout(&check)
+    );
+}
+
+#[test]
+fn a_criterion_carries_the_role_it_speaks_for() {
+    let repo = Repo::new("roles");
+    repo.write(
+        "hi/bot.md",
+        "---\nhi: 1\nfamilies: [SPEND, PLAY]\n---\n\n## Criteria\n\n- **SPEND-2**  As an operator, I can cap what the bot spends in a day.\n- **PLAY-2**  As a member, I can see what I won without opening my wallet.\n",
+    );
+
+    let ls = repo.run(&["ls"]);
+    assert!(stdout(&ls).contains("[operator]"), "{}", stdout(&ls));
+    assert!(stdout(&ls).contains("[member]"), "{}", stdout(&ls));
+
+    let export = repo.run(&["export"]);
+    let value: serde_json::Value = serde_json::from_str(&stdout(&export)).unwrap();
+    let criteria = value["files"][0]["criteria"].as_array().unwrap();
+    assert_eq!(criteria[0]["role"], "operator");
+    assert_eq!(criteria[1]["role"], "member");
+
+    // And the page shows who is speaking rather than an undifferentiated "I".
+    assert!(repo.run(&["view"]).status.success());
+    let page = repo.read("intent.html");
+    assert!(
+        page.contains("class=\"role\""),
+        "the page must label the voice"
+    );
+    assert!(page.contains("operator") && page.contains("member"));
+}
+
+#[test]
+fn a_ticket_does_not_print_the_sentence_twice() {
+    let repo = Repo::new("ticket");
+    repo.write(
+        "hi/bot.md",
+        "---\nhi: 1\nfamilies: [SPEND]\n---\n\n## Criteria\n\n- **SPEND-1**  As an operator, I can cap the daily spend.\n",
+    );
+    let out = repo.run(&["issue", "SPEND-1"]);
+    let text = stdout(&out);
+    assert_eq!(
+        text.matches("I can cap the daily spend").count(),
+        1,
+        "the heading already carries it:\n{text}"
+    );
+    assert!(text.contains("Speaking as operator"), "{text}");
+    assert!(text.contains("hi: SPEND-1"));
+}

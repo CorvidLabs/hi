@@ -7,6 +7,66 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## [0.2.0] 2026-09-16
+
+Everything here comes from one field report: someone used v0.1.0 cold on a 33k-line Swift Discord
+bot, roughly 40 criteria across 9 families, and wrote up where it let them down. The three biggest
+findings were all things hi could never have found by dogfooding itself, because hi serves one
+audience and that project serves three.
+
+### Criteria say whose voice they speak in
+
+A criterion is now written as role-play: `- **SPEND-2**  As an operator, I can cap what the service
+spends in a day.` On a product with several audiences, an operator criterion and a member criterion
+used to render as the same undifferentiated "I", and a reader could not tell whether the person was
+being paid or doing the paying.
+
+There is no new syntax. Because the shape is universal, hi reads the role off the front of the
+sentence and surfaces it in `hi ls`, in `hi export` as a `role` field, on the ticket, and as a label
+on the page. A criterion without a role still works; nothing fails.
+
+hi's own 96 criteria were rewritten in this voice, across six roles.
+
+### `hi retire <ID> [reason]`
+
+`## Retired` existed in the format from the first release and no command put anything there, so the
+only way to retire a criterion was to hand-edit markdown, in a tool whose pitch is that you do not
+hand-edit. The reporter cut seven criteria by deleting lines and never found the section.
+
+Retiring now takes one command. Cases go with their parent so nothing is orphaned, the reason is
+optional and kept next to what it explains, and the id stays reserved forever.
+
+### The product-level why is no longer undiscoverable
+
+`INTENT.md` is created on the first capture rather than waiting for someone to run `hi index`, and
+`hi check` keeps saying so while it still has no why written in it. It is in the README walkthrough
+now too, which never named the file at all.
+
+### Also
+
+- `hi issue` no longer prints the sentence twice, and its ticket body nests cases correctly. The
+  indent was on the wrong side of the bullet, so GitHub rendered them as a flat list, and at four
+  spaces as a code block.
+- A refused capture no longer leaves a half-made file behind. The new family's file was written
+  before hi knew the criterion could be stored.
+- A case can no longer be hung off a retired parent, where it used to nest under whatever criterion
+  happened to sit last.
+- `fledge hi` runs this plugin's own binary instead of whatever `hi` is first on `PATH`. Another
+  project ships a coding agent by that name.
+- `hi index` no longer rewrites a marker pair that sits inside a fenced code block.
+- The README says why there is no prose linter, with the number: requirements-smell detection
+  measures about 59% precision, so a linter would be wrong two times in five.
+
+### Not changed, deliberately
+
+The reporter withdrew their prose-linter complaint after reading the design record, and said the
+format caught them writing implementation four times while they were typing. That is the intended
+mechanism working without a checker.
+
+Their last finding has no fix in the tool: hi is worth reaching for at the start of a feature, not
+after. Writing intent for code that already exists means reverse-engineering the want from the
+implementation. The README now says so rather than pretending otherwise.
+
 ## [0.1.0] 2026-09-16
 
 First release. On crates.io as `human-intent`, installing a binary named `hi`, with archives for

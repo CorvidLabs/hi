@@ -57,7 +57,7 @@ in `hi/` that hi regenerates. The prose above the index is yours; hi never touch
 ```markdown
 ---
 hi: 1
-families: [SEND, RECEIPT, OFFLINE]
+families: [SEND, RECEIPT, OFFLINE, SPEND]
 owner: leif
 ---
 
@@ -70,20 +70,22 @@ and without it feeling like a security product. It should feel like texting.
 
 ## Criteria
 
-- **SEND-1**  I hit enter and the message shows up right away, marked as sending.
-  - **SEND-1.a**  If I have no connection it queues and tells me, and never silently disappears.
-  - **SEND-1.b**  If the thread was deleted before it sends, it warns me before discarding.
-    - **SEND-1.b.1**  The draft is kept.
-- **SEND-2**  It reaches them and the mark changes to sent.
+- **SEND-1**  As a member, I hit enter and the message shows up right away, marked as sending.
+  - **SEND-1.a**  As a member, if I have no connection it queues and tells me, and never silently disappears.
+  - **SEND-1.b**  As a member, if the thread was deleted before it sends, it warns me before discarding.
+    - **SEND-1.b.1**  As a member, the draft is kept.
+- **SEND-2**  As a member, it reaches them and the mark changes to sent.
 
-- **RECEIPT-1**  I can tell the difference between sent and read without thinking about it.
+- **RECEIPT-1**  As a member, I can tell the difference between sent and read without thinking about it.
 
-- **OFFLINE-1**  I can read old threads with no connection.
+- **OFFLINE-1**  As a member, I can read old threads with no connection.
+
+- **SPEND-1**  As an operator, I can cap what the service spends in a day.
 
 ## Retired
 
-- **SEND-3**  Messages auto-delete after 24 hours.
-        retired: we decided this was a different product
+- **SEND-3**  As a member, my messages auto-delete after 24 hours.
+  retired: we decided this was a different product
 ```
 
 ### Sections
@@ -98,11 +100,16 @@ and without it feeling like a security product. It should feel like texting.
 ### Line grammar
 
 ```
-<indent by depth>- **<ID>**  <sentence>
+<indent by depth>- **<ID>**  As a <role>, <sentence>
 ```
 
 **One criterion is one markdown list item, on one line.** However long the sentence runs, it is
 never wrapped, so criteria stay greppable, diffable, and readable as a list.
+
+**Every criterion is role-play, and the role is the front of the sentence.** `As a member,` or
+`As an operator,` and then what that person can do. The role is not a field and not new syntax: it
+is ordinary English at a fixed position, which is what lets hi read it back off the front. §14
+records why this became a rule and what happens to a sentence that omits it.
 
 The list item is not decoration. Markdown joins consecutive plain lines into a single paragraph, so
 a file of bare `SEND-1  <sentence>` lines is one line per criterion in the source and an unreadable wall of
@@ -175,7 +182,8 @@ Rust, `clap 4` derive.
 | `hi` | Print help. |
 | `hi <ID> <sentence>` | Capture. The file is resolved from the ID's family via frontmatter. A new family starts its own file. Writes into `## Criteria`, appending a new criterion and putting a case directly under its parent. |
 | `hi check` | Structural validation. Reports everything; exits 1 **only** on a structural error. `--json` emits the same report as JSON, families named. |
-| `hi ls` | List criteria, grouped by file, optionally filtered to one family with `--family` and including retired ones with `--retired`. |
+| `hi ls` | List criteria, grouped by file, optionally filtered to one family with `--family` and including retired ones with `--retired`. Each sentence is prefixed with its role in brackets. |
+| `hi retire <ID> [reason]` | Move a criterion and every case under it into `## Retired`, creating the section if the file has none. The reason is optional and is written under the block it explains. The ID stays reserved forever. |
 | `hi issue <ID>` | Print a ticket-shaped markdown block. `--create` shells out to `gh` to open a real issue, into `--repo owner/name` if you name one. |
 | `hi export [FAMILY \| file]` | JSON payload for an agent. Takes a family, a file, or nothing (the whole repo, including `INTENT.md`). |
 | `hi index` | Regenerate the feature index in `INTENT.md`. |
@@ -192,21 +200,34 @@ Capture resolves on the ID, and the rule is **a new ID just works; an existing I
 | An ID that already exists | Refuses, and suggests the next free number. |
 
 ```console
-$ hi SEND-2 "it reaches them and the mark changes to sent"
+$ hi SEND-2 "As a member, it reaches them and the mark changes to sent"
 hi/chat.md  +SEND-2
 
-$ hi SEND-2.a "if they blocked me it just never delivers"
+$ hi SEND-2.a "As a member, if they blocked me it just never delivers"
 hi/chat.md  +SEND-2.a
 
-$ hi BILLING-1 "I can see exactly what I paid for"
+$ hi BILLING-1 "As a member, I can see exactly what I paid for"
 hi/billing.md  created
 hi/billing.md  +BILLING-1
 
-$ hi SEND-2 "something else"
+$ hi SEND-2 "As a member, something else"
 error: SEND-2 already exists in hi/chat.md:31
 hint:  next free is SEND-3
 exit 1
 ```
+
+The very first capture in a repository also writes `INTENT.md`, and says so on its own line:
+
+```console
+$ hi CHECKOUT-1 "As a shopper, I can pay without making an account"
+INTENT.md  created, for the product-level why
+hi/checkout.md  created
+hi/checkout.md  +CHECKOUT-1
+```
+
+That happens after the criterion is safely on disk, and it is best effort: if `INTENT.md` cannot be
+written, the capture that already succeeded is not reported as a failure. §15 records why the file
+exists from the first capture rather than waiting to be discovered (`INDEX-3`).
 
 A mistyped family creates a stray file rather than an error. Accepted: it is visible as a new file
 holding one criterion in `hi ls`, and as an extra name in the `families` list of
@@ -240,6 +261,38 @@ exit 0
 
 Each problem line is `line:code  message`, so the code is greppable and the line number is the
 first thing you read.
+
+**One note, which is never a problem.** While `INTENT.md` has no product-level why in it, `hi check`
+says so on a `note:` line and still exits 0:
+
+```console
+$ hi check
+18 criteria · 4 families · 3 files
+note: INTENT.md has no product-level why yet
+exit 0
+```
+
+It is the one thing hi nags about, and it nags in the only way §5 allows: by saying it, not by
+failing. The note disappears the moment there is prose in the file (`INDEX-3.a`).
+
+### Retire
+
+`## Retired` was in the format from the start and for a while nothing put anything there, so the
+only way to retire a criterion was to hand-edit the markdown. `hi retire` closes that:
+
+```console
+$ hi retire SPEND-1 "the operator console is a separate product"
+hi/chat.md  SPEND-1 retired
+
+$ hi retire SEND-1
+hi/chat.md  SEND-1 retired, with 2 of its cases
+```
+
+The criterion and every case under it move together, so nothing is orphaned behind them. The reason
+is optional, and it is written on its own line after the whole block rather than after the parent
+line, so a parent's cases stay attached to it. Retiring does not free the number: `SEND-4` is still
+next after `SEND-3` retires (§8.3), capture refuses a retired ID, `hi issue` refuses to make work
+out of one, and `hi check` reports any live criterion that reuses one.
 
 ### Generation
 
@@ -279,7 +332,7 @@ The full spec-sync treatment: **public repo, a README that teaches the format in
 docs site at `corvidlabs.xyz/hi`**, with the binary as the reference implementation. The repo and
 the README shipped with v0.1.0; the docs site has not been built yet and `corvidlabs.xyz/hi` still
 returns 404, so the README is the only documentation there is. The format is documented prose.
-There is no formal grammar and no conformance-vector suite, because the format is four rules and a
+There is no formal grammar and no conformance-vector suite, because the format is five rules and a
 file layout.
 
 ---
@@ -310,7 +363,10 @@ Recorded so it is not silently reinvented.
 - **EARS / any sentence grammar.** 81% of real AI-generated "EARS" matched one pseudo-pattern that
   is not EARS, while 90% had no measurable anchor. Syntax conformance is free and worthless.
 - **A prose linter.** Requirements-smell detection measures ~59% precision. A two-in-five
-  false-alarm rate is how a tool gets disabled in week one.
+  false-alarm rate is how a tool gets disabled in week one. This is the single most-asked-for
+  missing feature, so the number now lives in the README's "What it deliberately does not do"
+  section as well, where a first-time reader meets the question. It was buried here, and a field
+  report told us that was the wrong place for it.
 - **Checkboxes.** A tick is a human assertion that nothing backs up.
 - **An inbox.** Capture goes straight into the feature file, named now.
 - **A CI gate on intent.** hi is installable on a Friday without turning anyone's build red.
@@ -462,3 +518,110 @@ installing ours shadows it, and you choose which one wins on your path.
 either project landing in Homebrew core, where there is only one `hi`. Either would turn a shared
 name into a contested one, and at that point the honest move is to ship `human-intent` as the
 primary command and keep `hi` as the convenience.
+
+---
+
+## 14. Criteria are role-play
+
+**Every criterion is written in someone's voice, and the voice comes first.**
+
+```
+- **SEND-1**  As a member, I can send a message and see it arrive.
+- **SPEND-2**  As an operator, I can cap what the bot spends in a day.
+```
+
+### What the field report found
+
+Someone took hi cold to a 33k-line Swift Discord bot, a product with two sides: the people running
+the bot and paying for it, and the people in the server using it. They wrote criteria for both, and
+then could not read them back.
+
+An operator criterion and a member criterion rendered as the same undifferentiated *I*. Nothing on
+the line, in `hi ls`, in the ticket or on the page said which one was speaking. A reader could not
+tell whether the person in the sentence was **being paid or doing the paying**, and on that product
+that distinction was usually the entire reason two criteria disagreed. The format had nowhere to
+put the one fact that made the list readable.
+
+### Why hi's own dogfooding could never find it
+
+hi serves one audience. Its own criteria are written by a person writing intent, for a person
+writing intent, and read by a maintainer or an agent doing what that person asked. There is no
+second party with money on the other side of the table, so there is never a sentence whose meaning
+changes depending on who is saying it. Every criterion in `hi/` could have dropped its role and
+nothing would have read worse.
+
+That is the shape of the blind spot, and it is worth stating generally: **dogfooding finds the
+failures your product has, and is silent about the ones your users have and you do not.** hi has
+one audience and one voice. Most products have several, and several of them are in conflict. No
+amount of using hi on hi would have surfaced this. It took one person using it on something else.
+
+### The decision
+
+Criteria are **always** role-play. Not optionally, not for multi-sided products, always. A format
+where the role is optional is a format where half the file has one and the other half does not, and
+then the absence means nothing.
+
+**There is no new syntax.** The role is ordinary English at a fixed position: `As a <role>,` or
+`As an <role>,` and then the sentence. Because the shape is universal, hi can read it back off the
+front. `doc::role_of` takes the text between that opening and the first comma; `doc::without_role`
+returns the remainder, so the two can be rendered apart. A role is a short noun phrase, at most four
+words, followed by a comma.
+
+`hi ls` prints it in brackets ahead of the sentence, `hi export` emits it as its own `role` field
+beside the full text, `hi issue` opens the ticket body with *Speaking as operator.*, and `hi view`
+carries it onto the page.
+
+### What is deliberately not built
+
+**Nothing enforces it.** There is no seventh `check::Kind`, and there is no warning. A criterion
+with no role parses, exports, prints and renders exactly as it is written, and `hi check` stays
+silent. Enforcing the opening of a sentence is the sentence grammar §9 refused, and it would be
+refused for the same reason: syntax conformance is free to check and worth nothing, and a checker
+people argue with is a checker people disable.
+
+**The four-word cap is a heuristic, not a parser.** It exists so that a sentence which happens to
+begin *"as a"* is not mistaken for a role. It is not exact: *"As a matter of fact, the queue is
+flushed nightly"* will be read as a role named *matter of fact*. That is accepted. The cost is one
+odd-looking bracket in `hi ls`, and the alternative is a vocabulary of legal roles, which is a
+schema, and a schema is exactly the form that stops people writing things down.
+
+**There is no `roles:` list in frontmatter**, and no check that a role is one hi has seen before.
+If a product later needs a closed set, that is the cheapest addition and it can be made without
+touching any file, because the roles are already in the sentences. It is not built now because the
+first version of every taxonomy is wrong, and a wrong taxonomy is harder to leave than no taxonomy.
+
+**The format version does not change.** `HI/1` described a sentence, and this is a sentence. A file
+written before this decision is still valid; it just cannot tell you who is speaking.
+
+---
+
+## 15. The rest of what the field report changed
+
+The same report produced three more things, all of them holes that only a real product could show.
+
+**`hi retire` exists now.** `## Retired` had been in the format from §3 onward, and for the whole of
+0.1.0 no command put anything there. The only way to retire a criterion was to hand-edit the
+markdown, in a tool whose entire pitch is that you do not hand-edit your criteria. The report cut
+seven criteria by deleting the lines and never found the section at all: those seven sentences are
+gone and the IDs they used are written down nowhere, which is precisely the failure §4 says is
+worse than having no IDs. `hi retire <ID> [reason]` moves the criterion and its cases in one
+command, creates the section when the file has none, and keeps the reason next to what it explains
+(`RETIRE-1`, `RETIRE-2`).
+
+**`INTENT.md` exists from the first capture, and `hi check` says while it is empty.** It used to
+appear only when somebody ran `hi index`, which meant it appeared only for people who had read far
+enough to know the verb existed. The report never saw the file, so the product-level why for a
+33k-line codebase was never written. Capture now creates it as soon as there is anything to have a
+why about, and `hi check` carries a `note:` line until there is prose in it. The note never fails
+and never affects the exit code, because §5 does not bend for this (`INDEX-3`, `INDEX-3.a`).
+
+**`hi issue` printed the sentence twice and flattened the cases.** The criterion's sentence was the
+ticket heading and then the first line of the body, which reads as a bug in the generator rather
+than as a ticket. And the case indent was written after the bullet instead of before it, so
+markdown rendered nested cases as a flat list of peers, or as a code block once there were four
+spaces of it. Both fixed (`ISSUE-3.a`).
+
+The lesson is the one in §14 and it is worth the repetition: everything in these two sections came
+from one person using hi on a product that was not hi, in a week. None of it could have come from
+dogfooding, and the parts of hi that dogfooding does exercise are, unsurprisingly, the parts that
+were already right.

@@ -29,6 +29,12 @@ pub struct Criterion {
     pub id_error: Option<IdError>,
     /// The sentence, with continuation lines joined by a single space.
     pub text: String,
+    /// The role the sentence speaks for, when it opens with one.
+    ///
+    /// Criteria are written as role-play: "As an operator, I can cap what the
+    /// bot spends." Because that is always the shape, the role needs no syntax
+    /// of its own; hi reads it off the front of the sentence.
+    pub role: Option<String>,
     /// A `retired:` note, when present.
     pub note: Option<String>,
     /// 0-based index of the line the id sits on.
@@ -356,11 +362,13 @@ impl Doc {
             Err(err) => (None, Some(err)),
         };
 
+        let role = role_of(&text);
         (
             Criterion {
                 id,
                 raw_id: raw_id.to_string(),
                 id_error,
+                role,
                 text,
                 note,
                 line: start,
@@ -556,6 +564,73 @@ impl Doc {
         }
     }
 
+    /// Move a criterion and everything beneath it into `## Retired`.
+    ///
+    /// Cases go with their parent, because a case whose parent has been retired
+    /// is an orphan that `check` would then report. The section is created when
+    /// the file has none, and the id stays reserved forever either way.
+    pub fn retire(&mut self, id: &Id, reason: Option<&str>) -> Result<usize> {
+        let mut ranges: Vec<(usize, usize)> = self
+            .criteria
+            .iter()
+            .filter(|c| {
+                c.id.as_ref()
+                    .is_some_and(|other| other == id || other.is_descendant_of(id))
+            })
+            .map(|c| (c.line, c.end_line))
+            .collect();
+
+        if ranges.is_empty() {
+            bail!("{id} is not an active criterion in {}", self.path.display());
+        }
+        ranges.sort_unstable();
+        let count = ranges.len();
+
+        let mut moved: Vec<String> = Vec::new();
+        for (start, end) in &ranges {
+            moved.extend_from_slice(&self.lines[*start..=*end]);
+        }
+        if let Some(reason) = reason.map(str::trim).filter(|r| !r.is_empty()) {
+            // After the whole block, so a parent's cases stay attached to it.
+            let indent = " ".repeat(moved[0].len() - moved[0].trim_start().len() + 2);
+            moved.push(format!("{indent}retired: {reason}"));
+        }
+
+        // Highest first, so the earlier ranges keep their indexes.
+        for (start, end) in ranges.iter().rev() {
+            self.lines.drain(*start..=*end);
+        }
+
+        let at = self.retired_end();
+        let mut block = Vec::new();
+        if self.retired_heading().is_none() {
+            block.push(String::new());
+            block.push("## Retired".to_string());
+            block.push(String::new());
+        }
+        block.extend(moved);
+        self.lines.splice(at..at, block);
+
+        // Positions moved in both directions, so re-derive them rather than
+        // trying to patch each one.
+        *self = Doc::parse(self.path.clone(), &self.to_text());
+        Ok(count)
+    }
+
+    fn retired_heading(&self) -> Option<usize> {
+        self.lines
+            .iter()
+            .position(|line| line.trim().eq_ignore_ascii_case("## Retired"))
+    }
+
+    /// Where a newly retired criterion should be appended.
+    fn retired_end(&self) -> usize {
+        match self.retired_heading() {
+            Some(_) => last_content_line(&self.lines, self.lines.len()) + 1,
+            None => last_content_line(&self.lines, self.lines.len()) + 1,
+        }
+    }
+
     /// Serialize back to text, preserving the original trailing-newline shape.
     pub fn to_text(&self) -> String {
         let mut out = self.lines.join(self.newline);
@@ -583,6 +658,36 @@ impl Doc {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| self.path.display().to_string())
     }
+}
+
+/// Read the role off the front of a sentence written as role-play.
+///
+/// "As an operator, I can cap the spend." gives `operator`. A sentence that
+/// does not open that way simply has no role; nothing fails.
+pub fn role_of(text: &str) -> Option<String> {
+    let rest = text
+        .strip_prefix("As a ")
+        .or_else(|| text.strip_prefix("As an "))
+        .or_else(|| text.strip_prefix("as a "))
+        .or_else(|| text.strip_prefix("as an "))?;
+    let (role, _) = rest.split_once(',')?;
+    let role = role.trim();
+    // A role is a short noun phrase. Anything long is a sentence that happens
+    // to begin with "as a", not a role.
+    if role.is_empty() || role.split_whitespace().count() > 4 {
+        return None;
+    }
+    Some(role.to_string())
+}
+
+/// The sentence with its role prefix removed, for rendering the two apart.
+pub fn without_role(text: &str) -> &str {
+    if role_of(text).is_some()
+        && let Some((_, rest)) = text.split_once(',')
+    {
+        return rest.trim_start();
+    }
+    text
 }
 
 /// Drop markdown emphasis around a token, so `**SEND-1**` reads as `SEND-1`.
@@ -1037,6 +1142,70 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().contains("hi-tmp"))
             .collect();
         assert!(leftovers.is_empty(), "the temp file must be renamed away");
+    }
+
+    #[test]
+    fn retiring_takes_the_cases_with_it() {
+        let mut doc = doc(
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  One.\n  - **SEND-1.a**  A case.\n- **SEND-2**  Two.\n",
+        );
+        let moved = doc
+            .retire(&Id::parse("SEND-1").unwrap(), Some("different product"))
+            .unwrap();
+        assert_eq!(moved, 2, "the case goes with its parent");
+        let text = doc.to_text();
+        assert!(text.contains("## Retired"));
+        assert!(text.contains("retired: different product"));
+        // SEND-2 stays live, and nothing is orphaned.
+        let reparsed = Doc::parse(PathBuf::from("hi/chat.md"), &text);
+        assert_eq!(reparsed.criteria.len(), 1);
+        assert_eq!(reparsed.criteria[0].raw_id, "SEND-2");
+        assert_eq!(reparsed.retired.len(), 2);
+    }
+
+    #[test]
+    fn retiring_without_a_reason_is_allowed() {
+        let mut doc = doc(
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  One.\n\n## Retired\n\n- **SEND-9**  Older.\n",
+        );
+        doc.retire(&Id::parse("SEND-1").unwrap(), None).unwrap();
+        let text = doc.to_text();
+        assert!(!text.contains("retired:"), "no reason, no note");
+        let reparsed = Doc::parse(PathBuf::from("hi/chat.md"), &text);
+        assert_eq!(reparsed.retired.len(), 2);
+        assert!(reparsed.criteria.is_empty());
+    }
+
+    #[test]
+    fn reads_the_role_a_sentence_speaks_for() {
+        assert_eq!(
+            role_of("As an operator, I can cap the spend."),
+            Some("operator".into())
+        );
+        assert_eq!(
+            role_of("As a member, I can see what I won."),
+            Some("member".into())
+        );
+        assert_eq!(
+            role_of("As a server owner, I can hand over the keys."),
+            Some("server owner".into())
+        );
+        // No role is not an error, it is just a sentence.
+        assert_eq!(role_of("I hit enter and it shows up."), None);
+        assert_eq!(role_of("As a rule the queue drains within a second."), None);
+        assert_eq!(
+            without_role("As an operator, I can cap the spend."),
+            "I can cap the spend."
+        );
+        assert_eq!(without_role("I hit enter."), "I hit enter.");
+    }
+
+    #[test]
+    fn a_criterion_carries_its_role() {
+        let doc = doc(
+            "---\nhi: 1\nfamilies: [SPEND]\n---\n\n## Criteria\n\n- **SPEND-2**  As an operator, I can cap what the bot spends in a day.\n",
+        );
+        assert_eq!(doc.criteria[0].role.as_deref(), Some("operator"));
     }
 
     #[test]

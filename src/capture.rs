@@ -18,6 +18,8 @@ pub struct Captured {
     pub id: Id,
     pub file: String,
     pub created_file: bool,
+    /// Set when this capture also started the product-level INTENT.md.
+    pub started_intent: Option<String>,
 }
 
 /// Add one criterion. Returns an error rather than writing when the id is taken
@@ -82,11 +84,17 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
     doc.insert(&id, sentence)?;
     doc.save()?;
 
+    // Only after the criterion is safely on disk. A product with criteria but
+    // no stated why is the common failure, so the file exists from the start
+    // rather than waiting to be discovered.
+    let started_intent = start_product_intent(workspace);
+
     let file = workspace.rel(&workspace.docs[index].path);
     Ok(Captured {
         id,
         file,
         created_file,
+        started_intent,
     })
 }
 
@@ -109,6 +117,20 @@ fn start_file(workspace: &mut Workspace, family: &str) -> Result<(usize, bool)> 
     let doc = Doc::parse(path, &new_file_text(&title_for(family), family));
     workspace.docs.push(doc);
     Ok((workspace.docs.len() - 1, true))
+}
+
+/// Create INTENT.md if the repository has none, returning its path.
+///
+/// Best effort: a criterion that is already stored must not be reported as a
+/// failure because this could not be written.
+fn start_product_intent(workspace: &Workspace) -> Option<String> {
+    let path = workspace.intent_path();
+    if path.exists() {
+        return None;
+    }
+    let body = crate::out::starter_intent(workspace);
+    fs::write(&path, body).ok()?;
+    Some(workspace.rel(&path))
 }
 
 /// `SEND` becomes `Send`, `TWO_FACTOR` becomes `Two factor`.

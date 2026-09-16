@@ -129,14 +129,27 @@ fn criteria_list(criteria: &[Criterion]) -> String {
     let mut out = String::new();
     for criterion in criteria {
         let depth = criterion.id.as_ref().map(|id| id.depth()).unwrap_or(1);
+        // Show who is speaking. Without it every criterion reads as the same
+        // undifferentiated "I", and a reader cannot tell whether the person is
+        // being paid or doing the paying.
+        let role = criterion
+            .role
+            .as_ref()
+            .map(|r| format!("<span class=\"role\">{}</span>", escape(r)))
+            .unwrap_or_default();
+        let sentence = if criterion.role.is_some() {
+            crate::doc::without_role(&criterion.text)
+        } else {
+            &criterion.text
+        };
         out.push_str(&format!(
             // The newline between the spans is deliberate: without whitespace
             // there, copying from the page yields "SEND-1I hit enter". Flex
             // layout ignores it, so nothing moves.
-            "<li class=\"d{}\">\n<span class=\"cid\">{}</span>\n<span class=\"ctext\">{}</span>\n</li>\n",
+            "<li class=\"d{}\">\n<span class=\"cid\">{}</span>\n<span class=\"ctext\">{role}{}</span>\n</li>\n",
             depth.min(4),
             escape(&criterion.raw_id),
-            inline_markdown(&criterion.text),
+            inline_markdown(sentence),
         ));
     }
     out

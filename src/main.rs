@@ -15,7 +15,7 @@ mod workspace;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
 
 use workspace::Workspace;
@@ -73,6 +73,13 @@ enum Command {
     Export {
         /// A family, a file stem, or nothing for the whole repository
         scope: Option<String>,
+    },
+    /// Move a criterion into Retired, keeping its id reserved forever
+    Retire {
+        /// The criterion id, for example SEND-3
+        id: String,
+        /// Why you changed your mind. Optional, and worth typing.
+        reason: Option<String>,
     },
     /// Regenerate the feature index inside INTENT.md
     Index,
@@ -168,6 +175,9 @@ fn run_capture(root: Option<&std::path::Path>, raw_id: &str, rest: &[String]) ->
     let mut workspace = Workspace::find(&start)?;
     let done = capture::capture(&mut workspace, raw_id, &sentence)?;
 
+    if let Some(intent) = &done.started_intent {
+        println!("{intent}  created, for the product-level why");
+    }
     if done.created_file {
         println!("{}  created", done.file);
     }
@@ -206,6 +216,23 @@ fn run(cli: Cli) -> Result<ExitCode> {
         }
         Command::Export { scope } => {
             println!("{}", out::export(&workspace, scope.as_deref())?);
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Retire { id, reason } => {
+            let mut workspace = workspace;
+            let parsed =
+                id::Id::parse(&id).map_err(|e| anyhow::anyhow!("'{id}' is not a valid id: {e}"))?;
+            let Some((index, _)) = workspace.find_id(&parsed) else {
+                bail!("{parsed} does not exist");
+            };
+            let doc = &mut workspace.docs[index];
+            let moved = doc.retire(&parsed, reason.as_deref())?;
+            doc.save()?;
+            let file = workspace.rel(&workspace.docs[index].path);
+            match moved {
+                1 => println!("{file}  {parsed} retired"),
+                n => println!("{file}  {parsed} retired, with {} of its cases", n - 1),
+            }
             Ok(ExitCode::SUCCESS)
         }
         Command::Index => {
@@ -251,6 +278,9 @@ fn print_report(report: &check::Report) {
 
     if !report.problems.is_empty() {
         println!("{}", plural(report.problems.len(), "problem", "problems"));
+    }
+    if let Some(note) = &report.note {
+        println!("note: {note}");
     }
 }
 
