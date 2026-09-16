@@ -633,3 +633,94 @@ from one person using hi on a product that was not hi. Dogfooding and a 45-agent
 already been over this code, and both were looking at the parts hi exercises on itself. A gap in the
 format, a verb the file format implied and no command provided, and a file nobody could discover
 are not bugs in that sense. They are things you only see from outside.
+
+---
+
+## 14. The role prefix turned out to be the linter
+
+Section 9 cut prose linting, and the reasoning still holds: requirements-smell detection measures
+about 59% precision, so a checker would be wrong two times in five and people would learn to ignore
+it.
+
+Then a field report from someone using hi on a product with three audiences found this, which we
+did not design and did not expect:
+
+> 38 of 40 took a role as a pure prefix. Two could not, and both turned out to be defective in a way
+> I had not noticed: I could not complete "As a ___" in front of them because I had written a fact
+> about the system rather than anyone's want.
+
+Requiring the role is an ambiguity detector, and it does not have the 59% problem, because it is not
+a heuristic. Nothing guesses. The author either can finish "As a ___," in front of their sentence or
+cannot, and being unable to finish it means what they wrote was not a want. There are no false
+positives available to a test the author performs on their own sentence.
+
+So hi has the thing section 9 said could not be built. It arrived as a side effect of asking whose
+voice a criterion speaks in, which was a different problem entirely. Section 9 is not reversed: we
+still ship no dictionary, no POS tagger and no smell rules. This is the whole of the mechanism, and
+it costs three words at the front of a sentence.
+
+`hi check` counts criteria that do not name a role. It does not fail on them, because a criterion
+without a role is unfinished rather than wrong, and section 5 stands.
+
+---
+
+## 15. What hi is upstream of
+
+The README used to say hi is worth reaching for at the start of a feature rather than after, on the
+grounds that writing intent for existing code means reverse-engineering the want from the
+implementation.
+
+The same reporter tested that directly by writing a family before any of its code existed, and
+corrected us:
+
+> The pull does not disappear, it changes source. Issue #109 is written as a solution, and reading
+> it I felt exactly the same pull, from a ticket instead of a file. So hi's value is not "before vs
+> after code", it is "upstream of whoever already decided the shape". Most tickets are written as
+> solutions.
+
+That is a better description of the tool and it is now the one the README gives. Code is one thing
+that decides the shape before you get there. A ticket written as a solution is another, and it is
+far more common.
+
+Two things were genuinely better before the code existed, and both are about absence rather than
+translation. You can write a criterion you have no idea how to implement, which an implementation
+never suggests. And four of that reporter's eleven criteria were things their own ticket did not
+propose at all: writing from something that exists makes what is missing invisible.
+
+---
+
+## 16. Whether a criterion is built yet
+
+hi does not record it, and will not.
+
+A reader cannot currently tell a shipped criterion from a wish, and on a page titled "What we said
+we wanted" that is a real misreading. The argument for recording it is good: unlike a lifecycle, it
+flips once rather than moving through states, so it is one bit rather than a workflow.
+
+We are still not doing it, for the reason section 5 gives. Nothing in hi knows when a feature ships,
+so the bit would be set by hand and would go stale, and a stale "not built yet" sitting on shipped
+behavior is worse than the silence it replaced.
+
+The convention instead, which is what the reporter did before asking:
+
+```markdown
+## Intent
+
+Written before any of it was built, which is the point. None of this exists yet.
+```
+
+The prose block is the first thing a reader meets, it cannot go stale without somebody reading the
+sentence that is now wrong, and it costs one line. The README says so, so the next person does not
+have to think of it themselves.
+
+---
+
+## 17. `hi ls` capitalizes after the role
+
+`hi ls` prints the sentence with its role stripped and the remainder capitalized, so
+`As a person writing intent, hi finds my workspace` lists as `[person writing intent] Hi finds my
+workspace`.
+
+This is display only. The file is never rewritten, and section 8.6 still holds: hi does not touch
+the words you wrote. It is recorded here because a reader of the list went and checked the file
+against 8.6 before concluding it was safe, which is a minute nobody should have to spend.

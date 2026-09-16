@@ -222,9 +222,25 @@ fn run(cli: Cli) -> Result<ExitCode> {
             let mut workspace = workspace;
             let parsed =
                 id::Id::parse(&id).map_err(|e| anyhow::anyhow!("'{id}' is not a valid id: {e}"))?;
-            let Some((index, _)) = workspace.find_id(&parsed) else {
+            let Some((index, found)) = workspace.find_id(&parsed) else {
                 bail!("{parsed} does not exist");
             };
+            // Already retired: this is someone coming back to say why, which
+            // is the normal shape of changing your mind.
+            if found.section == doc::Section::Retired {
+                let Some(reason) = reason.as_deref() else {
+                    bail!(
+                        "{parsed} is already retired.\n\
+                         hint:  say why with `hi retire {parsed} \"...\"`"
+                    )
+                };
+                let doc = &mut workspace.docs[index];
+                doc.set_retired_reason(&parsed, reason)?;
+                doc.save()?;
+                let file = workspace.rel(&workspace.docs[index].path);
+                println!("{file}  {parsed} now says why");
+                return Ok(ExitCode::SUCCESS);
+            }
             let doc = &mut workspace.docs[index];
             let moved = doc.retire(&parsed, reason.as_deref())?;
             doc.save()?;

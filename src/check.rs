@@ -220,6 +220,25 @@ pub fn run(workspace: &Workspace) -> Report {
     if let Some(note) = product_intent_note(workspace) {
         notes.push(note);
     }
+    // Retiring in a hurry is fine; never saying why is a decision nobody can
+    // reconstruct later. Same register as the role note, and never a failure.
+    let unexplained = workspace
+        .docs
+        .iter()
+        .flat_map(|doc| doc.retired.iter())
+        .filter(|c| c.note.is_none())
+        .count();
+    if unexplained > 0 {
+        let subject = if unexplained == 1 {
+            "1 retired criterion does".to_string()
+        } else {
+            format!("{unexplained} retired criteria do")
+        };
+        notes.push(format!(
+            "{subject} not say why. Add it with `hi retire <ID> \"...\"`"
+        ));
+    }
+
     let roleless = workspace
         .docs
         .iter()
@@ -227,14 +246,12 @@ pub fn run(workspace: &Workspace) -> Report {
         .filter(|c| c.role.is_none())
         .count();
     if roleless > 0 {
-        let subject = if roleless == 1 {
-            "1 criterion does".to_string()
+        let note = if roleless == 1 {
+            "1 criterion does not say who it speaks for".to_string()
         } else {
-            format!("{roleless} criteria do")
+            format!("{roleless} criteria do not say who they speak for")
         };
-        notes.push(format!(
-            "{subject} not say who they speak for. Open with \"As a ...,\""
-        ));
+        notes.push(format!("{note}. Open with \"As a ...,\""));
     }
 
     Report {

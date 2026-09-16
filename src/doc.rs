@@ -617,6 +617,40 @@ impl Doc {
         Ok(count)
     }
 
+    /// Record why an already retired criterion was retired.
+    ///
+    /// Retiring in a hurry and explaining later is the normal shape of
+    /// changing your mind, and without this the only way to add the reason was
+    /// to hand-edit the file, which is the thing the verb exists to remove
+    /// (hi: RETIRE-1.b).
+    pub fn set_retired_reason(&mut self, id: &Id, reason: &str) -> Result<()> {
+        let Some(criterion) = self
+            .retired
+            .iter()
+            .find(|c| c.id.as_ref() == Some(id))
+            .cloned()
+        else {
+            bail!("{id} is not retired in {}", self.path.display());
+        };
+
+        let indent = {
+            let line = &self.lines[criterion.line];
+            " ".repeat(line.len() - line.trim_start().len() + 2)
+        };
+        let rendered = format!("{indent}retired: {}", reason.trim());
+
+        // Replace an existing note, or add one after the criterion's last line.
+        let existing = (criterion.line..=criterion.end_line)
+            .find(|i| self.lines[*i].trim_start().starts_with("retired:"));
+        match existing {
+            Some(at) => self.lines[at] = rendered,
+            None => self.lines.insert(criterion.end_line + 1, rendered),
+        }
+
+        *self = Doc::parse(self.path.clone(), &self.to_text());
+        Ok(())
+    }
+
     fn retired_heading(&self) -> Option<usize> {
         self.lines
             .iter()
@@ -1177,6 +1211,26 @@ mod tests {
         assert_eq!(reparsed.criteria.len(), 1);
         assert_eq!(reparsed.criteria[0].raw_id, "SEND-2");
         assert_eq!(reparsed.retired.len(), 2);
+    }
+
+    #[test]
+    fn a_reason_can_be_added_after_the_fact() {
+        let mut doc = doc(
+            "---\nhi: 1\nfamilies: [GIFT]\n---\n\n## Criteria\n\n- **GIFT-4**  As an operator, I can cancel a gift.\n",
+        );
+        let id = Id::parse("GIFT-4").unwrap();
+        doc.retire(&id, None).unwrap();
+        assert!(!doc.to_text().contains("retired:"));
+
+        doc.set_retired_reason(&id, "we never shipped gifting")
+            .unwrap();
+        assert!(doc.to_text().contains("retired: we never shipped gifting"));
+
+        // And saying it twice replaces rather than stacks.
+        doc.set_retired_reason(&id, "different product").unwrap();
+        let text = doc.to_text();
+        assert_eq!(text.matches("retired:").count(), 1, "{text}");
+        assert!(text.contains("retired: different product"));
     }
 
     #[test]
