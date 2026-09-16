@@ -1,0 +1,100 @@
+name: Pages
+
+# hi's GitHub Pages site is hi's own output. `hi view` renders the 117 criteria
+# in hi/ to one self-contained page, and that page is the deployment: the demo
+# is the artifact, not a mock-up of it. If the page is ever wrong, it is wrong
+# for every hi user at the same time.
+#
+# The same deployment carries the Atlas coverage badges at /badges/, which is
+# where corvidlabs.xyz reads them from for a repo marked `governed` in its
+# project catalog (scripts/refresh-coverage.ts).
+#
+# Pages must be enabled once in the repository settings
+# (Settings -> Pages -> Source: GitHub Actions); this workflow does not enable it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hi/**"          # the criteria themselves
+      - "INTENT.md"      # the page title and its lead prose
+      - "src/**"         # how the page is rendered
+      - "specs/**"       # the atlas coverage badges track these
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build:
+    name: Render the intent page
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build hi
+        run: cargo build --release
+
+      # The page has to be a page hi itself accepts, or we would be publishing a
+      # demo of a repository that fails its own check.
+      - name: Check hi's own intent
+        run: ./target/release/hi check
+
+      - name: Render the page
+        run: |
+          mkdir -p site
+          ./target/release/hi view --out site/index.html
+          # A stable direct link, so someone can be sent the file rather than the site.
+          cp site/index.html site/intent.html
+          ./target/release/hi export > site/intent.json
+
+      # Served at corvidlabs.github.io/hi/badges/, which is where the
+      # corvidlabs.xyz build fetches them from.
+      - name: Render atlas coverage badges
+        uses: CorvidLabs/fledge-plugin-atlas@v1
+        with:
+          path: .
+          output-dir: site/badges
+          components: "coverage langmix treemap sunburst calendar"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
+    steps:
+      # Pages' backend occasionally returns a transient "Deployment failed, try
+      # again later". Attempt once, then retry, so a flake does not leave the
+      # badges and the demo stale until the next push.
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Deploy to GitHub Pages (retry transient failures)
+        id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4

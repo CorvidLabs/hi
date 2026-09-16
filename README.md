@@ -291,12 +291,20 @@ on their own product to find it, and the first fix we shipped for it was the wro
 
 ## Status
 
-**v0.3.0** on [crates.io](https://crates.io/crates/human-intent), with binaries for Linux, macOS
-and Windows on the [release page](https://github.com/CorvidLabs/hi/releases). The format is
+**v0.3.1** on [crates.io](https://crates.io/crates/human-intent), with binaries for Linux (x86_64
+and arm64), macOS (Intel and Apple silicon) and Windows on the
+[release page](https://github.com/CorvidLabs/hi/releases). The format is
 deliberately not frozen: this is 0.x, and `HI/1` may still change before a 1.0 that commits to it,
 as §24 just demonstrated by removing a rule that four releases had required.
 
-[CHANGELOG.md](CHANGELOG.md) has the history. There is no Homebrew formula and no docs site yet.
+```bash
+brew install corvidlabs/tap/hi
+```
+
+**See it before installing it.** [corvidlabs.github.io/hi](https://corvidlabs.github.io/hi) is this
+repository's own `hi view` output: the real criteria in [`hi/`](hi/), rendered by the real binary on
+every push. Docs are at [corvidlabs.xyz/hi](https://corvidlabs.xyz/hi).
+[CHANGELOG.md](CHANGELOG.md) has the history.
 
 ## License
 

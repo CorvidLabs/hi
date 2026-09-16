@@ -46,3 +46,5 @@ send to somebody.
 - **VIEW-17**  The page wears the CorvidLabs brand, using the kit's own tokens rather than colours invented here.
   - **VIEW-17.a**  The two brand faces are named first and the page falls back to the system's own, because it still has to open with no network.
 - **VIEW-18**  I can switch the page between light and dark myself, and it remembers which I chose.
+- **VIEW-19**  The page I would generate is published somewhere I can send a link to, so someone can see what hi looks like before installing it.
+  - **VIEW-19.a**  What is published is hi's own real criteria, not a mock-up, so a page that is wrong is wrong for everybody at once.

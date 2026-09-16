@@ -117,8 +117,10 @@ gitignored.
 
 ## Releasing
 
-v0.3.0 is out: the repo is public, `human-intent` is on crates.io, and every tagged release carries
-binaries for Linux, macOS (both architectures) and Windows. There is no Homebrew formula.
+v0.3.1 is out: the repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
+Homebrew tap, and every tagged release carries binaries for Linux and macOS (both architectures
+each) and Windows. The docs are at corvidlabs.xyz/hi, and corvidlabs.github.io/hi publishes this
+repository's own `hi view` output on every push to `main`.
 
 **v0.2.4 and v0.2.5 are tagged on GitHub but were never published to crates.io.** Both `cargo
 publish` runs failed on a dirty tree and the failure was not noticed. 0.3.0 closed the gap, and the

@@ -7,6 +7,26 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## [0.3.1] 2026-09-16
+
+### Linux arm64 binaries, and the page is published
+
+No code changed. This release exists to carry two things the 0.3.0 tag
+could not.
+
+**Linux arm64.** The release workflow now builds
+`aarch64-unknown-linux-gnu` on a native arm64 runner, so there is no
+cross-linker to keep working. That was the one gap in the Homebrew
+formula, which covered macOS on both architectures and Linux x86_64
+only.
+
+**The intent page is published.** `corvidlabs.github.io/hi` is hi's own
+`hi view` output: the real 119 criteria in `hi/`, rendered by the real
+binary on every push. The demo is the artifact rather than a mock-up of
+it, so a page that is wrong is wrong for everybody at the same time
+(`VIEW-19`, `VIEW-19.a`). The same deployment carries the Atlas coverage
+badges at `/badges/`, which is where corvidlabs.xyz reads them from.
+
 ## [0.3.0] 2026-09-16
 
 ### The page is a rail and a document, and it wears the brand kit
