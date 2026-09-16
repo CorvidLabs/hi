@@ -69,21 +69,16 @@ should read.
 
 ## Install
 
-**Nothing is published yet.** `hi` is pre-release, so install it from source:
-
 ```bash
-cargo install --git https://github.com/CorvidLabs/hi     # the command is `hi`
+cargo install human-intent     # the command it installs is `hi`
 ```
 
-or clone and build:
+Or take a binary from the [latest release](https://github.com/CorvidLabs/hi/releases) for Linux,
+macOS (Intel or Apple Silicon) or Windows.
 
-```bash
-git clone https://github.com/CorvidLabs/hi && cd hi
-cargo build --release                                    # target/release/hi
-```
-
-When it is published the crate will be `human-intent`, because the crate name `hi` is taken on
-crates.io. The command name is shared: several projects install a binary called `hi`, including
+The crate is `human-intent` because the crate name `hi` is taken on crates.io by something
+unrelated. A crate's name and its binary's name are independent, so `cargo install human-intent`
+puts `hi` on your path. The command name is shared: several projects install a binary called `hi`, including
 [PipeNetwork/hi](https://github.com/PipeNetwork/hi), which is a coding agent rather than anything
 like this. If you already have one, installing ours shadows it, and you pick which wins on your
 `PATH`. [DECISIONS.md](DECISIONS.md) §13 explains why we kept the name.
@@ -157,7 +152,9 @@ files are the honest version of why this exists.
 
 ## Status
 
-**Pre-release.** Nothing is published to crates.io or Homebrew yet, and the format is not frozen.
+**v0.1.0.** On [crates.io](https://crates.io/crates/human-intent), with binaries for Linux, macOS
+and Windows. The format is deliberately not frozen: this is 0.x, and `HI/1` may still change before
+a 1.0 that commits to it.
 
 ## License
 

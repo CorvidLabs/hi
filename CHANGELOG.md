@@ -7,10 +7,12 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
-## [Unreleased]
+## [0.1.0] 2026-09-16
 
-Nothing is published. There is no tag, the crate is not on crates.io, and there is no Homebrew
-formula. Tagging `v*` is what triggers a release build, so the repository is deliberately untagged.
+First release. On crates.io as `human-intent`, installing a binary named `hi`, with archives for
+x86_64 and aarch64 macOS, x86_64 Linux and x86_64 Windows. No Homebrew formula yet.
+
+The format is not frozen. This is 0.x on purpose.
 
 ### The format (HI/1)
 
