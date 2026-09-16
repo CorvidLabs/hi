@@ -63,29 +63,17 @@ pub fn ls(workspace: &Workspace, family: Option<&str>, include_retired: bool) {
 fn print_criterion(criterion: &Criterion) {
     let depth = criterion.id.as_ref().map(|id| id.depth()).unwrap_or(1);
     let indent = "  ".repeat(depth);
-    match &criterion.role {
-        Some(role) => println!(
-            "{indent}{}  [{role}] {}",
-            criterion.raw_id,
-            crate::doc::without_role(&criterion.text)
-        ),
-        None => println!("{indent}{}  {}", criterion.raw_id, criterion.text),
-    }
+    println!("{indent}{}  {}", criterion.raw_id, criterion.text);
 }
 
 // --- issue -------------------------------------------------------------
 
 /// Render a criterion and its cases as a ticket body.
 pub fn issue_markdown(doc: &Doc, criterion: &Criterion) -> (String, String) {
-    let title = crate::doc::without_role(&criterion.text)
-        .trim_end_matches('.')
-        .to_string();
+    let title = criterion.text.trim_end_matches('.').to_string();
 
     let mut body = String::new();
     // The heading already carries the sentence; repeating it reads as a bug.
-    if let Some(role) = &criterion.role {
-        body.push_str(&format!("Speaking as {role}.\n\n"));
-    }
     body.push_str(&format!("hi: {}\n", criterion.raw_id));
 
     if let Some(id) = &criterion.id {
@@ -161,8 +149,6 @@ pub fn issue(workspace: &Workspace, raw_id: &str, create: bool, repo: Option<&st
 struct ExportCriterion {
     id: String,
     text: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    role: Option<String>,
     depth: usize,
     parent: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -193,7 +179,6 @@ fn export_criterion(criterion: &Criterion) -> ExportCriterion {
     ExportCriterion {
         id: criterion.raw_id.clone(),
         text: criterion.text.clone(),
-        role: criterion.role.clone(),
         depth: criterion.id.as_ref().map(|id| id.depth()).unwrap_or(1),
         parent: criterion
             .id

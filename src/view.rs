@@ -129,22 +129,10 @@ fn row(doc: &Doc, criterion: &Criterion, retired: bool) -> String {
         .map(|i| i.family.clone())
         .unwrap_or_default();
 
-    let role = criterion.role.clone().unwrap_or_default();
-    let sentence = if criterion.role.is_some() {
-        crate::doc::without_role(&criterion.text)
-    } else {
-        criterion.text.clone()
-    };
-
     // A lowercased haystack, so searching never has to walk the DOM.
     let haystack =
-        escape(&format!("{} {} {} {}", criterion.raw_id, role, sentence, family).to_lowercase());
+        escape(&format!("{} {} {}", criterion.raw_id, criterion.text, family).to_lowercase());
 
-    let role_chip = if role.is_empty() {
-        String::new()
-    } else {
-        format!("<span class=\"role\">{}</span>\n", escape(&role))
-    };
     let why = criterion
         .note
         .as_ref()
@@ -152,15 +140,14 @@ fn row(doc: &Doc, criterion: &Criterion, retired: bool) -> String {
         .unwrap_or_default();
 
     format!(
-        "<li class=\"row d{}\" id=\"{}\" data-id=\"{}\" data-role=\"{}\" data-family=\"{}\" \
+        "<li class=\"row d{}\" id=\"{}\" data-id=\"{}\" data-family=\"{}\" \
          data-file=\"{}\" data-retired=\"{}\" data-find=\"{}\">\n\
          <a class=\"cid\" href=\"#{}\" title=\"Link to {}\">{}</a>\n\
-         <span class=\"ctext\">{}{}{}</span>\n\
+         <span class=\"ctext\">{}{}</span>\n\
          </li>\n",
         depth.min(4),
         id,
         id,
-        escape(&role),
         escape(&family),
         escape(&doc.name()),
         if retired { "1" } else { "0" },
@@ -168,8 +155,7 @@ fn row(doc: &Doc, criterion: &Criterion, retired: bool) -> String {
         id,
         id,
         id,
-        role_chip,
-        inline_markdown(&sentence),
+        inline_markdown(&criterion.text),
         why,
     )
 }
@@ -205,50 +191,43 @@ fn feature_section(doc: &Doc) -> String {
 
 const STYLE: &str = include_str!("view/style.css");
 const SCRIPT: &str = include_str!("view/app.js");
+// Copied from the CorvidLabs design system rather than hand-rolled, which its
+// ADOPTION.md asks for by name. Inlined, because the page fetches nothing
+// (hi: VIEW-2).
+const THEME: &str = include_str!("view/theme.js");
+const PREPAINT: &str = include_str!("view/prepaint.html");
+const TOGGLE: &str = include_str!("view/toggle.html");
 
 /// Build the whole page.
-pub fn render(workspace: &Workspace, product_intent: Option<&str>) -> String {
-    let title = workspace
-        .root
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
+pub fn render(workspace: &Workspace, product_intent: Option<&str>, name: Option<&str>) -> String {
+    // The name the author gave their product beats the directory it happens to
+    // sit in (hi: VIEW-11).
+    let title = name
+        .map(str::to_string)
+        .or_else(|| {
+            workspace
+                .root
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+        })
         .unwrap_or_else(|| "Intent".to_string());
 
     let total = workspace.criteria_count();
     let retired_total: usize = workspace.docs.iter().map(|d| d.retired.len()).sum();
 
-    let mut roles: Vec<String> = Vec::new();
-    for doc in &workspace.docs {
-        for criterion in doc.criteria.iter().chain(doc.retired.iter()) {
-            if let Some(role) = &criterion.role
-                && !roles.contains(role)
-            {
-                roles.push(role.clone());
-            }
-        }
-    }
-    roles.sort();
-
-    let role_chips: String = roles
-        .iter()
-        .map(|r| {
-            format!(
-                "<button type=\"button\" class=\"chip\" data-filter=\"role\" data-value=\"{}\">{}</button>",
-                escape(r),
-                escape(r)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let file_chips: String = workspace
+    // One entry per feature, carrying its own count so a reader knows how big a
+    // section is before going there (hi: VIEW-12.a).
+    let nav_items: String = workspace
         .docs
         .iter()
         .map(|d| {
             format!(
-                "<button type=\"button\" class=\"chip\" data-filter=\"file\" data-value=\"{}\">{}</button>",
+                "<button type=\"button\" class=\"navitem\" data-value=\"{}\">\
+                 <span class=\"navname\">{}</span>\n\
+                 <span class=\"navcount\">{}</span>\n</button>",
                 escape(&d.name()),
-                escape(&d.title.clone().unwrap_or_else(|| d.name()))
+                escape(&d.title.clone().unwrap_or_else(|| d.name())),
+                d.criteria.len()
             )
         })
         .collect::<Vec<_>>()
@@ -274,64 +253,74 @@ pub fn render(workspace: &Workspace, product_intent: Option<&str>) -> String {
         "<title>{}: what this should be</title>\n",
         escape(&title)
     ));
+    // Before any CSS, so a stored theme never flashes the other one first.
+    page.push_str(PREPAINT);
     page.push_str("<style>\n");
     page.push_str(STYLE);
-    page.push_str("</style>\n</head>\n<body>\n<div class=\"wrap\">\n");
+    page.push_str("</style>\n</head>\n<body>\n<div class=\"app\">\n");
 
-    page.push_str("<header>\n<p class=\"eyebrow\">What this should be</p>\n");
-    page.push_str(&format!("<h1>{}</h1>\n", escape(&title)));
-    page.push_str(&lead);
-    page.push_str("\n<hr class=\"rule\">\n</header>\n");
-
-    // Hidden until the script runs, so nobody is shown a search box that
-    // cannot search.
-    page.push_str("<div class=\"controls\" id=\"controls\" hidden>\n");
+    // The rail: the product's name, the search box, and every feature. It is
+    // sticky, so navigation never scrolls away (hi: VIEW-12). With scripting
+    // off the search box and the sort control are hidden, because neither can
+    // do anything (hi: VIEW-10).
+    page.push_str("<aside class=\"rail\">\n<div class=\"railstick\">\n<div class=\"railtop\">\n");
+    page.push_str("<div class=\"brandrow\">\n");
+    page.push_str(&format!("<p class=\"brand\">{}</p>\n", escape(&title)));
+    page.push_str(TOGGLE);
+    page.push_str("</div>\n");
     page.push_str(
-        "<div class=\"searchrow\">\n\
-         <input type=\"search\" id=\"q\" placeholder=\"Search criteria, ids, roles. Press /\" \
-         autocomplete=\"off\" spellcheck=\"false\">\n\
+        "<div class=\"searchwrap\" id=\"searchwrap\" hidden>\n\
+         <input type=\"search\" id=\"q\" placeholder=\"Search\" \
+         autocomplete=\"off\" spellcheck=\"false\" aria-label=\"Search criteria and ids\">\n\
+         <kbd class=\"slash\">/</kbd>\n\
+         </div>\n</div>\n",
+    );
+    page.push_str(&format!(
+        "<nav class=\"nav\" id=\"nav\" aria-label=\"Features\">\n\
+         <button type=\"button\" class=\"navitem\" data-value=\"\">\
+         <span class=\"navname\">All criteria</span>\n\
+         <span class=\"navcount\">{total}</span>\n</button>\n{nav_items}\n</nav>\n</div>\n"
+    ));
+    page.push_str(&format!(
+        "<div class=\"railfoot\" id=\"railfoot\" hidden>\n\
+         <label class=\"field\"><span>Order</span>\n\
          <select id=\"sort\" aria-label=\"Sort\">\n\
          <option value=\"doc\">Grouped by feature</option>\n\
-         <option value=\"id\">Sort by id</option>\n\
-         <option value=\"role\">Sort by role</option>\n\
-         <option value=\"family\">Sort by family</option>\n\
-         </select>\n\
-         </div>\n",
-    );
-    if !roles.is_empty() {
-        page.push_str(&format!(
-            "<div class=\"chips\" id=\"rolechips\">\n{role_chips}\n</div>\n"
-        ));
-    }
-    page.push_str(&format!(
-        "<div class=\"chips\" id=\"filechips\">\n{file_chips}\n</div>\n"
-    ));
-    page.push_str(&format!(
-        "<div class=\"statusrow\">\n\
-         <span class=\"count\" id=\"count\"></span>\n\
+         <option value=\"id\">By id</option>\n\
+         <option value=\"family\">By family</option>\n\
+         </select></label>\n\
          <label class=\"toggle\"><input type=\"checkbox\" id=\"showretired\"> \
          Show retired ({retired_total})</label>\n\
-         <button type=\"button\" class=\"clear\" id=\"clear\" hidden>Clear filters</button>\n\
-         </div>\n</div>\n"
+         <p class=\"count\" id=\"count\"></p>\n\
+         <button type=\"button\" class=\"clear\" id=\"clear\" hidden>Reset</button>\n\
+         </div>\n</aside>\n"
     ));
 
-    page.push_str("<main id=\"features\">\n");
+    // The document. The author's own prose comes first and nothing generic sits
+    // above it (hi: VIEW-1.a, VIEW-16).
+    page.push_str("<div class=\"doc\">\n");
+    page.push_str(&lead);
+    page.push_str("\n<main id=\"features\">\n");
     page.push_str(&features);
     page.push_str("</main>\n");
     page.push_str("<ul class=\"criteria flat\" id=\"flat\" hidden></ul>\n");
-    page.push_str("<p class=\"nomatch\" id=\"nomatch\" hidden>Nothing matches that.</p>\n");
+    page.push_str(
+        "<p class=\"nomatch\" id=\"nomatch\" hidden>Nothing matches that. \
+         <button type=\"button\" class=\"clear\" id=\"clear2\">Reset</button></p>\n",
+    );
 
     page.push_str(&format!(
         "<footer>\n\
          <p>{total} criteria, {retired_total} retired. Every line is something a person asked for, \
-         written as what this should be rather than as a report of what it currently does. A line \
-         can describe something true today, something a year out, or something since revised. \
+         written as what this should be rather than as a report of what it currently does. \
          These are directions, and directions stay correct through a wrong turn.</p>\n\
-         <p>Click any id to link straight to it. Press / to search. Generated by \
-         <code>hi view</code>.</p>\n</footer>\n"
+         <p class=\"keys\">Click an id to copy its link. \
+         <kbd>/</kbd> search, <kbd>j</kbd> <kbd>k</kbd> move, <kbd>Enter</kbd> copy, \
+         <kbd>Esc</kbd> reset. Generated by <code>hi view</code>.</p>\n</footer>\n"
     ));
 
-    page.push_str("</div>\n<script>\n");
+    page.push_str("</div>\n</div>\n<div class=\"toast\" id=\"toast\" hidden></div>\n<script>\n");
+    page.push_str(THEME);
     page.push_str(SCRIPT);
     page.push_str("</script>\n</body>\n</html>\n");
     page
@@ -339,10 +328,10 @@ pub fn render(workspace: &Workspace, product_intent: Option<&str>) -> String {
 
 /// Write the page, defaulting to `intent.html` at the repository root.
 pub fn write(workspace: &Workspace, out: Option<&str>) -> Result<String> {
-    let product_intent = fs::read_to_string(workspace.intent_path())
-        .ok()
-        .map(strip_index);
-    let html = render(workspace, product_intent.as_deref());
+    let raw = fs::read_to_string(workspace.intent_path()).ok();
+    let name = raw.as_deref().and_then(product_name);
+    let product_intent = raw.map(strip_index);
+    let html = render(workspace, product_intent.as_deref(), name.as_deref());
 
     let path = match out {
         Some(out) => workspace.root.join(out),
@@ -350,6 +339,19 @@ pub fn write(workspace: &Workspace, out: Option<&str>) -> Result<String> {
     };
     fs::write(&path, html).with_context(|| format!("writing {}", path.display()))?;
     Ok(workspace.rel(&path))
+}
+
+/// The product's name, as the author wrote it at the top of `INTENT.md`.
+/// `strip_index` drops that heading from the prose, so the page would otherwise
+/// throw away the one place a person actually named their product and fall back
+/// to a directory name (hi: VIEW-11).
+fn product_name(raw: &str) -> Option<String> {
+    raw.lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix("# "))
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 /// Drop the generated index block and the H1 from INTENT.md prose.
@@ -392,7 +394,7 @@ mod tests {
         }
     }
 
-    const CHAT: &str = "---\nhi: 1\nfamilies: [SEND]\n---\n\n# Chat\n\n## Intent\n\nIt should feel like texting.\n\n## Criteria\n\n- **SEND-1**  As a member, I hit enter and it shows up.\n  - **SEND-1.a**  As a member, if I have no connection it queues.\n";
+    const CHAT: &str = "---\nhi: 1\nfamilies: [SEND]\n---\n\n# Chat\n\n## Intent\n\nIt should feel like texting.\n\n## Criteria\n\n- **SEND-1**  I hit enter and it shows up.\n  - **SEND-1.a**  If I have no connection it queues.\n";
 
     #[test]
     fn renders_inline_code_bold_italic_and_links() {
@@ -434,7 +436,7 @@ mod tests {
 
     #[test]
     fn the_page_fetches_nothing_from_the_network() {
-        let html = render(&workspace(&[("chat.md", CHAT)]), None);
+        let html = render(&workspace(&[("chat.md", CHAT)]), None, None);
         // An inline script is fine. A request to somebody else's server is not,
         // because the page has to work offline and be sendable as one file.
         for probe in [
@@ -446,7 +448,7 @@ mod tests {
 
     #[test]
     fn every_criterion_is_addressable_by_its_id() {
-        let html = render(&workspace(&[("chat.md", CHAT)]), None);
+        let html = render(&workspace(&[("chat.md", CHAT)]), None, None);
         assert!(
             html.contains("id=\"SEND-1\""),
             "a row carries its id as an anchor"
@@ -461,51 +463,54 @@ mod tests {
 
     #[test]
     fn rows_carry_what_the_controls_filter_on() {
-        let html = render(&workspace(&[("chat.md", CHAT)]), None);
-        assert!(html.contains("data-role=\"member\""));
+        let html = render(&workspace(&[("chat.md", CHAT)]), None, None);
         assert!(html.contains("data-family=\"SEND\""));
         assert!(html.contains("data-file=\"chat\""));
         assert!(html.contains("data-retired=\"0\""));
         assert!(
-            html.contains("data-find=\"send-1 member i hit enter and it shows up. send\""),
-            "the search haystack is lowercased and covers id, role, sentence and family"
+            html.contains("data-find=\"send-1 i hit enter and it shows up. send\""),
+            "the search haystack is lowercased and covers id, sentence and family"
         );
     }
 
     #[test]
     fn the_controls_offer_search_sort_and_filter() {
-        let html = render(&workspace(&[("chat.md", CHAT)]), None);
+        let html = render(&workspace(&[("chat.md", CHAT)]), None, None);
         assert!(html.contains("<input type=\"search\" id=\"q\""));
-        assert!(html.contains("<option value=\"id\">Sort by id</option>"));
-        assert!(html.contains("<option value=\"role\">Sort by role</option>"));
-        assert!(html.contains("<option value=\"family\">Sort by family</option>"));
-        assert!(html.contains("data-filter=\"role\" data-value=\"member\""));
-        assert!(html.contains("data-filter=\"file\" data-value=\"chat\""));
+        assert!(html.contains("<option value=\"id\">By id</option>"));
+        assert!(html.contains("<option value=\"family\">By family</option>"));
+        assert!(html.contains("class=\"navitem\" data-value=\"chat\""));
         assert!(html.contains("id=\"showretired\""));
     }
 
     #[test]
-    fn the_controls_are_hidden_until_the_script_runs() {
-        let html = render(&workspace(&[("chat.md", CHAT)]), None);
+    fn hiding_a_row_actually_hides_it() {
+        // `.row` sets `display: flex`, and an author rule outranks the user
+        // agent's `[hidden] { display: none }` however specific it is. Without
+        // the override the filters update the count and change nothing a
+        // reader can see (hi: VIEW-6, VIEW-7).
         assert!(
-            html.contains("<div class=\"controls\" id=\"controls\" hidden>"),
-            "a reader without scripting must not see a search box that cannot search"
+            STYLE.contains("[hidden] { display: none !important; }"),
+            "the stylesheet has to neutralize its own display rules for [hidden]"
         );
     }
 
     #[test]
-    fn the_role_label_is_styled_not_merely_emitted() {
-        let html = render(&workspace(&[("chat.md", CHAT)]), None);
-        assert!(html.contains("class=\"role\""), "the page labels the voice");
+    fn the_controls_are_hidden_until_the_script_runs() {
+        let html = render(&workspace(&[("chat.md", CHAT)]), None, None);
         assert!(
-            html.contains(".role {"),
-            "and the label has a rule behind it, or it renders as bare text"
+            html.contains("id=\"searchwrap\" hidden>") && html.contains("id=\"railfoot\" hidden>"),
+            "a reader without scripting must not see a search box that cannot search"
+        );
+        assert!(
+            html.contains("<nav class=\"nav\" id=\"nav\""),
+            "the feature list needs no script, so it is never hidden"
         );
     }
 
     #[test]
     fn copied_text_keeps_the_id_and_sentence_apart() {
-        let html = render(&workspace(&[("chat.md", CHAT)]), None);
+        let html = render(&workspace(&[("chat.md", CHAT)]), None, None);
         assert!(
             !html.contains("</a><span") && !html.contains("</span><span"),
             "no two inline elements may sit adjacent with no whitespace"
@@ -514,7 +519,11 @@ mod tests {
 
     #[test]
     fn page_carries_intent_prose_and_every_criterion() {
-        let html = render(&workspace(&[("chat.md", CHAT)]), Some("The product why."));
+        let html = render(
+            &workspace(&[("chat.md", CHAT)]),
+            Some("The product why."),
+            None,
+        );
         assert!(html.contains("It should feel like texting."));
         assert!(html.contains("The product why."));
         assert!(html.contains("SEND-1.a"));
@@ -525,8 +534,8 @@ mod tests {
 
     #[test]
     fn retired_criteria_are_present_and_marked() {
-        let chat = "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  As a member, live.\n\n## Retired\n\n- **SEND-2**  As a member, gone.\n  retired: different product\n";
-        let html = render(&workspace(&[("chat.md", chat)]), None);
+        let chat = "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  Live.\n\n## Retired\n\n- **SEND-2**  Gone.\n  retired: different product\n";
+        let html = render(&workspace(&[("chat.md", chat)]), None, None);
         assert!(html.contains("data-retired=\"1\""));
         assert!(html.contains("SEND-2"));
         assert!(
@@ -538,8 +547,8 @@ mod tests {
 
     #[test]
     fn a_feature_whose_prose_is_only_the_template_comment_renders_no_empty_block() {
-        let raw = "---\nhi: 1\nfamilies: [SEND]\n---\n\n# Billing\n\n## Intent\n\n<!-- What is this for? -->\n\n## Criteria\n\n- **SEND-1**  As a member, one.\n";
-        let html = render(&workspace(&[("billing.md", raw)]), None);
+        let raw = "---\nhi: 1\nfamilies: [SEND]\n---\n\n# Billing\n\n## Intent\n\n<!-- What is this for? -->\n\n## Criteria\n\n- **SEND-1**  One.\n";
+        let html = render(&workspace(&[("billing.md", raw)]), None, None);
         assert!(!html.contains("What is this for"));
         assert!(!html.contains("<div class=\"intent\"></div>"));
     }

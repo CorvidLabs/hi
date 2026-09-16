@@ -29,12 +29,6 @@ pub struct Criterion {
     pub id_error: Option<IdError>,
     /// The sentence, with continuation lines joined by a single space.
     pub text: String,
-    /// The role the sentence speaks for, when it opens with one.
-    ///
-    /// Criteria are written as role-play: "As an operator, I can cap what the
-    /// bot spends." Because that is always the shape, the role needs no syntax
-    /// of its own; hi reads it off the front of the sentence.
-    pub role: Option<String>,
     /// A `retired:` note, when present.
     pub note: Option<String>,
     /// 0-based index of the line the id sits on.
@@ -362,13 +356,11 @@ impl Doc {
             Err(err) => (None, Some(err)),
         };
 
-        let role = role_of(&text);
         (
             Criterion {
                 id,
                 raw_id: raw_id.to_string(),
                 id_error,
-                role,
                 text,
                 note,
                 line: start,
@@ -707,52 +699,6 @@ impl Doc {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| self.path.display().to_string())
     }
-}
-
-/// Read the role off the front of a sentence written as role-play.
-///
-/// "As an operator, I can cap the spend." gives `operator`. A sentence that
-/// does not open that way simply has no role; nothing fails.
-pub fn role_of(text: &str) -> Option<String> {
-    // Any "As ..." opening counts. Pinning it to "As a" and "As an" made the
-    // natural "As someone writing intent," silently carry no role at all,
-    // which is the kind of quiet nothing this format exists to avoid.
-    let rest = text
-        .strip_prefix("As ")
-        .or_else(|| text.strip_prefix("as "))?;
-    let (role, _) = rest.split_once(',')?;
-    let role = role.trim();
-
-    // An article is grammar, not part of who the person is.
-    let role = role
-        .strip_prefix("a ")
-        .or_else(|| role.strip_prefix("an "))
-        .or_else(|| role.strip_prefix("the "))
-        .unwrap_or(role)
-        .trim();
-
-    // A role is a short noun phrase. Anything longer is a sentence that
-    // happens to begin with "as", not a role.
-    if role.is_empty() || role.split_whitespace().count() > 4 {
-        return None;
-    }
-    Some(role.to_string())
-}
-
-/// The sentence with its role prefix removed, for rendering the two apart.
-pub fn without_role(text: &str) -> String {
-    if role_of(text).is_some()
-        && let Some((_, rest)) = text.split_once(',')
-    {
-        let rest = rest.trim_start();
-        // The remainder is now the start of a sentence, so read it as one.
-        let mut chars = rest.chars();
-        return match chars.next() {
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            None => String::new(),
-        };
-    }
-    text.to_string()
 }
 
 /// Drop markdown emphasis around a token, so `**SEND-1**` reads as `SEND-1`.
@@ -1293,47 +1239,6 @@ mod tests {
         let reparsed = Doc::parse(PathBuf::from("hi/chat.md"), &text);
         assert_eq!(reparsed.retired.len(), 2);
         assert!(reparsed.criteria.is_empty());
-    }
-
-    #[test]
-    fn reads_the_role_a_sentence_speaks_for() {
-        assert_eq!(
-            role_of("As an operator, I can cap the spend."),
-            Some("operator".into())
-        );
-        assert_eq!(
-            role_of("As a member, I can see what I won."),
-            Some("member".into())
-        );
-        assert_eq!(
-            role_of("As a server owner, I can hand over the keys."),
-            Some("server owner".into())
-        );
-        // The phrasings a person actually reaches for all work.
-        assert_eq!(
-            role_of("As someone writing intent, I can capture fast."),
-            Some("someone writing intent".into())
-        );
-        assert_eq!(
-            role_of("As the server owner, I can hand over the keys."),
-            Some("server owner".into())
-        );
-        // No role is not an error, it is just a sentence.
-        assert_eq!(role_of("I hit enter and it shows up."), None);
-        assert_eq!(role_of("As a rule the queue drains within a second."), None);
-        assert_eq!(
-            without_role("As an operator, I can cap the spend."),
-            "I can cap the spend."
-        );
-        assert_eq!(without_role("I hit enter."), "I hit enter.");
-    }
-
-    #[test]
-    fn a_criterion_carries_its_role() {
-        let doc = doc(
-            "---\nhi: 1\nfamilies: [SPEND]\n---\n\n## Criteria\n\n- **SPEND-2**  As an operator, I can cap what the bot spends in a day.\n",
-        );
-        assert_eq!(doc.criteria[0].role.as_deref(), Some("operator"));
     }
 
     #[test]

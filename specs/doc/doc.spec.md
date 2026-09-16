@@ -58,8 +58,6 @@ any output for a human. Those belong to `id`, `capture`, `workspace`, and `out`/
 | `render_criterion` | Renders an id and a sentence as one markdown list item, `<indent>- **ID**<2 spaces>sentence`, indented two spaces per depth level, with the id in bold and all interior whitespace collapsed to single spaces. Never wraps. |
 | `retire` | Move a criterion and every case beneath it into `## Retired`, with an optional reason, creating the section when the file has none. Returns how many criteria moved. Re-parses the file afterwards rather than patching positions, because lines move in both directions (hi: RETIRE-1, RETIRE-1.a, RETIRE-1.b). |
 | `set_retired_reason` | Record why an already retired criterion was retired, replacing an existing note rather than stacking one. Retiring in a hurry and explaining later is the normal shape of changing your mind, and without this the only way to add the reason was to hand-edit (hi: RETIRE-1.c). |
-| `role_of` | Read the role off the front of a sentence written as role-play: "As an operator, I can cap the spend." gives `operator`. Returns `None` for a sentence that does not open that way, and for anything longer than four words before the comma, which is prose rather than a role (hi: FILE-16). |
-| `without_role` | The sentence with its role prefix removed, so a renderer can show the two apart. |
 | `write_atomically` | Write a string to a path without ever leaving the target truncated: sibling temp file, flush, fsync, rename. Public so `out::write_index` can give `INTENT.md` the same protection `Doc::save` gives `hi/*.md` (hi: FILE-8). |
 | `new_file_text` | The starting text for a brand-new feature file, already parseable as an empty hi document. |
 

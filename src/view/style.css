@@ -1,150 +1,413 @@
+/* ============================================================
+   CorvidLabs Brand Kit v1.3 tokens, copied verbatim from
+   design-system/assets/tokens.css. Not re-derived, and not to be edited
+   here: if a value looks wrong, it is wrong in the kit.
+
+   The page is one self-contained file that has to open with no network
+   (hi: VIEW-2), so the two brand faces are named first in each stack and
+   fall back to the system's own. The kit's webfont stylesheet tag is a
+   request to fonts.googleapis.com, and a page that needs the network is
+   not a page you can attach to an email.
+   ============================================================ */
+
 :root {
-  color-scheme: light;
-  --ink: #15181B; --paper: #FAF9F6; --surface: #FFFFFF;
-  --sheen: #0E6F66; --sheen-strong: #0B5750;
-  --text-muted: #34383D; --text-faint: #50555B;
-  --hairline: rgba(21,24,27,0.12); --wash: rgba(21,24,27,0.06);
-  --hit: rgba(14,111,102,0.14);
-  --font-display: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --ink: #F4F3EF; --paper: #131619; --surface: #1B1F23;
-    --sheen: #45D0BC; --sheen-strong: #45D0BC;
-    --text-muted: #C8C6BE; --text-faint: #A3A199;
-    --hairline: rgba(244,243,239,0.15); --wash: rgba(244,243,239,0.08);
-    --hit: rgba(69,208,188,0.18);
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --ink: #F4F3EF; --paper: #131619; --surface: #1B1F23;
-  --sheen: #45D0BC; --sheen-strong: #45D0BC;
-  --text-muted: #C8C6BE; --text-faint: #A3A199;
-  --hairline: rgba(244,243,239,0.15); --wash: rgba(244,243,239,0.08);
-  --hit: rgba(69,208,188,0.18);
-}
-* { box-sizing: border-box; }
-body {
-  background: var(--paper); color: var(--ink);
-  font-family: var(--font-display); font-size: 17px; line-height: 1.6;
-  margin: 0; padding-block: 0 80px; padding-left: 20px; padding-right: 20px;
-  -webkit-font-smoothing: antialiased;
-}
-.wrap { max-width: 860px; margin: 0 auto; }
-header { padding-block: 52px 0; }
-.eyebrow {
-  font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--sheen-strong); margin: 0 0 18px;
-}
-h1 {
-  font-size: clamp(34px, 6vw, 52px); font-weight: 800; letter-spacing: -.03em;
-  line-height: 1.04; margin: 0 0 20px; text-wrap: balance;
-}
-.lead p { font-size: 19px; line-height: 1.55; color: var(--text-muted); margin: 0 0 16px; }
-.rule {
-  height: 5px; border: 0; border-radius: 3px; margin: 36px 0 0;
-  background: linear-gradient(90deg, #0E6F66 0%, #1799A3 55%, #1E6FA8 100%);
+    color-scheme: light;
+
+    /* Core surfaces */
+    --ink: #15181B;            /* near-black, slightly cool — primary text/marks */
+    --paper: #FAF9F6;          /* warm off-white — page ground */
+    --surface: #FFFFFF;        /* cards, raised panels */
+    --surface-strong: #DCDAD2; /* inputs, wells, lifted surfaces */
+
+    /* Accent — corvid feather sheen. Never purple. */
+    --sheen: #0E6F66;          /* the accent — 5.9:1 on paper (AA) */
+    --sheen-strong: #0B5750;   /* deepened — 8:1 on paper, for small accent text (AAA) */
+    --sheen-bright: #45D0BC;   /* glint — for use ON ink only */
+    --steel: #1E6FA8;          /* gradient end only, never text */
+
+    /* Text tiers — solid forms of the ink-alpha steps, for systems that
+       need a solid RGB base (e.g. Tailwind opacity modifiers). */
+    --text-muted: #34383D;     /* muted body text on paper */
+    --text-faint: #50555B;     /* faint / secondary text, 7.2:1 on paper (AA) */
+    --sheen-hover: #0B5750;    /* accent hover; matches sheen-strong on light */
+
+    /* Ink alpha steps (text + hairlines over light surfaces) */
+    --ink-70: rgba(21, 24, 27, 0.72);
+    --ink-60: rgba(21, 24, 27, 0.62);
+    --ink-45: rgba(21, 24, 27, 0.45);
+    --ink-12: rgba(21, 24, 27, 0.12);
+    --ink-06: rgba(21, 24, 27, 0.06);
+    --hairline: var(--ink-12);
+    --header-bg: rgba(250, 249, 246, 0.92);
+
+    /* Semantic state colors (defined so sites stop improvising) */
+    --danger: #84241E;   /* errors, destructive, recording */
+    --warning: #8A5A00;  /* in-progress, caution */
+    --success: #2F6B3A;  /* shipped, healthy */
+    --info: var(--sheen);/* informational — reuses the accent by design */
+
+    /* Code syntax highlighting (docs, terminals) — never purple */
+    --code-keyword: #0B5750;
+    --code-string: #2F6B3A;
+    --code-number: #8A5A00;
+    --code-function: #1B5E8A;   /* also types */
+    --code-comment: rgba(21, 24, 27, 0.50);
+
+    /* Categorical chart / data-viz palette — distinguishable, never purple */
+    --chart-1: #0E6F66;  /* teal */
+    --chart-2: #1E6FA8;  /* steel */
+    --chart-3: #B07A1E;  /* amber */
+    --chart-4: #2F6B3A;  /* green */
+    --chart-5: #A0492E;  /* clay */
+
+    /* The one gradient we allow: a feather-sheen hairline. Decorative only. */
+    --iridescence: linear-gradient(90deg, #0E6F66 0%, #1799A3 55%, #1E6FA8 100%);
+
+    /* Type */
+    --font-display: "Schibsted Grotesk", "Helvetica Neue", sans-serif;
+    --font-mono: "Spline Sans Mono", "SF Mono", monospace;
+    --measure: 64ch;
 }
 
-/* Controls */
-.controls {
-  position: sticky; top: 0; z-index: 5;
-  background: var(--paper); padding: 16px 0 12px; margin-top: 28px;
-  border-bottom: 1px solid var(--hairline);
+/* Dark surfaces. Declared once, applied via the forced override below
+   and the system-preference media query. */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+
+    --ink: #F4F3EF;
+    --paper: #131619;
+    --surface: #1B1F23;
+    --surface-strong: #272C31;
+
+    --sheen: #45D0BC;
+    --sheen-strong: #45D0BC;
+    --sheen-bright: #45D0BC;
+
+    --text-muted: #C8C6BE;     /* muted body text on ink */
+    --text-faint: #A3A199;     /* faint / secondary text, 7.0:1 on ink (AA) */
+    --sheen-hover: #63D9C7;    /* accent hover glint on ink */
+
+    --ink-70: rgba(244, 243, 239, 0.78);
+    --ink-60: rgba(244, 243, 239, 0.68);
+    --ink-45: rgba(244, 243, 239, 0.55);
+    --ink-12: rgba(244, 243, 239, 0.15);
+    --ink-06: rgba(244, 243, 239, 0.08);
+    --header-bg: rgba(19, 22, 25, 0.92);
+
+    --danger: #F08A7D;
+    --warning: #E0B05A;
+    --success: #6FC98A;
+
+    --code-keyword: #45D0BC;
+    --code-string: #6FC98A;
+    --code-number: #E0B05A;
+    --code-function: #6BB6E0;
+    --code-comment: rgba(244, 243, 239, 0.50);
+
+    --chart-1: #45D0BC;
+    --chart-2: #6BB6E0;
+    --chart-3: #E0B05A;
+    --chart-4: #6FC98A;
+    --chart-5: #E0916F;
 }
-.searchrow { display: flex; gap: 10px; flex-wrap: wrap; }
+
+@media (prefers-color-scheme: dark) {
+    /* :not([data-theme="light"]) lets a forced-light override win. */
+    :root:not([data-theme="light"]) {
+        color-scheme: dark;
+
+        --ink: #F4F3EF;
+        --paper: #131619;
+        --surface: #1B1F23;
+        --surface-strong: #272C31;
+
+        --sheen: #45D0BC;
+        --sheen-strong: #45D0BC;
+        --sheen-bright: #45D0BC;
+
+        --text-muted: #C8C6BE;
+        --text-faint: #A3A199;
+        --sheen-hover: #63D9C7;
+
+        --ink-70: rgba(244, 243, 239, 0.78);
+        --ink-60: rgba(244, 243, 239, 0.68);
+        --ink-45: rgba(244, 243, 239, 0.55);
+        --ink-12: rgba(244, 243, 239, 0.15);
+        --ink-06: rgba(244, 243, 239, 0.08);
+        --header-bg: rgba(19, 22, 25, 0.92);
+
+        --danger: #F08A7D;
+        --warning: #E0B05A;
+        --success: #6FC98A;
+
+        --code-keyword: #45D0BC;
+        --code-string: #6FC98A;
+        --code-number: #E0B05A;
+        --code-function: #6BB6E0;
+        --code-comment: rgba(244, 243, 239, 0.50);
+
+        --chart-1: #45D0BC;
+        --chart-2: #6BB6E0;
+        --chart-3: #E0B05A;
+        --chart-4: #6FC98A;
+        --chart-5: #E0916F;
+    }
+}
+
+/* hi's own, on top of the kit. Two values the kit has no opinion about. */
+:root {
+  --rail: 244px;          /* the navigation column */
+  --gutter: 16px;         /* the page edge, cancelled by full-bleed rows */
+  --hit: color-mix(in srgb, var(--sheen) 16%, transparent);
+}
+@supports not (color: color-mix(in srgb, red 50%, transparent)) {
+  :root { --hit: var(--ink-06); }
+}
+
+* { box-sizing: border-box; }
+/* An author `display` beats the UA rule for [hidden] no matter how specific it
+   is, because author styles outrank the user agent. Without this, .row's own
+   `display: flex` keeps every filtered-out criterion on screen while the count
+   says it was hidden. */
+[hidden] { display: none !important; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: "Schibsted Grotesk", var(--font-display), ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 17px; line-height: 1.6;
+  margin: 0; -webkit-font-smoothing: antialiased;
+}
+/* Kit type scale: DISPLAY 900/-.03em, TITLE 700/-.02em, BODY 400,
+   LABEL mono 12px/.14em uppercase, CODE mono. */
+.mono, .cid, .navcount, .count, .field > span, .slash, code, kbd {
+  font-family: "Spline Sans Mono", var(--font-mono), ui-monospace,
+    SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Two columns: navigation that stays put, and the document itself. */
+.app {
+  display: grid; grid-template-columns: var(--rail) minmax(0, 1fr);
+  gap: 48px; max-width: 1060px; margin: 0 auto;
+  padding: 0 24px 96px;
+}
+/* A page that scrolls sideways is a bug, never a layout. */
+html, body { max-width: 100%; overflow-x: clip; }
+.railstick { display: contents; }
+.doc { min-width: 0; padding-top: 44px; }
+
+/* The rail */
+.rail {
+  position: sticky; top: 0; align-self: start;
+  max-height: 100vh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 44px 0 32px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.railtop { display: flex; flex-direction: column; gap: 4px; }
+.brandrow { display: flex; align-items: center; gap: 10px; }
+.brandrow .brand { flex: 1 1 auto; min-width: 0; }
+.corvid-theme-toggle { flex: 0 0 auto; border-radius: 6px; }
+.brand {
+  font-size: 22px; font-weight: 700; letter-spacing: -.02em;
+  line-height: 1.2; margin: 0; text-wrap: balance;
+}
+.searchwrap { position: relative; margin-top: 12px; }
 #q {
-  flex: 1 1 260px; min-width: 0; font: inherit; font-size: 16px;
-  color: var(--ink); background: var(--surface);
-  border: 1px solid var(--hairline); border-radius: 6px; padding: 9px 12px;
+  width: 100%; font: inherit; font-size: 15px;
+  color: var(--ink); background: var(--surface-strong);
+  border: 1px solid var(--hairline); border-radius: 7px; padding: 8px 32px 8px 11px;
+}
+#q::-webkit-search-cancel-button { cursor: pointer; }
+.slash {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-size: 10.5px; color: var(--text-faint);
+  border: 1px solid var(--hairline); border-radius: 4px; padding: 1px 5px;
+  pointer-events: none;
 }
 #q:focus-visible, #sort:focus-visible { outline: 2px solid var(--sheen); outline-offset: 1px; }
+#q:focus + .slash { opacity: 0; }
+
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.navitem {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; font: inherit; font-size: 14.5px; text-align: left;
+  color: var(--text-muted); background: none; border: 0;
+  border-left: 2px solid transparent; border-radius: 0 5px 5px 0;
+  padding: 6px 9px; cursor: pointer;
+}
+.navitem:hover { color: var(--ink); background: var(--ink-06); }
+.navitem .navcount {
+  font-size: 11px; color: var(--text-faint);
+  flex: 0 0 auto;
+}
+.navitem .navname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Where you are while scrolling, as distinct from what you clicked. */
+.navitem[data-here="true"] { color: var(--ink); background: var(--ink-06); }
+.navitem[aria-pressed="true"] {
+  color: var(--sheen-strong); font-weight: 650;
+  border-left-color: var(--sheen); background: var(--ink-06);
+}
+.navitem[aria-pressed="true"] .navcount { color: var(--sheen-strong); }
+.navitem:focus-visible { outline: 2px solid var(--sheen); outline-offset: -2px; }
+
+.railfoot {
+  display: flex; flex-direction: column; gap: 10px;
+  padding-top: 16px; border-top: 1px solid var(--hairline);
+  font-size: 13px; color: var(--text-faint);
+}
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field > span { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
 #sort {
-  font: inherit; font-size: 15px; color: var(--ink); background: var(--surface);
-  border: 1px solid var(--hairline); border-radius: 6px; padding: 9px 10px;
-}
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.chip {
-  font-family: var(--font-mono); font-size: 11px; letter-spacing: .05em;
-  text-transform: uppercase; color: var(--text-faint);
-  background: transparent; border: 1px solid var(--hairline);
-  border-radius: 999px; padding: 4px 11px; cursor: pointer;
-}
-.chip:hover { color: var(--ink); }
-.chip[aria-pressed="true"] {
-  color: var(--sheen-strong); border-color: var(--sheen);
-  background: var(--wash); font-weight: 600;
-}
-.chip:focus-visible { outline: 2px solid var(--sheen); outline-offset: 2px; }
-.statusrow {
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  margin-top: 12px; font-size: 13.5px; color: var(--text-faint);
+  font: inherit; font-size: 13.5px; color: var(--ink); background: var(--surface-strong);
+  border: 1px solid var(--hairline); border-radius: 6px; padding: 6px 8px; width: 100%;
 }
 .toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.count { margin: 0; font-size: 11.5px; }
 .clear {
-  font: inherit; font-size: 13px; color: var(--sheen-strong);
+  font: inherit; font-size: 13px; color: var(--sheen-strong); align-self: flex-start;
   background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
 }
 
-/* Features and rows */
-.feature { padding-block: 40px 0; }
+/* The document */
+.lead p { font-size: 18.5px; line-height: 1.55; color: var(--text-muted); margin: 0 0 15px; max-width: var(--measure); }
+.feature { padding-block: 38px 0; scroll-margin-top: 24px; }
+.feature:first-child { padding-top: 10px; }
 h2 {
-  font-size: clamp(23px, 3.4vw, 29px); font-weight: 700; letter-spacing: -.02em;
+  font-size: clamp(22px, 3vw, 27px); font-weight: 700; letter-spacing: -.02em;
   margin: 0 0 12px; text-wrap: balance;
 }
-.intent p { color: var(--text-muted); margin: 0 0 14px; max-width: 64ch; }
+.intent p { color: var(--text-muted); margin: 0 0 14px; max-width: var(--measure); }
 ul.criteria { list-style: none; margin: 18px 0 0; padding: 0; }
 ul.flat { margin-top: 0; }
 .row {
-  display: flex; gap: 12px; align-items: baseline;
-  padding: 9px 0; border-top: 1px solid var(--hairline);
-  scroll-margin-top: 140px;
+  display: flex; gap: 14px; align-items: baseline;
+  padding: 9px 8px; border-top: 1px solid var(--hairline);
+  border-radius: 5px; scroll-margin-top: 24px;
 }
-.row.d2 { padding-left: 26px; }
-.row.d3 { padding-left: 52px; }
-.row.d4 { padding-left: 78px; }
+.row.d2 { padding-left: 34px; }
+.row.d3 { padding-left: 60px; }
+.row.d4 { padding-left: 86px; }
 .cid {
-  font-family: var(--font-mono); font-size: 11.5px; color: var(--text-faint);
-  white-space: nowrap; flex: 0 0 auto; padding-top: 3px; min-width: 78px;
-  text-decoration: none; border-bottom: 1px dotted transparent;
+  font-size: 11.5px; color: var(--text-faint);
+  white-space: nowrap; flex: 0 0 auto; padding-top: 3px; min-width: 82px;
+  text-decoration: none; border-bottom: 1px dotted transparent; cursor: pointer;
 }
-.cid:hover { color: var(--sheen); border-bottom-color: var(--sheen); }
+.cid:hover { color: var(--sheen-hover); border-bottom-color: var(--sheen-hover); }
 .cid:focus-visible { outline: 2px solid var(--sheen); outline-offset: 2px; border-radius: 2px; }
-.ctext { flex: 1 1 auto; }
-.role {
-  display: inline-block; font-family: var(--font-mono); font-size: 10px;
-  letter-spacing: .06em; text-transform: uppercase; color: var(--sheen-strong);
-  background: var(--wash); padding: 2px 7px; border-radius: 3px;
-  margin-right: 10px; white-space: nowrap; vertical-align: 1px;
-}
+.ctext { flex: 1 1 auto; max-width: var(--measure); }
 .why {
   display: block; font-size: 14px; color: var(--text-faint);
   font-style: italic; margin-top: 3px;
 }
 .row[data-retired="1"] { opacity: .55; }
 .row[data-retired="1"] .cid { text-decoration: line-through; }
-.row:target, .row.flash { background: var(--hit); border-radius: 4px; }
+.row:target, .row.flash { background: var(--hit); }
+/* The keyboard cursor, which is deliberately quieter than a link hit. */
+.row.cursor { background: var(--ink-06); box-shadow: inset 2px 0 0 var(--sheen); }
 .empty { color: var(--text-faint); font-style: italic; padding: 9px 0; }
 .nomatch { color: var(--text-faint); font-style: italic; padding: 40px 0; }
 code {
-  font-family: var(--font-mono); font-size: .87em;
-  background: var(--wash); padding: 1px 5px; border-radius: 3px;
+  font-size: .87em;
+  background: var(--ink-06); padding: 1px 5px; border-radius: 3px;
 }
 a { color: var(--sheen); text-underline-offset: 2px; }
-mark { background: var(--hit); color: inherit; border-radius: 2px; padding: 0 1px; }
+mark { background: var(--hit); color: inherit; border-radius: 2px; padding: 0 1px; font-weight: 600; }
+kbd {
+  font-size: .85em; color: var(--text-faint);
+  border: 1px solid var(--hairline); border-radius: 4px; padding: 0 4px;
+}
 footer {
   margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--hairline);
   font-size: 13.5px; color: var(--text-faint);
 }
-footer p { margin: 0 0 8px; max-width: 70ch; }
+footer p { margin: 0 0 8px; max-width: var(--measure); }
+
+/* Said once, when a link is copied. */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  background: var(--ink); color: var(--paper);
+  font-size: 13.5px; padding: 8px 16px; border-radius: 999px;
+  max-width: calc(100vw - 32px); z-index: 20;
+}
+
+/* The standard CorvidLabs sun/moon toggle, copied verbatim from
+   design-system/assets/theme-toggle.html. Never a "THEME" text button. */
+.corvid-theme-toggle {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 34px; height: 34px; padding: 0;
+        background: none; border: 1px solid var(--ink-12); color: var(--ink-70);
+        cursor: pointer; transition: border-color 0.2s, color 0.2s;
+    }
+    .corvid-theme-toggle:hover { border-color: var(--sheen); color: var(--sheen); }
+    .corvid-theme-toggle:focus-visible { outline: 2px solid var(--sheen); outline-offset: 2px; }
+    .corvid-theme-toggle svg { width: 17px; height: 17px; }
+
+    /* Show the current mode's icon. */
+    .corvid-theme-toggle .moon { display: none; }
+    :root[data-theme="dark"] .corvid-theme-toggle .sun { display: none; }
+    :root[data-theme="dark"] .corvid-theme-toggle .moon { display: inline; }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .corvid-theme-toggle .sun { display: none; }
+        :root:not([data-theme="light"]) .corvid-theme-toggle .moon { display: inline; }
+    }
+    /* A forced-light page while the OS is dark must show the sun again. */
+    :root[data-theme="light"] .corvid-theme-toggle .sun { display: inline; }
+    :root[data-theme="light"] .corvid-theme-toggle .moon { display: none; }
+
+/* Narrow: the rail becomes a bar across the top. Only the search box and the
+   feature list stay stuck there; sort, retired and the count scroll away,
+   because a sticky header that eats a third of a phone screen is not
+   navigation (hi: VIEW-2.a, VIEW-12). */
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0; padding: 0 0 72px;
+  }
+  .rail {
+    position: static; max-height: none; overflow: visible;
+    padding: 0 0 12px; gap: 12px;
+  }
+  .railstick {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; flex-direction: column; gap: 10px;
+    background: var(--paper);
+    padding: 12px var(--gutter) 10px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .railtop { flex-direction: row; align-items: center; gap: 12px; }
+  .brandrow { flex: 0 1 auto; min-width: 0; }
+  .brand {
+    font-size: 16px; flex: 0 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .searchwrap { margin-top: 0; flex: 1 1 120px; min-width: 0; }
+  /* The chip row runs edge to edge and scrolls sideways; the negative margin
+     exactly cancels the gutter above it, so nothing is ever wider than the
+     screen. */
+  .nav {
+    flex-direction: row; gap: 6px; overflow-x: auto;
+    margin: 0 calc(var(--gutter) * -1); padding: 0 var(--gutter) 2px;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .navitem {
+    flex: 0 0 auto; width: auto; gap: 7px; font-size: 13.5px;
+    border: 1px solid var(--hairline); border-left-width: 1px;
+    border-radius: 999px; padding: 5px 12px;
+  }
+  .navitem[aria-pressed="true"] { border-color: var(--sheen); }
+  .railfoot {
+    flex-direction: row; align-items: center; flex-wrap: wrap;
+    gap: 8px 16px; border-top: 0; padding: 14px var(--gutter) 0;
+  }
+  .field { flex-direction: row; align-items: center; gap: 6px; }
+  #sort { width: auto; }
+  .doc { padding: 22px var(--gutter) 0; }
+}
 @media (max-width: 560px) {
-  .row { flex-direction: column; gap: 3px; }
-  .row.d2 { padding-left: 16px; }
+  .row { flex-direction: column; gap: 3px; padding-left: 6px; }
+  .row.d2 { padding-left: 18px; }
   .row.d3 { padding-left: 32px; }
-  .row.d4 { padding-left: 48px; }
-  .controls { position: static; }
+  .row.d4 { padding-left: 46px; }
+  .cid { min-width: 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

@@ -42,7 +42,7 @@ from the CorvidLabs brand tokens and are defined for light and dark in all three
 | Export | Description |
 |--------|-------------|
 | `inline_markdown` | Escape a sentence and render the inline markdown it is allowed to carry. |
-| `render` | Build the complete HTML page from a workspace and optional product-level prose. |
+| `render` | Build the complete HTML page from a workspace, optional product-level prose, and the product's own name. |
 | `write` | Render and write the page, defaulting to `intent.html` at the repository root. |
 
 ### Structs & Enums
@@ -62,8 +62,8 @@ from the CorvidLabs brand tokens and are defined for light and dark in all three
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `inline_markdown` | `inline_markdown(raw: &str) -> String` | HTML-escape `raw`, then render `` `code` ``, `**bold**`, `*italic*` and `[text](url)`. Unmatched markers are left as literal text, and markers do not nest: the first one to open takes everything up to its close verbatim. Only `http://`, `https://` and root-relative URLs become links. |
-| `render` | `render(workspace: &Workspace, product_intent: Option<&str>) -> String` | Build the full document: head, tokens, lead prose, one section per doc, footer with counts. |
-| `write` | `write(workspace: &Workspace, out: Option<&str>) -> Result<String>` | Read `INTENT.md` for the lead prose, strip its generated index, render, write to `out` or `intent.html`, and return the path as `Workspace::rel` prints it: repository-relative, forward slashes on every platform. |
+| `render` | `render(workspace: &Workspace, product_intent: Option<&str>, name: Option<&str>) -> String` | Build the full document: head, tokens, the navigation rail, lead prose, one section per doc, footer with counts. `name` titles the page and falls back to the workspace directory name when it is `None`. |
+| `write` | `write(workspace: &Workspace, out: Option<&str>) -> Result<String>` | Read `INTENT.md` for both the product's name (its `# ` heading) and the lead prose, strip its generated index, render, write to `out` or `intent.html`, and return the path as `Workspace::rel` prints it: repository-relative, forward slashes on every platform. |
 | `escape` (private) | `escape(raw: &str) -> String` | Escape `&`, `<`, `>`, `"` and `'`. |
 | `find_from` / `find_pair` (private) | `(&[char], usize, char) -> Option<usize>` / `(&[char], usize) -> Option<usize>` | Locate a closing single marker, or a closing `**`. |
 | `strip_comments` (private) | `strip_comments(raw: &str) -> String` | Remove every HTML comment span, from `<!--` to `-->`. An unterminated `<!--` drops the remainder of the prose, as a browser would. |
@@ -94,7 +94,8 @@ from the CorvidLabs brand tokens and are defined for light and dark in all three
    `:root[data-theme="dark"]`, so the page is correct in all three theme states.
 9. Case depth is rendered as indentation, capped at four levels so a deep id cannot push text off
    a narrow screen (hi: VIEW-1.b).
-10. Retired criteria appear inside a collapsed `<details>`, present but not noise (hi: VIEW-4).
+10. Retired criteria are written into the page in their own section but hidden until the reader
+    ticks "Show retired", present but not noise (hi: VIEW-4).
 11. Prose passes through `strip_comments` before it is split into paragraphs, so no HTML comment
     span, including the prompt in hi's own new-file template, ever reaches the page. An
     unterminated `<!--` drops everything after it, the way a browser would (hi: VIEW-1.c).
@@ -111,10 +112,39 @@ from the CorvidLabs brand tokens and are defined for light and dark in all three
     copied text and any html-to-text conversion read `SEND-1 I hit enter`, never `SEND-1I hit
     enter`, and one criterion never runs into the next. Flex layout ignores that whitespace, so the
     rendered line is unchanged (hi: VIEW-1.d).
-16. The page reads at phone width: one column capped at 760px inside a 20px body gutter, headings
-    sized with `clamp()` so they shrink rather than overflow, and below 560px the id stacks above
-    its sentence while the depth indents drop to 16/32/48px. No rule in the layout exceeds the
-    viewport, though nothing wraps an unbroken token longer than the column (hi: VIEW-2.a).
+16. The page reads at phone width. Above 900px it is two columns, a 244px navigation rail beside
+    the document; below that it is one column and the rail becomes a bar across the top. Headings
+    are sized with `clamp()` so they shrink rather than overflow, and below 560px the id stacks
+    above its sentence. Every edge-to-edge row cancels the page gutter with the `--gutter` token
+    rather than a repeated literal, `html, body` clip horizontal overflow, and the feature list
+    scrolls inside itself, so the page itself never scrolls sideways at any width. Nothing wraps an
+    unbroken token longer than the column (hi: VIEW-2.a).
+17. The navigation rail is the page's table of contents: the product's name, the search box, one
+    entry per feature carrying that feature's criterion count, and the sort, retired and reset
+    controls. It sticks while the document scrolls, and on a phone only the search box and the
+    feature list stay stuck, because a header that eats a third of the viewport is not navigation
+    (hi: VIEW-12, VIEW-12.a).
+18. Exactly one entry in the rail is ever lit: the feature filtered to, or, when nothing is
+    filtered, the one currently under the top of the viewport (hi: VIEW-12.b).
+19. The page's title is the `# ` heading of `INTENT.md`, which is the one place a person named
+    their product. It falls back to the workspace directory name, and nothing generic is printed
+    above the author's own prose (hi: VIEW-11, VIEW-16).
+20. The stylesheet neutralizes `[hidden]` with `display: none !important`. Author rules outrank the
+    user agent, so without it `.row { display: flex }` keeps every filtered-out criterion on screen
+    while the count claims it was hidden (hi: VIEW-6, VIEW-7).
+21. A search match is wrapped in `<mark>` by walking text nodes only, never by re-parsing rendered
+    HTML, so a criterion's own `<code>` or `<a>` is never cut in half (hi: VIEW-13, VIEW-3.a).
+22. The token block at the top of `view/style.css` is a verbatim copy of
+    `_CorvidLabs/design-system/assets/tokens.css` (Brand Kit v1.3), as are `view/theme.js` and the
+    sun/moon toggle's markup and pre-paint snippet. Nothing here re-derives a brand value. The one
+    divergence is the webfonts: the kit loads Schibsted Grotesk and Spline Sans Mono from Google,
+    and this page must reference no other server, so both are named first in the font stack with
+    system fallbacks (hi: VIEW-17, VIEW-17.a).
+23. The page honours `?theme=light|dark`, `data-theme` on `<html>` and `prefers-color-scheme`, in
+    that order, and the toggle persists a choice to `localStorage` under `corvid-theme`. The
+    pre-paint snippet runs before the stylesheet so a stored choice never flashes (hi: VIEW-18).
+24. Prose yields to results: the product's lead prose is hidden while anything is filtered, and a
+    feature's own prose is hidden while a search is running (hi: VIEW-6).
 
 ## Behavioral Examples
 

@@ -22,12 +22,12 @@ Each module owns one thing, and `main.rs` owns none of them.
 | File | Owns |
 |---|---|
 | `src/id.rs` | The id grammar: family charset, strict number/letter alternation, parent and descendant relations |
-| `src/doc.rs` | Parsing and writing `hi/*.md`; surgical insertion that leaves the rest of the file byte-identical; `retire`; `role_of` and `without_role` |
+| `src/doc.rs` | Parsing and writing `hi/*.md`; surgical insertion that leaves the rest of the file byte-identical; `retire` |
 | `src/workspace.rs` | Finding `hi/`, loading docs, and lookups. Writes nothing |
 | `src/check.rs` | Structural validation only: six problem kinds, and everything that is deliberately not one |
 | `src/capture.rs` | The write path. A new id just works; an existing id refuses. Starts `INTENT.md` when the repo has none |
 | `src/out.rs` | `ls`, `issue`, `export`, `index` |
-| `src/view.rs` | The HTML page, and the only markdown rendering in the crate |
+| `src/view.rs` | The HTML page, and the only markdown rendering in the crate. `view/style.css`, `view/app.js` and the three `view/theme*`/`view/*.html` files are `include_str!`-ed, never built by `format!` |
 | `src/main.rs` | clap wiring, routing, exit codes. No domain logic |
 
 Every module has a spec under `specs/<module>/`, and requirements there cite the hi criterion they
@@ -39,13 +39,27 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   wraps, and always emits `- ID  sentence` indented two spaces per depth level. Bare lines look
   fine in the source and render as one run-together paragraph, which is the bug that falsified
   `FILE-1` (DECISIONS.md §10.1 and §12, `hi: FILE-6`, `FILE-1.b`).
-- **Criteria are role-play, and nothing enforces it.** Every criterion is written
-  `As a <role>, <sentence>`, and `doc::role_of` reads the role back off the front: `As a ` or
-  `As an `, then everything up to the first comma, capped at four words so a sentence that merely
-  begins "as a" is not mistaken for one. `doc::without_role` returns the remainder. Four verbs
-  surface it (`ls`, `export`, `issue`, `view`), and **none of them require it**: a sentence with no
-  role passes through exactly as written, and `hi check` says nothing. Do not add a check kind for
-  a missing role; that is the sentence grammar DECISIONS.md §9 refused (§14, `hi: FILE-16`).
+- **A criterion is a plain sentence, and hi never parses it.** No prefix, no fields, no subject
+  read off the front. Every verb (`ls`, `export`, `issue`, `view`) prints the author's words
+  through untouched. 0.2.0 through 0.2.5 required an `As a <role>,` opening and read it back with
+  a four-word heuristic; that is removed. Do not reintroduce a role, a `speaker:` field or any
+  other slot in front of the sentence, and do not add a check kind for one: that is the sentence
+  grammar DECISIONS.md §9 refused, arriving by the back door (§14 and §24, `hi: FILE-16`,
+  `FILE-17`, both retired).
+- **The brand tokens are imported, never edited here.** The top of
+  `src/view/style.css` is copied verbatim out of
+  `_CorvidLabs/design-system/assets/tokens.css` (Brand Kit v1.3), and so are the sun/moon toggle,
+  its pre-paint snippet and `theme.js`. If a value looks wrong, it is wrong in the kit; fix it
+  there and re-copy. The one divergence is the webfonts: the kit loads them from Google, and this
+  page must fetch nothing (`hi: VIEW-2`), so both faces are named first in the stack with system
+  fallbacks (DECISIONS.md §25, `hi: VIEW-17`, `VIEW-17.a`).
+- **`[hidden]` needs `display: none !important`.** An author `display` rule outranks the user
+  agent's, so `.row { display: flex }` silently defeats `row.hidden` and filtering changes the
+  count while changing nothing on screen. That shipped for four releases. There is a test; keep it
+  (DECISIONS.md §25, `hi: VIEW-6`, `VIEW-7`).
+- **Look at the page in a browser before calling a view change done.** Every view test asserts on
+  the HTML going in. Two bugs in a row, the roles rendering with no separator and the filters
+  hiding nothing, were invisible to all of them and obvious in a screenshot.
 - **Escape before interpreting markers.** `view::inline_markdown` escapes the whole string first,
   then scans for markers. Reversing that order is a vulnerability, not a refactor.
 - **Line-index bookkeeping after `splice`.** `Doc::insert` shifts `line`, `end_line`,
@@ -75,11 +89,11 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
 
 ## Dogfooding
 
-hi describes itself in `hi/`. When you change behavior, capture the intent first, in role-play
-voice like every other criterion:
+hi describes itself in `hi/`. When you change behavior, capture the intent first, as one plain
+sentence like every other criterion:
 
 ```bash
-cargo run -- CHECK-6 "As a person running CI, a sentence describing what someone wants"
+cargo run -- CHECK-6 "a sentence describing what someone wants"
 ```
 
 Retire one the same way, rather than editing the markdown by hand:
@@ -88,11 +102,14 @@ Retire one the same way, rather than editing the markdown by hand:
 cargo run -- retire CHECK-6 "it turned out to be the same as CHECK-2"
 ```
 
-hi's own roles are thin, and that is a known limit rather than a model to copy. This product has one
-audience, so all 96 criteria speak as one of six roles and 61 of them are *a person writing intent*.
-A product with an operator on one side and a member on the other has voices that contradict each
-other, which is the case hi's own files never exercise. DECISIONS.md §14 explains why that made the
-format's biggest gap invisible from inside.
+hi has one audience and one voice, which is a known blind spot rather than a model to copy. A
+product with an operator on one side and a member on the other has voices that contradict each
+other, and hi's own files never exercise that case. DECISIONS.md §14 explains how that hid the
+format's biggest gap from inside, and §24 explains why the first fix we shipped for it was wrong.
+
+Before you write a criterion, try putting *As a ___,* in front of it. If you cannot finish it, you
+wrote a fact about the system rather than something somebody wants. Then leave the words out of the
+file; the test is for you, not for the format.
 
 The feature list in `INTENT.md` is generated by `hi index`; the prose around the index block is
 human-written and the tool never touches it. `intent.html` is generated by `hi view` and is
@@ -106,6 +123,5 @@ binaries for Linux, macOS and Windows. There is no Homebrew formula.
 `release.yml` fires on a `v*` tag, so **tagging is the release**. Bump `Cargo.toml`, update
 `CHANGELOG.md`, tag, then `cargo publish` separately. The format is not frozen; this is 0.x.
 
-There is unreleased work on `main`: the role-play voice, `hi retire`, `INTENT.md` from the first
-capture, and the `hi issue` fixes. `CHANGELOG.md` holds them under Unreleased, with no version
+There is unreleased work on `main`; crates.io is at 0.2.3 and `Cargo.toml` is ahead of it. `CHANGELOG.md` holds them under Unreleased, with no version
 number and no date, because the version is decided at tag time and nowhere else.

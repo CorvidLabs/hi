@@ -9,6 +9,72 @@ only version so far.
 
 ## [0.3.0] 2026-09-16
 
+### The page is a rail and a document, and it wears the brand kit
+
+`hi view` opened with a display-size title and three paragraphs before the
+first criterion, and gave you nothing to navigate with. It is now two columns:
+a sticky rail with the product's name, search, every feature with its count,
+and the sort, retired and reset controls, beside the document itself.
+
+- **The name comes from your `INTENT.md` heading**, which is the one place you
+  actually named your product. It falls back to the directory name. The generic
+  eyebrow above it is gone; your own prose is the first thing on the page.
+- **Search highlights what matched**, wrapping hits in `<mark>` by walking text
+  nodes, so a criterion's own `code` or link is never cut in half.
+- **The keyboard reads the page**: `/` to search, `j` and `k` to move, `Enter`
+  to copy a link, `Escape` to reset.
+- **Clicking an id copies its link** and says so; the anchor still works if the
+  clipboard is refused.
+- **Prose yields to results.** The product why hides while anything is
+  filtered; a feature's why hides while a search is running.
+- **A sun/moon theme toggle**, copied from the design system rather than
+  hand-rolled, remembering your choice and honouring `?theme=`.
+
+**Fixed: filtering never hid anything.** `.row` sets `display: flex`, which
+outranks the user agent's `[hidden] { display: none }`, so every filtered-out
+criterion stayed on screen while the count said it had gone. Search and the
+feature filter had both been in that state since 0.2.0.
+
+The whole token block is now copied verbatim from CorvidLabs Brand Kit v1.3
+rather than partly copied and partly invented. The kit's webfonts are the one
+thing not taken: the page has to open with no network, so both brand faces are
+named first in the stack and fall back to the system's own. DECISIONS.md
+section 25.
+
+### Roles are removed. A criterion is a plain sentence again
+
+From 0.2.0 to 0.2.5 every criterion had to open with `As a <role>,`. That is
+gone. hi reads no role, stores no role and prints no role, and the 108 criteria
+in `hi/` are back to the sentences they were.
+
+The prefix changed nothing. No check read it, nothing branched on it, and no
+output was wrong without it: four verbs rendered it differently and that was the
+whole feature. It cost every line four words in front of the only part anyone
+reads, and on hi's own files 61 of 108 named the same role, so most lines paid
+for zero information. Reading it back was a four-word heuristic over English
+prose, wrong in both directions, which is the thing DECISIONS.md section 9
+refused. And it shipped visibly broken on the HTML page for four releases
+without anyone noticing, which is its own verdict on how load-bearing it was.
+
+The finding that produced it stands: on a two-sided product an operator
+criterion and a member criterion read as the same undifferentiated *I*. The
+answer is to write the subject into the sentence, where English already puts it.
+*An operator can cap what the bot spends in a day* says it and reads as writing.
+
+Files written under the role rule still parse, check and render unchanged.
+Those criteria are sentences that happen to start with *As a*, and hi now treats
+them as exactly that: your words, passed through. `HI/1` is unchanged, because
+it always described a sentence.
+
+The *As a ___* test survives as advice, in the README and in `CLAUDE.md`: if you
+cannot put it in front of your sentence, you wrote a fact rather than a want.
+It is worth running in your head and not worth keeping in the file.
+
+`hi/FILE-16` and `FILE-17` described the role rule and are retired with reasons
+rather than edited. DECISIONS.md section 24 is the full reversal; sections 14,
+16 and 19 carry a pointer to it. Two sections had been numbered 14 and two 15;
+they are renumbered, so sections 16 through 23 have each moved up by two.
+
 ### The page can be searched, sorted, filtered and linked
 
 `hi view` produced a static document. It coloured and nested, and that was all:
@@ -17,10 +83,9 @@ which is absurd for a format whose whole point is permanent, quotable ids.
 
 It now ships:
 
-- **Search** across ids, roles and wording, with `/` to focus it and Escape to
-  clear.
-- **Filter** by role or by feature, by clicking a chip. They combine.
-- **Sort** by id, role or family, or stay grouped by feature.
+- **Search** across ids and wording, with `/` to focus it and Escape to clear.
+- **Filter** by feature, by clicking a chip.
+- **Sort** by id or by family, or stay grouped by feature.
 - **Deep links.** Every criterion is an anchor. Click an id to get
   `intent.html#SEND-1`, and that link lands on the criterion even when a filter
   would have hidden it, so a shared link never silently shows nothing.

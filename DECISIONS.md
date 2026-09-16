@@ -100,16 +100,15 @@ and without it feeling like a security product. It should feel like texting.
 ### Line grammar
 
 ```
-<indent by depth>- **<ID>**  As a <role>, <sentence>
+<indent by depth>- **<ID>**  <sentence>
 ```
 
 **One criterion is one markdown list item, on one line.** However long the sentence runs, it is
 never wrapped, so criteria stay greppable, diffable, and readable as a list.
 
-**Every criterion is role-play, and the role is the front of the sentence.** `As a member,` or
-`As an operator,` and then what that person can do. The role is not a field and not new syntax: it
-is ordinary English at a fixed position, which is what lets hi read it back off the front. §14
-records why this became a rule and what happens to a sentence that omits it.
+**A criterion is one plain sentence and nothing else.** No prefix, no fields, no slots. If a
+sentence needs to say who it speaks for, it says so in English, the way any sentence does. §14
+required an `As a <role>,` opening for four releases and §24 removed it.
 
 The list item is not decoration. Markdown joins consecutive plain lines into a single paragraph, so
 a file of bare `SEND-1  <sentence>` lines is one line per criterion in the source and an unreadable wall of
@@ -182,12 +181,12 @@ Rust, `clap 4` derive.
 | `hi` | Print help. |
 | `hi <ID> <sentence>` | Capture. The file is resolved from the ID's family via frontmatter. A new family starts its own file. Writes into `## Criteria`, appending a new criterion and putting a case directly under its parent. |
 | `hi check` | Structural validation. Reports everything; exits 1 **only** on a structural error. `--json` emits the same report as JSON, families named. |
-| `hi ls` | List criteria, grouped by file, optionally filtered to one family with `--family` and including retired ones with `--retired`. Each sentence is prefixed with its role in brackets. |
+| `hi ls` | List criteria, grouped by file, optionally filtered to one family with `--family` and including retired ones with `--retired`. Each sentence is printed exactly as written. |
 | `hi retire <ID> [reason]` | Move a criterion and every case under it into `## Retired`, creating the section if the file has none. The reason is optional and is written under the block it explains. The ID stays reserved forever. |
 | `hi issue <ID>` | Print a ticket-shaped markdown block. `--create` shells out to `gh` to open a real issue, into `--repo owner/name` if you name one. |
 | `hi export [FAMILY \| file]` | JSON payload for an agent. Takes a family, a file, or nothing (the whole repo, including `INTENT.md`). |
 | `hi index` | Regenerate the feature index in `INTENT.md`. |
-| `hi view [--out FILE]` | Write one self-contained HTML page of the intent, for people who do not read markdown. |
+| `hi view [--out FILE]` | Write one self-contained HTML page of the intent, for people who do not read markdown. Search, filter, sort and a link for every id. |
 
 ### Capture
 
@@ -527,6 +526,11 @@ primary command and keep `hi` as the convenience.
 
 ## 14. Criteria are role-play
 
+> **Reversed by §24.** The field report below is real and the lesson about dogfooding still
+> stands. The mechanism it produced did not, and roles were removed in 0.3.0.
+
+*(What follows is the decision as it was made and shipped; read it in the past tense.)*
+
 **Every criterion is written in someone's voice, and the voice comes first.**
 
 ```
@@ -636,7 +640,11 @@ are not bugs in that sense. They are things you only see from outside.
 
 ---
 
-## 14. The role prefix turned out to be the linter
+## 16. The role prefix turned out to be the linter
+
+> **Reversed by §24.** The test itself survived; the format requirement that carried it did not.
+> "Can I put *As a ___* in front of this?" is now writing advice a person applies while typing,
+> not a shape the file has to hold.
 
 Section 9 cut prose linting, and the reasoning still holds: requirements-smell detection measures
 about 59% precision, so a checker would be wrong two times in five and people would learn to ignore
@@ -659,12 +667,13 @@ voice a criterion speaks in, which was a different problem entirely. Section 9 i
 still ship no dictionary, no POS tagger and no smell rules. This is the whole of the mechanism, and
 it costs three words at the front of a sentence.
 
-`hi check` counts criteria that do not name a role. It does not fail on them, because a criterion
-without a role is unfinished rather than wrong, and section 5 stands.
+`hi check` counted criteria that did not name a role. It never failed on them, because a criterion
+without a role was unfinished rather than wrong, and section 5 stood. That count is gone with the
+rest of the mechanism.
 
 ---
 
-## 15. What hi is upstream of
+## 17. What hi is upstream of
 
 The README used to say hi is worth reaching for at the start of a feature rather than after, on the
 grounds that writing intent for existing code means reverse-engineering the want from the
@@ -689,7 +698,7 @@ propose at all: writing from something that exists makes what is missing invisib
 
 ---
 
-## 16. Whether a criterion is built yet
+## 18. Whether a criterion is built yet
 
 hi does not record it, and will not.
 
@@ -715,19 +724,22 @@ have to think of it themselves.
 
 ---
 
-## 17. `hi ls` capitalizes after the role
+## 19. `hi ls` capitalized after the role
 
-`hi ls` prints the sentence with its role stripped and the remainder capitalized, so
-`As a person writing intent, hi finds my workspace` lists as `[person writing intent] Hi finds my
+> **Obsolete as of §24.** With roles gone there is nothing to strip, and `hi ls` prints every
+> sentence byte for byte as the file has it. Kept because the reasoning below is why it was safe.
+
+`hi ls` used to print the sentence with its role stripped and the remainder capitalized, so
+`As a person writing intent, hi finds my workspace` listed as `[person writing intent] Hi finds my
 workspace`.
 
-This is display only. The file is never rewritten, and section 8.6 still holds: hi does not touch
+That was display only. The file is never rewritten, and section 8.6 still holds: hi does not touch
 the words you wrote. It is recorded here because a reader of the list went and checked the file
 against 8.6 before concluding it was safe, which is a minute nobody should have to spend.
 
 ---
 
-## 18. Retired is how the format teaches
+## 20. Retired is how the format teaches
 
 An agent with no access to the code, the repository or any help was handed `hi/` alone and asked
 what the product was. It got the product, both roles, the promises and the refusals right, which is
@@ -751,13 +763,13 @@ learn.
 
 ---
 
-## 19. Open: a reader cannot tell met from unmet
+## 21. Open: a reader cannot tell met from unmet
 
 Recorded as an open question rather than a decision, because the argument against section 5 got
 sharper and has not been answered.
 
 Section 5 cut evidence binding on the grounds that hi is about what was wanted, and that a criterion
-with no proof is a normal state rather than a defect. Section 16 declined a built-yet bit because
+with no proof is a normal state rather than a defect. Section 18 declined a built-yet bit because
 nothing in hi knows when a feature ships, so the bit would go stale.
 
 The field report that tested criteria for rot found none, and then said something we had not
@@ -774,7 +786,7 @@ gating. It is that the document's stated purpose is to save a reader from readin
 the question a reader most wants answered it sends them to the code anyway.
 
 We have no answer we are happy with. An evidence binding reintroduces everything section 5 cut. A
-status field reintroduces everything section 16 cut. Doing nothing leaves the complaint standing,
+status field reintroduces everything section 18 cut. Doing nothing leaves the complaint standing,
 and it has now been made independently by two readers.
 
 It is written down here so the next person to propose evidence binding is arguing with this rather
@@ -817,9 +829,9 @@ to ask.
 
 ---
 
-## 20. How to measure whether hi gets used
+## 22. How to measure whether hi gets used
 
-Section 19's companion, and a correction to our own method.
+Section 21's companion, and a correction to our own method.
 
 We asked an agent whether it would reach for hi unprompted, and said that if six months passed
 without it happening, that would be the answer. The agent corrected the question:
@@ -841,9 +853,9 @@ Tuesday.
 
 ---
 
-## 21. Criteria are directions, which answers section 19
+## 23. Criteria are directions, which answers section 21
 
-Section 19 logged an unanswered complaint: a reader cannot tell whether a criterion is met, so on
+Section 21 logged an unanswered complaint: a reader cannot tell whether a criterion is met, so on
 the question they most want answered the document sends them to the code. Two readers made it
 independently and we had no reply.
 
@@ -859,7 +871,7 @@ you took a wrong turn is exactly the mistake. A criterion can describe something
 something a year out, or something that was true and has since been revised. In every case it says
 what the thing should be, which is the only claim hi ever makes.
 
-That resolves section 19 without adding a mechanism. "Is this met" is a question about where the car
+That resolves section 21 without adding a mechanism. "Is this met" is a question about where the car
 currently is. hi holds where it is going. Answering the first one is the job of something that reads
 code against contracts, which is what spec-sync and project-specific checks are for, and hi already
 feeds them through `hi export`.
@@ -879,10 +891,155 @@ the code". It is that a person can read what the thing should be, and an agent c
 sentence and get the same answer. Neither of them has to reverse-engineer intent from an
 implementation, and neither is told they are looking at a status report.
 
-And section 19's three properties still matter, just not as a job for hi. When someone does build
+And section 21's three properties still matter, just not as a job for hi. When someone does build
 the checking layer, it should be measured against them: available to a non-author, usable across a
 whole set rather than two at a time, and leaving something behind. Those describe a checker worth
 having. They were never a description of hi.
 
 The direction of travel is that the checking gets built alongside, not inside. hi stays the
 directions.
+---
+
+## 24. The role prefix is removed
+
+**A criterion is a plain sentence again.** Section 14 made every criterion open with
+`As a <role>,` and section 16 argued the prefix was earning its keep as a linter. Both are
+reversed. As of 0.3.0 hi reads no role, stores no role and prints no role, and the 108 criteria in
+`hi/` are back to the sentences they were before.
+
+```
+- **SEND-1**  I can send a message and see it arrive.
+- **SPEND-2**  An operator can cap what the bot spends in a day.
+```
+
+### Why
+
+**It changed nothing.** No check kind read it, nothing branched on it, nothing sorted by it that a
+reader used, and no output was wrong without it. Four verbs rendered it differently and that was
+the entire feature: a variation in how hi printed a string it already had. A format rule that costs
+every line four words and buys no behavior is not a rule, it is a habit the file has to carry.
+
+**It cost the sentence.** The prefix sits in front of the only part anyone reads. On hi's own
+files 61 of 108 criteria named the same role, so on most lines the first four words carried no
+information at all and pushed the content to the right. The sentence is the criterion. Anything
+standing in front of it had better be worth more than the words it displaces.
+
+**Reading it back was a guess.** Section 14 admitted this: the four-word cap is wrong in both
+directions, reading *a matter of fact* as a role and refusing *an operator responsible for the
+budget* as one. That is a heuristic parsing English prose, which is the thing section 9 refused,
+arriving through the back door.
+
+**It shipped broken for four releases and nobody could tell.** From 0.2.0 to 0.2.3 `hi view`
+rendered the role jammed into the front of the sentence with no separator
+(`person writing intentI can write...`). It went out four times, and it was found by taking a
+screenshot rather than by anyone reading the page. A field whose corruption is invisible in the
+source and survives four releases was not load-bearing.
+
+### What the field report actually found, and the better answer
+
+The finding in section 14 is real: on a two-sided product an operator criterion and a member
+criterion read as the same undifferentiated *I*, and that distinction was usually the whole reason
+two criteria disagreed. The mistake was answering it with a slot in the format.
+
+English already does this. *An operator can cap what the bot spends in a day* names its subject and
+reads as a sentence. *As an operator, I can cap what the bot spends in a day* names the same subject
+and reads as a form someone filled in. When a criterion needs to say who it speaks for, it says so
+the way writing says things. When it does not, it stops paying for the ceremony.
+
+That also removes the *I* problem at the root rather than labelling it. The first-person voice was
+what made the two criteria collide; a prefix in front of *I* leaves the *I* there.
+
+### What survives
+
+**The smell test, as advice.** If you cannot put *As a ___* in front of your sentence, you probably
+wrote a fact about the system rather than something somebody wants. That is worth knowing while you
+type, and it is in the README as guidance. It is not a rule the format holds, not something
+`hi check` counts, and not a shape the file has to carry in order to give you the benefit.
+
+**Section 14's real lesson**, which was never about roles: dogfooding finds the failures your
+product has and is silent about the ones your users have and you do not. That stands, and it is why
+the field report was worth acting on at all. The correction here is about the mechanism we chose,
+not about listening.
+
+### What is deliberately not built
+
+**No `roles:` frontmatter, no `speaker:` field, no replacement.** The problem does not need a place
+in the format, so it does not get one. Adding a field is how the last version of this went wrong.
+
+**The format version does not change.** `HI/1` described a sentence, and this is a sentence. Every
+file written under the role rule still parses, still checks and still renders. Those criteria are
+sentences that happen to begin with *As a*, which is legal English and always was, and hi now treats
+them as exactly that: words the author wrote, passed through untouched (§8.6).
+
+**Retired criteria keep their words.** `FILE-16` and `FILE-17` described the role rule, and they are
+in `## Retired` with the reason, not edited to pretend they said something else. That is section 20
+working as intended: the retirements are where a reader learns the format changed its mind.
+
+**What would change this decision:** a product where the subject genuinely cannot be written into
+the sentence, and where a reader of the list needs to group by speaker across hundreds of criteria.
+Neither has been seen. If it is, the cheapest version is a filter over words already in the
+sentences, not a field in front of them.
+
+---
+
+## 25. The page is a rail and a document, and it wears the brand kit
+
+`hi view` used to open with a 52px wall: an eyebrow reading *What this should be*, the product's
+name at display size, and three paragraphs of prose. You scrolled past half a screen of chrome
+before reaching a criterion, and there was nothing to navigate with when you got there. The
+complaint was exact: the big header is useless, and it should be specific to the project.
+
+### What changed
+
+**The page is two columns.** A 244px rail holds the product's name, the search box, one entry per
+feature with that feature's count, and the sort, retired and reset controls. It sticks while the
+document scrolls, so navigation is never something you scroll back up to find. Below 900px it
+becomes a bar across the top, and only the search box and the feature list stay stuck there,
+because a header that eats a third of a phone screen is not navigation.
+
+**The name comes from `INTENT.md`.** The `# ` heading is the one place a person actually named
+their product, and `strip_index` was already throwing it away to keep it out of the prose. The page
+now reads it for the title and falls back to the directory name. Nothing generic is printed above
+the author's own words: the eyebrow is gone, and the lead prose is the first thing on the page.
+
+**Prose yields to results.** The product's why disappears as soon as anything is filtered, and a
+feature's own why disappears while a search is running. Both come back when you reset. Intent prose
+earns the top of the page you opened; it has not earned the top of the answer you went looking for.
+
+**Search highlights what matched**, by walking text nodes and wrapping hits in `<mark>`, never by
+re-parsing rendered HTML, so a criterion's own `` `code` `` or link is never cut in half. **The
+keyboard reads the page**: `/` to search, `j` and `k` to move a cursor through visible criteria,
+`Enter` to copy a link, `Escape` to reset. **Clicking an id copies its link** and says so, with the
+anchor still working when the clipboard is refused.
+
+### The bug this uncovered
+
+Filtering never hid anything. `.row` sets `display: flex`, and an author rule outranks the user
+agent's `[hidden] { display: none }` no matter how specific it is, so every filtered-out criterion
+stayed on screen while the count underneath claimed it had gone. Search and the feature filter had
+both been shipped in that state since 0.2.0. It was found by driving the real page in a browser and
+looking at it, which is the same lesson as section 12: the tests all asserted on the HTML that went
+in, and nobody asked the browser what came out. The fix is one rule,
+`[hidden] { display: none !important; }`, and there is now a test that the stylesheet carries it.
+
+### The brand kit
+
+The colours were already copied from CorvidLabs Brand Kit v1.3, but only a handful of them, and the
+rest of the page had invented its own greys next to them. The whole token block is now copied
+verbatim out of `design-system/assets/tokens.css`, which is what that file asks for: *import this
+file, don't re-derive it*. Inputs sit on `--surface-strong` rather than `--surface`, because the kit
+says surfaces lift and wells recess. Prose wraps at `--measure`. The sun/moon toggle, its pre-paint
+snippet and `theme.js` are copied from the kit rather than hand-rolled, which `ADOPTION.md` asks for
+by name, and the page honours `?theme=`, `data-theme` and `prefers-color-scheme` exactly as every
+other CorvidLabs surface does.
+
+**One deliberate divergence.** The kit loads Schibsted Grotesk and Spline Sans Mono from Google
+Fonts. This page cannot: `VIEW-2` says it is one file you can attach to an email, and `hi check`'s
+own test refuses any reference to another server. So both faces are named first in the stack and
+fall back to the system's own. On a CorvidLabs machine the page is in brand type; anywhere else it
+is in a sensible sans, and it still opens on a plane. A page that needs the network is not a page
+you can send to someone.
+
+**What would change this decision:** the kit shipping the two faces as files we can embed as data
+URIs at a size worth paying for. The page is already around 200KB; two subsetted woff2 faces would
+roughly double it, which is a trade worth making only if someone asks for it.

@@ -215,9 +215,18 @@ fn view_writes_a_self_contained_page() {
     assert!(!page.contains("https://"), "the page must fetch nothing");
     // And the controls it ships are the point of the page.
     assert!(page.contains("id=\"q\""), "search");
-    assert!(page.contains("Sort by id"), "sort");
-    assert!(page.contains("data-filter=\"file\""), "filter");
+    assert!(page.contains("<option value=\"id\">By id</option>"), "sort");
+    assert!(
+        page.contains("class=\"navitem\" data-value=\"chat\""),
+        "filter"
+    );
     assert!(page.contains("href=\"#SEND-1\""), "deep link");
+    // The rail is the navigation, and it names the product rather than the tool.
+    assert!(
+        page.contains("<nav class=\"nav\" id=\"nav\""),
+        "feature list"
+    );
+    assert!(page.contains("class=\"navcount\""), "per-feature counts");
 }
 
 #[test]
@@ -568,7 +577,7 @@ fn retire_moves_a_criterion_and_its_cases_out_of_the_way() {
     let repo = Repo::new("retire");
     repo.write(
         "hi/chat.md",
-        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  As a member, I can send a message.\n  - **SEND-1.a**  As a member, if I am offline it queues.\n- **SEND-2**  As an operator, I can see the queue depth.\n",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  I can send a message.\n  - **SEND-1.a**  if I am offline it queues.\n- **SEND-2**  I can see the queue depth.\n",
     );
     let out = repo.run(&["retire", "SEND-1", "different product"]);
     assert!(out.status.success(), "{}", stderr(&out));
@@ -627,46 +636,11 @@ fn the_first_capture_starts_the_product_intent_file() {
 }
 
 #[test]
-fn a_criterion_carries_the_role_it_speaks_for() {
-    let repo = Repo::new("roles");
-    repo.write(
-        "hi/bot.md",
-        "---\nhi: 1\nfamilies: [SPEND, PLAY]\n---\n\n## Criteria\n\n- **SPEND-2**  As an operator, I can cap what the bot spends in a day.\n- **PLAY-2**  As a member, I can see what I won without opening my wallet.\n",
-    );
-
-    let ls = repo.run(&["ls"]);
-    assert!(stdout(&ls).contains("[operator]"), "{}", stdout(&ls));
-    assert!(stdout(&ls).contains("[member]"), "{}", stdout(&ls));
-
-    let export = repo.run(&["export"]);
-    let value: serde_json::Value = serde_json::from_str(&stdout(&export)).unwrap();
-    let criteria = value["files"][0]["criteria"].as_array().unwrap();
-    assert_eq!(criteria[0]["role"], "operator");
-    assert_eq!(criteria[1]["role"], "member");
-
-    // And the page shows who is speaking rather than an undifferentiated "I".
-    assert!(repo.run(&["view"]).status.success());
-    let page = repo.read("intent.html");
-    assert!(
-        page.contains("class=\"role\""),
-        "the page must label the voice"
-    );
-    // A span with no rule behind it renders as bare text jammed into the
-    // sentence, which is how it shipped in 0.2.0 through 0.2.3. Assert the
-    // style exists, not just the markup.
-    assert!(
-        page.contains(".role {"),
-        "the role label must be styled, not merely emitted"
-    );
-    assert!(page.contains("operator") && page.contains("member"));
-}
-
-#[test]
 fn a_ticket_does_not_print_the_sentence_twice() {
     let repo = Repo::new("ticket");
     repo.write(
         "hi/bot.md",
-        "---\nhi: 1\nfamilies: [SPEND]\n---\n\n## Criteria\n\n- **SPEND-1**  As an operator, I can cap the daily spend.\n",
+        "---\nhi: 1\nfamilies: [SPEND]\n---\n\n## Criteria\n\n- **SPEND-1**  I can cap the daily spend.\n",
     );
     let out = repo.run(&["issue", "SPEND-1"]);
     let text = stdout(&out);
@@ -675,7 +649,6 @@ fn a_ticket_does_not_print_the_sentence_twice() {
         1,
         "the heading already carries it:\n{text}"
     );
-    assert!(text.contains("Speaking as operator"), "{text}");
     assert!(text.contains("hi: SPEND-1"));
 }
 
@@ -686,7 +659,7 @@ fn what_hi_writes_passes_hi_own_check() {
     let repo = Repo::new("selfcheck");
     repo.write(
         "hi/gift.md",
-        "---\nhi: 1\nfamilies: [GIFT]\n---\n\n## Criteria\n\n- **GIFT-1**  As an operator, I can cancel a pending gift.\n  - **GIFT-1.a**  As a member, I am told when one is cancelled.\n  - **GIFT-1.b**  As an operator, the refund is automatic.\n",
+        "---\nhi: 1\nfamilies: [GIFT]\n---\n\n## Criteria\n\n- **GIFT-1**  I can cancel a pending gift.\n  - **GIFT-1.a**  I am told when one is cancelled.\n  - **GIFT-1.b**  the refund is automatic.\n",
     );
 
     let out = repo.run(&["retire", "GIFT-1", "we never shipped gifting"]);

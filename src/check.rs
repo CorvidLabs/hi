@@ -222,7 +222,7 @@ pub fn run(workspace: &Workspace) -> Report {
         notes.push(note);
     }
     // Retiring in a hurry is fine; never saying why is a decision nobody can
-    // reconstruct later. Same register as the role note, and never a failure.
+    // reconstruct later. A note rather than a problem, and never a failure.
     // Only the root of a retirement needs a reason. A case went with its
     // parent and was never a separate decision, so asking it to explain itself
     // is asking for the same sentence twice.
@@ -252,21 +252,6 @@ pub fn run(workspace: &Workspace) -> Report {
         notes.push(format!(
             "{subject} not say why. Add it with `hi retire <ID> \"...\"`"
         ));
-    }
-
-    let roleless = workspace
-        .docs
-        .iter()
-        .flat_map(|doc| doc.criteria.iter())
-        .filter(|c| c.role.is_none())
-        .count();
-    if roleless > 0 {
-        let note = if roleless == 1 {
-            "1 criterion does not say who it speaks for".to_string()
-        } else {
-            format!("{roleless} criteria do not say who they speak for")
-        };
-        notes.push(format!("{note}. Open with \"As a ...,\""));
     }
 
     Report {

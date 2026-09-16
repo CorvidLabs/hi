@@ -43,48 +43,42 @@ texting.
 
 ## Criteria
 
-- **SEND-1**  As a member, I hit enter and the message shows up right away, marked as sending.
-  - **SEND-1.a**  As a member, if I have no connection it queues and tells me, and never silently disappears.
-  - **SEND-1.b**  As a member, if the thread was deleted before it sends, it warns me first.
-- **SEND-2**  As a member, it reaches them and the mark changes to sent.
+- **SEND-1**  I hit enter and the message shows up right away, marked as sending.
+  - **SEND-1.a**  If I have no connection it queues and tells me, and never silently disappears.
+  - **SEND-1.b**  If the thread was deleted before it sends, it warns me first.
+- **SEND-2**  It reaches them and the mark changes to sent.
 
-- **RECEIPT-1**  As a member, I can tell sent from read without thinking about it.
+- **RECEIPT-1**  I can tell sent from read without thinking about it.
 
-- **SPEND-1**  As an operator, I can cap what the service spends in a day.
+- **SPEND-1**  An operator can cap what the service spends in a day.
 
 ## Retired
 
-- **SEND-3**  As a member, my messages auto-delete after 24 hours.
+- **SEND-3**  My messages auto-delete after 24 hours.
   retired: we decided this was a different product
 ```
 
-That is the whole format. Five rules:
+That is the whole format. Four rules:
 
 1. **A criterion is one markdown list item: a bold id, two spaces, and a sentence.** However long the
    sentence runs it stays on one line, so criteria stay greppable and diffable. And because it is
    a list item, it renders as its own line everywhere, instead of markdown joining it into a
    paragraph with its neighbours.
-2. **Every criterion is role-play, and the role comes first.** You write `As a member,` or
-   `As an operator,` and then the sentence. A role is a short noun phrase, at most four words,
-   followed by a comma. There is no new syntax and nothing to configure: because the shape is
-   universal, hi reads the role off the front of the sentence, and `hi ls`, `hi export`, `hi issue`
-   and `hi view` all carry it through.
-3. **You write the id yourself**, because you are the one who has to say it out loud. `SEND-1` is a
+2. **You write the id yourself**, because you are the one who has to say it out loud. `SEND-1` is a
    name, not a position.
-4. **Letters are cases, numbers are steps**, alternating strictly: `SEND-1.a.1.b`. Reading an id
+3. **Letters are cases, numbers are steps**, alternating strictly: `SEND-1.a.1.b`. Reading an id
    tells you what kind of thing it is.
-5. **Ids are permanent and append-first.** hi never renumbers anything, refuses an id that is
+4. **Ids are permanent and append-first.** hi never renumbers anything, refuses an id that is
    already taken, and keeps a retired id reserved. It cannot stop you renumbering a file by hand,
    so permanence is a convention the tool supports rather than one it enforces.
 
-Rule 2 is the one that looks optional and is not. Drop the roles from the file above and `SEND-1`
-and `SPEND-1` become the same undifferentiated *I*, so a reader cannot tell that one of them is
-being paid and the other is doing the paying. That distinction is usually the whole reason the two
-criteria disagree, and there is nowhere else in the file to put it.
-
-Nothing enforces it. A sentence that does not open with a role still parses, and `hi check` will
-not say a word about it, because judging your English is not hi's job. You simply lose the answer
-to *who wants this*. [DECISIONS.md](DECISIONS.md) §14 records why this became a rule.
+There is no fifth rule about who the sentence speaks for. Notice that `SEND-1` says *I* and
+`SPEND-1` says *an operator*, and that the difference is in the sentence, where anyone can read it.
+On a product with a paying side and a using side, say which one you mean the way you would say it
+out loud. On a product with one audience, do not: the ceremony costs four words and buys nothing.
+hi will never read a subject off the front of your line, and `hi check` has no opinion on your
+English. [DECISIONS.md](DECISIONS.md) §24 records why an earlier version of this was a rule and why
+it is not one now.
 
 The `## Intent` block is the part a spec can never carry, and it is the first thing an agent
 should read.
@@ -143,28 +137,28 @@ note: INTENT.md has no product-level why yet
 A new id just works. An id that is already taken refuses, and never overwrites it:
 
 ```console
-$ hi CHECKOUT-1 "As a shopper, something else"
+$ hi CHECKOUT-1 "something else"
 error: CHECKOUT-1 already exists in hi/checkout.md:14
 hint:  next free is CHECKOUT-2
 ```
 
-Reading it back puts the role in front, where you cannot miss which side of the product is talking.
+Reading it back gives you the file as a tree, one sentence per line, exactly as you wrote them.
 This is `hi/chat.md` from the top of this page:
 
 ```console
 $ hi ls
 hi/chat.md
-  SEND-1  [member] I hit enter and the message shows up right away, marked as sending.
-    SEND-1.a  [member] if I have no connection it queues and tells me, and never silently disappears.
-    SEND-1.b  [member] if the thread was deleted before it sends, it warns me first.
-  SEND-2  [member] it reaches them and the mark changes to sent.
-  RECEIPT-1  [member] I can tell sent from read without thinking about it.
-  SPEND-1  [operator] I can cap what the service spends in a day.
+  SEND-1  I hit enter and the message shows up right away, marked as sending.
+    SEND-1.a  If I have no connection it queues and tells me, and never silently disappears.
+    SEND-1.b  If the thread was deleted before it sends, it warns me first.
+  SEND-2  It reaches them and the mark changes to sent.
+  RECEIPT-1  I can tell sent from read without thinking about it.
+  SPEND-1  An operator can cap what the service spends in a day.
 ```
 
-`hi export` carries the role as its own JSON field beside the sentence, `hi issue` opens the ticket
-body with *Speaking as operator.*, and `hi view` carries it onto the page. A sentence with no role
-is passed through exactly as written, everywhere.
+`hi export` hands an agent the same sentences as JSON with the `## Intent` prose attached,
+`hi issue` shapes one into a ticket, and `hi view` puts the whole set on a page you can search and
+filter. Your words are passed through untouched in all of them.
 
 | Command | What it does |
 |---|---|
@@ -175,7 +169,7 @@ is passed through exactly as written, everywhere.
 | `hi issue <ID> [--create]` | Print a ticket, or open a real GitHub issue with `gh`. |
 | `hi export [FAMILY \| file]` | JSON for an agent, intent prose included. |
 | `hi index` | Rewrite the feature list inside `INTENT.md`, and nothing else in it. |
-| `hi view [--out FILE]` | One self-contained HTML page: search, filter by role or feature, sort, and a link for every id. Works offline, and with scripting off it is still readable. |
+| `hi view [--out FILE]` | One self-contained HTML page: a sticky feature rail, search with match highlighting, sort, keyboard navigation, and a copyable link for every id. Named after your `INTENT.md` heading, in CorvidLabs brand colors, light and dark. Works offline, and with scripting off it is still readable. |
 
 Every command takes `--root <PATH>` to work on a repository other than the one you are standing in.
 When you are capturing, put it before the id: everything after the id is your sentence, word for
@@ -237,13 +231,13 @@ is now wrong:
 
 > Written before any of it was built, which is the point. None of this exists yet.
 
-**Keep the role short enough to be a name.** hi's own criteria say `developer`,
-`reader`, `maintainer` and `agent`. If your role does not fit comfortably as a label, it is a
-description of what someone is doing rather than a name for who they are, and the sentence will
-read better with a shorter one.
+**Say who only when who matters.** *An operator can cap what the service spends in a day* and
+*I can tell sent from read* are both fine. Naming a person on every line when the product has one
+audience is filler, and naming nobody on a product with two sides loses the distinction that is
+usually the whole reason two criteria disagree. Use the subject the sentence actually needs.
 
-**Name the person, not the permission.** If your codebase says `admin`, the role is still probably
-`operator`. `admin` is a permission bit; an operator is someone with a job to do. The person is
+**Name the person, not the permission.** If your codebase says `admin`, the sentence probably wants
+`an operator`. `admin` is a permission bit; an operator is someone with a job to do, and the job is
 what the criterion is about.
 
 ## What it deliberately does not do
@@ -259,15 +253,16 @@ stop reading the output, and a month later somebody deletes it from CI. A checke
 to ignore is worse than no checker, because it still looks like coverage. So the sentence stays
 yours, and `hi check` never has an opinion about it.
 
-**The role prefix turned out to do the job anyway.** Someone using hi on a real product found that
-two of their forty criteria would not take a role, and that both were defective in a way they had
-not noticed: they could not write "As a ___" in front of them because they had written a fact about
-the system rather than anyone's want.
+**There is a test you can run on yourself, and it is free.** Try putting *As a ___,* in front of
+your sentence. Someone using hi on a real product found that two of their forty criteria would not
+take it, and that both were defective in a way they had not noticed: they had written a fact about
+the system rather than anything anybody wants.
 
 That test has no false positives, because nothing is guessing. You either can finish the sentence or
-you cannot, and being unable to finish it means what you wrote was not a want. It is the check that
-the 59% number says is impossible, and it costs three words at the front of a line instead of a
-dictionary and a CI job.
+you cannot, and being unable to finish it means what you wrote was not a want. It is the check the
+59% number says is impossible, and it costs nothing, because it happens in your head while you
+type. hi does not ask you to leave the words in the file. An earlier version did, for four
+releases; [DECISIONS.md](DECISIONS.md) §24 is why it no longer does.
 
 Those are not omissions, they are the design. Every one of them is a thing you would have to
 maintain, and a tool you maintain is a tool you stop writing in. The reasoning behind each is in
@@ -285,25 +280,23 @@ file never declared, and a criterion stranded outside every section where nothin
 ## Dogfooding
 
 `hi` describes itself. Its own intent lives in [`hi/`](hi/), currently 108 criteria across 9
-families in 6 files, every one of them in a role, and the feature list in `INTENT.md` at the root is
-generated by `hi index`. The `## Intent` blocks in those files are the honest version of why this
+families in 6 files, and the feature list in `INTENT.md` at the root is generated by `hi index`. The `## Intent` blocks in those files are the honest version of why this
 exists.
 
-Dogfooding has a blind spot, and it is worth naming here. hi has one audience, so most of its own
-criteria speak as *a person writing intent* and the rest as *a reader*, *a maintainer* or *an
-agent*. A product with an operator on one side and a member on the other has voices that actually
-contradict each other, and that is a gap hi could never have found in its own files. It took
-someone using it on their product to find it. See [DECISIONS.md](DECISIONS.md) §14.
+Dogfooding has a blind spot, and it is worth naming here. hi has one audience and one voice. A
+product with an operator on one side and a member on the other has voices that actually contradict
+each other, and that is a gap hi could never have found in its own files. It took someone using it
+on their own product to find it, and the first fix we shipped for it was the wrong one. See
+[DECISIONS.md](DECISIONS.md) §14 for what they found and §24 for the correction.
 
 ## Status
 
-**v0.1.0.** On [crates.io](https://crates.io/crates/human-intent), with binaries for Linux, macOS
+**v0.2.3** on [crates.io](https://crates.io/crates/human-intent), with binaries for Linux, macOS
 and Windows. The format is deliberately not frozen: this is 0.x, and `HI/1` may still change before
-a 1.0 that commits to it.
+a 1.0 that commits to it, as §24 just demonstrated.
 
-The role-play voice, `hi retire` and the `INTENT.md` note landed after v0.1.0 and are not in the
-published crate yet, so build from `main` for those. [CHANGELOG.md](CHANGELOG.md) lists them under
-Unreleased.
+`main` is ahead of the published crate. Removing the role prefix is the visible part; build from
+source for it. [CHANGELOG.md](CHANGELOG.md) lists what is unreleased.
 
 ## License
 

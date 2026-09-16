@@ -1,0 +1,9 @@
+<script>
+    (() => {
+        try {
+            const q = new URLSearchParams(location.search).get("theme");
+            const t = q || localStorage.getItem("corvid-theme");
+            if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+        } catch (_) {}
+    })();
+</script>

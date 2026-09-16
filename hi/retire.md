@@ -21,11 +21,11 @@ reason next to the thing it explains.
 
 ## Criteria
 
-- **RETIRE-1**  As a developer, I can retire a criterion with a command instead of hand-editing the file.
-  - **RETIRE-1.a**  As a developer, its cases go with it, so nothing is left orphaned behind it.
-  - **RETIRE-1.b**  As a developer, I can say why I changed my mind, and the reason stays next to what I retired.
-  - **RETIRE-1.c**  As a developer, I can come back later and say why, without editing the file by hand.
-  - **RETIRE-1.d**  As a developer, I am told which cases went with a criterion I retired, in case one belonged to something else.
-- **RETIRE-2**  As a reader, a retired id is still spoken for, so it is never handed out to something else.
-- **RETIRE-3**  As a reader, I am told when a retired criterion never says why it was retired.
-- **RETIRE-4**  As a reader, I can learn the standard a team retires things by, because every retirement says why.
+- **RETIRE-1**  I can retire a criterion with a command instead of hand-editing the file.
+  - **RETIRE-1.a**  Its cases go with it, so nothing is left orphaned behind it.
+  - **RETIRE-1.b**  I can say why I changed my mind, and the reason stays next to what I retired.
+  - **RETIRE-1.c**  I can come back later and say why, without editing the file by hand.
+  - **RETIRE-1.d**  I am told which cases went with a criterion I retired, in case one belonged to something else.
+- **RETIRE-2**  A retired id is still spoken for, so it is never handed out to something else.
+- **RETIRE-3**  I am told when a retired criterion never says why it was retired.
+- **RETIRE-4**  I can learn the standard a team retires things by, because every retirement says why.
