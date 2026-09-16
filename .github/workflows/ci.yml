@@ -23,6 +23,21 @@ jobs:
       - run: cargo build --release
       - run: cargo test
 
+  # The page's behavior, as opposed to the HTML it is generated from. Every
+  # other view test asserts on what goes in; two bugs shipped anyway, and both
+  # were found by a person taking a screenshot. ubuntu-latest ships Chrome.
+  view:
+    name: The page in a browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check Chrome is present
+        run: |
+          command -v google-chrome || command -v chromium-browser || command -v chromium
+      - run: sh scripts/view-behaves.sh
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

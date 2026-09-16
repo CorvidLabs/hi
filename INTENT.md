@@ -22,5 +22,5 @@ to maintain, and it stops being written.
 - [format](hi/format.md): FILE, ID (30 criteria)
 - [generate](hi/generate.md): ISSUE, EXPORT, INDEX (23 criteria)
 - [retire](hi/retire.md): RETIRE (8 criteria)
-- [view](hi/view.md): VIEW (30 criteria)
+- [view](hi/view.md): VIEW (31 criteria)
 <!-- /hi:index -->

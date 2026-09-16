@@ -1,6 +1,6 @@
 [package]
 name = "human-intent"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 description = "Human Intent; acceptance criteria in human words, with permanent ids"
 license = "MIT"

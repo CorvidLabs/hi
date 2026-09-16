@@ -48,3 +48,4 @@ send to somebody.
 - **VIEW-18**  I can switch the page between light and dark myself, and it remembers which I chose.
 - **VIEW-19**  The page I would generate is published somewhere I can send a link to, so someone can see what hi looks like before installing it.
   - **VIEW-19.a**  What is published is hi's own real criteria, not a mock-up, so a page that is wrong is wrong for everybody at once.
+- **VIEW-20**  The page is checked by something that actually opens it, not only by reading the html it was built from.

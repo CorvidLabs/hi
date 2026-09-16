@@ -7,6 +7,28 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## [0.3.3] 2026-09-16
+
+### The page is now checked by something that opens it
+
+Every view test asserted on the HTML going in. Two bugs shipped anyway,
+and both were found by a person taking a screenshot: `.row { display:
+flex }` outranked the user agent's `[hidden]` so filters hid nothing
+(0.2.0 to 0.2.3), and the role chip rendered jammed into the sentence
+with no separator (0.2.0 to 0.2.3).
+
+`scripts/view-behaves.sh` loads a generated page in headless Chrome and
+drives it the way a person would: click a feature and count what is
+still on screen, search and check the matches are highlighted, toggle
+retired, move the cursor with `j`, focus with `/`, and follow a deep
+link into a row a filter would have hidden. Fourteen checks, asserting
+on what is visible rather than on what was generated. Removing the
+`[hidden]` rule fails seven of them, which is how it was verified.
+
+It is a step in `fledge lanes run verify` and its own CI job. Where no
+Chrome or Chromium is installed it says so and skips, so it never blocks
+a local gate (`VIEW-20`).
+
 ## [0.3.2] 2026-09-16
 
 ### Two defects an audit found, and the drift around them

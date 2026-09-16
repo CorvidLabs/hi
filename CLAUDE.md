@@ -57,9 +57,12 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   agent's, so `.row { display: flex }` silently defeats `row.hidden` and filtering changes the
   count while changing nothing on screen. That shipped for four releases. There is a test; keep it
   (DECISIONS.md §25, `hi: VIEW-6`, `VIEW-7`).
-- **Look at the page in a browser before calling a view change done.** Every view test asserts on
-  the HTML going in. Two bugs in a row, the roles rendering with no separator and the filters
-  hiding nothing, were invisible to all of them and obvious in a screenshot.
+- **The page is checked by something that opens it.** `scripts/view-behaves.sh` drives a generated
+  page in headless Chrome and asserts on what is visible, because every other view test asserts on
+  the HTML going in and two bugs shipped anyway: the roles rendering with no separator, and the
+  filters hiding nothing. Add a check there when you change the page's behavior. Do not pass
+  `--user-data-dir`: a fresh profile deadlocks headless Chrome on a page that writes localStorage,
+  which this one does from the theme toggle.
 - **Escape before interpreting markers.** `view::inline_markdown` escapes the whole string first,
   then scans for markers. Reversing that order is a vulnerability, not a refactor.
 - **Line-index bookkeeping after `splice`.** `Doc::insert` shifts `line`, `end_line`,
@@ -117,7 +120,7 @@ gitignored.
 
 ## Releasing
 
-v0.3.2 is out: the repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
+v0.3.3 is out: the repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
 Homebrew tap, and every tagged release carries binaries for Linux and macOS (both architectures
 each) and Windows. The docs are at corvidlabs.xyz/hi, and corvidlabs.github.io/hi publishes this
 repository's own `hi view` output on every push to `main`.

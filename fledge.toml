@@ -13,8 +13,21 @@ intent = "cargo run --quiet -- check"
 # criteria it counts. It did: the committed index claimed 114 against an actual
 # 119. The script regenerates and fails if that changed anything.
 index = "sh scripts/index-is-current.sh"
+# Every other view test asserts on the HTML that goes in. Two bugs shipped
+# anyway, both found by a person taking a screenshot. This drives the real page
+# in a real browser and asserts on what comes out. Skips with a message if no
+# Chrome or Chromium is installed; CI always has one.
+view-behaves = "sh scripts/view-behaves.sh"
 plugin-validate = "fledge plugins validate . --strict"
 
 [lanes.verify]
-description = "The single gate: format, lint, tests, hi's own intent and index, and specs"
-steps = [{ parallel = ["fmt", "lint"] }, "test", "intent", "index", "spec", "plugin-validate"]
+description = "The single gate: format, lint, tests, the page in a browser, hi's own intent and index, and specs"
+steps = [
+    { parallel = ["fmt", "lint"] },
+    "test",
+    "view-behaves",
+    "intent",
+    "index",
+    "spec",
+    "plugin-validate",
+]

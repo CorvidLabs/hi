@@ -157,7 +157,13 @@ from the CorvidLabs brand tokens and are defined for light and dark in all three
 24. The page honours `?theme=light|dark`, `data-theme` on `<html>` and `prefers-color-scheme`, in
     that order, and the toggle persists a choice to `localStorage` under `corvid-theme`. The
     pre-paint snippet runs before the stylesheet so a stored choice never flashes (hi: VIEW-18).
-25. Prose yields to results: the product's lead prose is hidden while anything is filtered, and a
+25. The page's behavior is checked by `scripts/view-behaves.sh`, which loads a generated page in
+    headless Chrome, drives it the way a person would and asserts on what is actually visible.
+    Every other test in this module asserts on the HTML going in, and two bugs shipped anyway: the
+    `[hidden]` override and a role chip rendered with no separator, both found by a person taking a
+    screenshot. It skips with a message where no Chrome is installed, and CI runs it on a job that
+    has one (hi: VIEW-20).
+26. Prose yields to results: the product's lead prose is hidden while anything is filtered, and a
     feature's own prose is hidden while a search is running (hi: VIEW-6).
 
 ## Behavioral Examples
