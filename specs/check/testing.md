@@ -124,3 +124,10 @@ run under `cargo test --test cli`.
 
 The `doc::tests` rows are listed because the guarantee they pin is `check`'s output, but the
 mechanism lives entirely in `doc`. `check` must not grow a second copy of it.
+
+## Added 2026-09-17
+
+| Requirement | Covered by |
+|---|---|
+| REQ-check-014 (the feature list is behind) | `cli::check_says_the_feature_list_is_behind_without_failing`: a criterion typed into `hi/chat.md` by hand makes `hi check` exit 0, print `feature list is behind`, and print no problem; `hi index` then clears the note. The note itself is covered on the `out` side by `out::tests::a_list_that_disagrees_is_a_note`, `a_list_that_matches_is_worth_no_note`, `a_list_hi_can_no_longer_refresh_is_a_note_too` and `a_file_with_no_block_at_all_is_not_a_list_that_is_behind`. |
+| REQ-check-014 (it never moves the exit code) | The same test asserts `status.success()` and that stdout carries no `problem`. Checked by reverting: removing the `index_note` push fails it, and mutating `index_note` to nag unconditionally fails it too, so it cannot pass by the note never appearing or by it always appearing. |

@@ -43,14 +43,14 @@ named back to them (hi: CAPTURE-11).
 
 | Export | Description |
 |--------|-------------|
-| `Captured` | Report of one successful capture: the parsed id, the repository-relative file it landed in, and whether that file had to be started. |
+| `Captured` | Report of one successful capture: the parsed id, the repository-relative file it landed in, whether that file had to be started, which product-level and agent-facing files this capture started alongside it, and why the generated feature list could not be refreshed when it could not. |
 | `capture` | Add one criterion to the workspace, or return an error without writing anything. |
 
 ### Structs & Enums
 
 | Type | Description |
 |------|-------------|
-| `Captured` | `#[derive(Debug)]` struct with three public fields: `id: Id` (the parsed id as written), `file: String` (the destination path relative to the workspace root, e.g. `hi/chat.md`), and `created_file: bool` (true when the family was not already held by any loaded doc, so capture had to start or adopt a file for it). Returned only on success; the caller prints it. |
+| `Captured` | `#[derive(Debug)]` struct with six public fields: `id: Id` (the parsed id as written), `file: String` (the destination path relative to the workspace root, e.g. `hi/chat.md`), `created_file: bool` (true when the family was not already held by any loaded doc, so capture had to start or adopt a file for it), `started_intent: Option<String>` (the path of an `INTENT.md` this capture created, hi: INDEX-3), `started_agent: Vec<String>` (the `hi/AGENTS.md` and `hi/CLAUDE.md` this capture wrote, hi: HABIT-1), and `index_error: Option<String>` (why the generated feature list could not be refreshed, hi: INDEX-4.a). The last three are all best effort: each is a line for the caller to print and none of them can turn a successful capture into an error. Returned only on success; the caller prints it. |
 
 ### Traits
 
@@ -62,7 +62,7 @@ named back to them (hi: CAPTURE-11).
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `capture` | `capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Result<Captured>` | Validate `raw_id` against the id grammar, reject an empty sentence, refuse an id that already exists anywhere in the workspace (active or retired) with a next-free hint, refuse a sub-id whose parent is absent, then resolve the destination file (the file holding the parent first, the file that declares or uses the family second, and `hi/<family>.md` created or adopted when neither exists), insert the criterion through `Doc::insert`, save the file atomically through `Doc::save`, and report what happened. Returns `anyhow::Error` on every refusal. |
+| `capture` | `capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Result<Captured>` | Validate `raw_id` against the id grammar, reject an empty sentence, refuse an id that already exists anywhere in the workspace (active or retired) with a next-free hint, refuse a sub-id whose parent is absent, then resolve the destination file (the file holding the parent first, the file that declares or uses the family second, and `hi/<family>.md` created or adopted when neither exists), insert the criterion through `Doc::insert`, save the file atomically through `Doc::save`, reload the saved file so what is in memory matches what is on disk, then do three best-effort things in order: start `INTENT.md` if the repository has none, write `hi/AGENTS.md` and `hi/CLAUDE.md` if they are not there, and refresh the generated feature list through `out::refresh_index`. Reports what happened. Returns `anyhow::Error` on every refusal. |
 
 ## Invariants
 
@@ -177,6 +177,22 @@ named back to them (hi: CAPTURE-11).
     byte is the only thing a capture changes outside the line it inserted and the frontmatter
     entry it may add.
 
+18. Everything after `Doc::save` is best effort and cannot fail the capture. Starting `INTENT.md`,
+    writing `hi/AGENTS.md` and refreshing the generated feature list all run only once the
+    criterion is on disk, and each reports itself as a field on `Captured` rather than as an
+    `Err`. The thought is the thing that mattered, and it is already stored: a capture reported as
+    a failure sends somebody looking for a criterion that is in fact there (hi: INDEX-3,
+    CAPTURE-1.a, INDEX-4.a).
+19. The refresh counts what is on disk, not what is in memory. `Doc::insert` splices the rendered
+    line into `Doc::lines` and shifts the surrounding indexes, but does not add the criterion to
+    `doc.criteria`, so the in-memory `Doc` still describes the file as it was a moment earlier.
+    Capture reloads the file it just saved through `Doc::load` before anything counts, which is why
+    `index_block` sees the new criterion. That reload is best effort too: if it fails, the refresh
+    writes a list that is one short and `hi check` says so afterwards (hi: INDEX-4, INDEX-4.b).
+20. `refresh_index` is called inside the caller's lock and takes none of its own. `main::run_capture`
+    holds `lock::acquire` across the whole read-modify-write and the lock is not reentrant, so a
+    lock taken here would deadlock every writer (hi: FILE-19).
+
 ## Behavioral Examples
 
 #### Scenario: A new id in a known family
@@ -225,6 +241,23 @@ named back to them (hi: CAPTURE-11).
 - **When** `capture` is called with `SEND-1.a.b` and again with `send-1`
 - **Then** both calls return an error and neither sentence appears anywhere in `hi/chat.md`
   (hi: CAPTURE-5)
+
+#### Scenario: The generated feature list is true after the capture
+
+- **Given** an `INTENT.md` whose generated block says `(7 criteria)` while `hi/chat.md` holds one,
+  with hand-written prose above and below the markers
+- **When** `capture(workspace, "SEND-2", "It reaches them.")` runs
+- **Then** the criterion is in `hi/chat.md`, the block reads `(2 criteria)`, both paragraphs of
+  prose are still there, and `Captured.index_error` is `None` (hi: INDEX-4)
+
+#### Scenario: The feature list cannot be refreshed, and the capture succeeds anyway
+
+- **Given** an `INTENT.md` holding an opening `<!-- hi:index -->` line with no close, which
+  `write_index` refuses to guess past (hi: INDEX-2.b)
+- **When** `capture(workspace, "SEND-2", "It reaches them.")` runs
+- **Then** the call returns `Ok`, `hi/chat.md` holds `- **SEND-2**  It reaches them.`, `INTENT.md`
+  is byte-for-byte what it was, and `Captured.index_error` carries the refusal for `main` to print
+  on stderr as a note (hi: INDEX-4.a, CAPTURE-5)
 
 #### Scenario: Capture into a repository with no `hi/` yet
 
@@ -291,6 +324,8 @@ named back to them (hi: CAPTURE-11).
 | An adopted file has no frontmatter block | `Doc::insert`'s `rewrite_families` refuses with ``<absolute path> has no frontmatter, so add `---\nhi: 1\n---` at the top`` (the `\n` is literal in the message). Nothing is written. The adopted file is not scaffolded over and not saved. Note the in-memory `Doc` has already been mutated (a `## Criteria` section may have been opened and the criterion line spliced in) at that point, but nothing reaches disk because `save` is never reached |
 | `Doc::save` fails on a full disk, on a quota, or on a rename that cannot complete | `write_atomically` deletes its `.<name>.hi-tmp` sibling and the error propagates as `writing <path>`. The destination file is left byte-for-byte as it was; it is never truncated first (hi: FILE-8) |
 | `Doc::insert` or `Doc::save` fails after a *new* family file was written | The error propagates. The scaffolded family file has already been written by `create_file`'s `fs::write` at that point and remains on disk, empty of criteria |
+| `out::refresh_index` cannot rewrite `INTENT.md`, for any reason including INDEX-2.b's refusal | Not an error. The message is carried out on `Captured.index_error` and `main` prints `note: the feature list in INTENT.md was not refreshed: <text>` on stderr; the exit code stays 0 and the criterion is stored (hi: INDEX-4.a) |
+| `Doc::load` fails when capture reloads the file it just saved | Not an error. The in-memory `Doc` is left as `Doc::insert` made it, so the refreshed list is one criterion short. `hi check` reports the list as behind afterwards (hi: INDEX-4.b) |
 
 ## Dependencies
 
@@ -303,12 +338,13 @@ named back to them (hi: CAPTURE-11).
 | `crate::id` | `Id::parse` for grammar validation, `Id::parent` for the parent check, `Id`'s `Display` for messages, and `Level::Number` to build the next-free hint |
 | `crate::doc` | `Doc::load` to adopt an existing file, `Doc::insert` for placement under the parent (and for opening a `## Criteria` section when the file has none), `Doc::save` to persist atomically, `new_file_text` for a new family file's scaffold |
 | `crate::workspace` | `Workspace::find_id` (duplicate lookup, parent lookup, and destination-file resolution), `next_free`, `doc_for_family`, `rel`, and the `docs`/`dir` fields |
+| `crate::out` | `starter_intent` and `agent_instructions` for the files a first capture writes, and `refresh_index` to keep the generated feature list true once the criterion is on disk (hi: INDEX-3, HABIT-1, INDEX-4) |
 
 ### Consumed By
 
 | Module | What is used |
 |--------|-------------|
-| `main` (`src/main.rs`) | `capture::capture` in `run_capture(root, raw_id, rest)`, the default action when the first CLI argument is id-shaped; reads `Captured.created_file`, `Captured.file` and `Captured.id` to print `<file>  created` and `<file>  +<id>` (hi: CAPTURE-11). `main` reads `args_os` and peels a **leading** `--root PATH` or `--root=PATH` out with `peel_root` before the id-shaped test, so the flag becomes capture's start directory instead of words in the sentence; `peel_root` breaks at the first argument that is not one of those two forms, so from the id onward every argument, `--root` included, is sentence (hi: CAPTURE-8, CAPTURE-9). A non-UTF-8 argument is reported as `that sentence is not valid UTF-8. hi files are text, so it cannot be stored as written` rather than panicking (hi: CAPTURE-1.c) |
+| `main` (`src/main.rs`) | `capture::capture` in `run_capture(root, raw_id, rest)`, the default action when the first CLI argument is id-shaped; reads `Captured.created_file`, `Captured.file` and `Captured.id` to print `<file>  created` and `<file>  +<id>` (hi: CAPTURE-11), and `Captured.started_intent`, `Captured.started_agent` and `Captured.index_error` for the best-effort lines beside them; `index_error` goes to stderr so stdout stays the record of what landed. `main` reads `args_os` and peels a **leading** `--root PATH` or `--root=PATH` out with `peel_root` before the id-shaped test, so the flag becomes capture's start directory instead of words in the sentence; `peel_root` breaks at the first argument that is not one of those two forms, so from the id onward every argument, `--root` included, is sentence (hi: CAPTURE-8, CAPTURE-9). A non-UTF-8 argument is reported as `that sentence is not valid UTF-8. hi files are text, so it cannot be stored as written` rather than panicking (hi: CAPTURE-1.c) |
 
 ## Change Log
 
@@ -319,3 +355,4 @@ named back to them (hi: CAPTURE-11).
 | 2026-09-16 | Claude | Reconciled with the bug-fix pass: destination now resolves to the parent's file before the declared family (hi: CAPTURE-4.a), which closes the capture/`check` orphan seam the old invariant 6 described; `Doc::insert` opens a `## Criteria` section when the file has none (hi: CAPTURE-7); `Doc::save` is atomic (hi: FILE-8); frontmatter style is preserved on rewrite (hi: FILE-7); fenced and stray criterion-shaped lines are invisible to the duplicate check (hi: FILE-9, CHECK-2.e); zero-padded ids refuse (hi: ID-1.c); workspace discovery requires real hi files (hi: CAPTURE-6); `main` peels `--root` and reads `args_os` (hi: CAPTURE-8, CAPTURE-1.c); line endings and BOM (hi: FILE-10, FILE-11). |
 | 2026-09-16 | Claude | Verification pass over that reconciliation: corrected invariant 17, because `Doc::to_text` terminates every non-empty file with the detected line ending, so a destination that had no trailing newline gains one rather than having its shape restored (reproduced against the built binary); recorded that `holds_hi_files` also strips a BOM (invariant 9) and that a `# ` heading fixes the append point at the end of the criteria block (invariant 13). |
 | 2026-09-16 | Claude | Re-verified every claim against `src/capture.rs` and the release binary after the crate moved under the specs. Corrected the rendering invariant and every example that still quoted the old bare `ID  sentence` line: `doc::render_criterion` now writes `- **ID**  sentence`, indented two spaces per level (hi: FILE-1.b, FILE-1.c; DECISIONS.md §12), and the bare form survives only as a parsing concession (hi: FILE-14). Replaced the stale not-found message with `this is not a repository, and no hi/ directory was found above it...` and recorded that `Workspace::find` now *stops* at a `.git` rather than walking past it (hi: CAPTURE-10). Recorded that `peel_root` consumes only a leading `--root`, so a flag-looking word after the id stays in the sentence (hi: CAPTURE-8, CAPTURE-9). Fixed the empty-sentence message, which reads `Say what you actually want` with a capital S, and quoted the no-frontmatter refusal in full. Added the citations the module had grown into: CAPTURE-2.b (the refusal names the missing parent), CAPTURE-9, CAPTURE-10, CAPTURE-11, FILE-12 (`Workspace::rel` uses forward slashes on every platform) and FILE-14. Recorded that a case under a retired parent renders as a child of an unrelated active criterion. |
+| 2026-09-17 | Claude | `Captured` gains `index_error`, and capture refreshes the generated feature list in `INTENT.md` itself once the criterion is on disk, because nothing made anyone run `hi index` and three adopter repositories had drifted (DECISIONS.md §30, hi: INDEX-4, INDEX-4.a). Added invariants 18 to 20, two scenarios, two error rows and REQ-capture-016. Invariant 19 records the reason the count was wrong at first: `Doc::insert` does not add the criterion to `doc.criteria`, so capture now reloads the file it saved before anything counts. This pass also documented `started_intent` and `started_agent`, which capture has carried since 0.5.0 and this spec had never mentioned; the struct row said three fields and there were five. |

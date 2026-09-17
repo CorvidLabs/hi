@@ -9,6 +9,7 @@ db_tables: []
 depends_on:
   - specs/doc/doc.spec.md
   - specs/id/id.spec.md
+  - specs/out/out.spec.md
   - specs/workspace/workspace.spec.md
 ---
 
@@ -38,7 +39,7 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 | `Kind` | The closed set of six structural problem kinds, serialized in kebab-case for `--json`. |
 | `code` | Method on `Kind` returning the stable kebab-case string for one kind, used in text output. |
 | `Problem` | One located structural problem: kind, file, 1-based line, id, and human message. The id is the parsed id, the raw token when it did not parse, or a stray line's leading token. |
-| `Report` | Everything one check run found: file/criteria/retired counts, families, and problems. |
+| `Report` | Everything one check run found: file/criteria/retired counts, families, problems, and the notes, which are never problems and never reach the exit code. |
 | `ok` | Method on `Report` reporting whether the run found zero problems; drives the exit code. |
 | `run` | Runs every structural check across a workspace and returns the `Report`. |
 
@@ -48,7 +49,7 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 |------|-------------|
 | `Kind` | `enum` with exactly six variants (`DuplicateId`, `OrphanCase`, `RetiredCollision`, `UnparseableId`, `UndeclaredFamily`, `StrayCriterion`). Derives `Debug, Clone, Copy, PartialEq, Eq, Serialize` with `#[serde(rename_all = "kebab-case")]`, so JSON carries `duplicate-id`, `orphan-case`, `retired-collision`, `unparseable-id`, `undeclared-family`, `stray-criterion`. |
 | `Problem` | `struct` with public fields `kind: Kind`, `file: String` (path relative to the workspace root, joined with forward slashes), `line: usize` (1-based), `id: String` (for a criterion, `Criterion::raw_id`, which `doc` has already stripped of markdown emphasis; for a stray, `Doc::stray`'s token, which has had a leading bullet marker removed but keeps any `**` or `_` around it), and `message: String` (two sentences for a stray, one for every other kind). Derives `Debug, Clone, Serialize`. |
-| `Report` | `struct` with public fields `files: usize`, `criteria: usize` (active only), `retired: usize`, `families: Vec<String>` (sorted), and `problems: Vec<Problem>` (sorted by file then line). Derives `Debug, Clone, Serialize`. |
+| `Report` | `struct` with public fields `note: Option<String>` (every note joined with `\n      `, so `main` prints one `note:` block), `files: usize`, `criteria: usize` (active only), `retired: usize`, `families: Vec<String>` (sorted), and `problems: Vec<Problem>` (sorted by file then line). Derives `Debug, Clone, Serialize`. `note` is deliberately not a `Problem` and deliberately not a seventh `Kind`: `Report::ok` does not read it, so nothing in it can move the exit code (hi: CHECK-1). |
 
 ### Traits
 
@@ -66,9 +67,11 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 
 ## Invariants
 
-1. `run` is a pure function of its argument. It reads no file, opens no socket, consults no
-   environment variable, and mutates neither the workspace nor anything on disk. Every document it
-   inspects was already parsed by `workspace`/`doc` (hi: CHECK-4).
+1. `run` writes nothing and decides nothing outside its own `Report`. It opens no socket, consults
+   no environment variable, and mutates neither the workspace nor anything on disk. It does read:
+   `INTENT.md` for the two notes about it, and each path in `Workspace::skipped` for the criteria
+   hidden in them. Every read is a read, and a file it cannot read is passed over rather than
+   reported (hi: CHECK-4). Every `hi/*.md` it inspects was already parsed by `workspace`/`doc`.
 2. `run` cannot fail. It returns `Report`, not `Result<Report>`, and reports a malformed id as a
    `Problem` rather than as an error. No input shape aborts the walk, so one run reports every
    problem in every file rather than stopping at the first (hi: CHECK-5).
@@ -133,6 +136,20 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
     word, and asks `looks_like_id`, which wants a family that starts with an ASCII letter and continues in letters, digits and underscores, a hyphen, and a
     first level that begins with a digit (hi: FILE-14). An indented line that is *not* id-shaped is
     a continuation of the criterion above it and is never checked.
+
+19. There are three notes, and a note is never a problem. `product_intent_note` says there is no
+    `INTENT.md` yet, or that the one there has no product-level why in it (hi: INDEX-3.a); a count
+    of retired criteria that never said why (hi: RETIRE-3); and `out::index_note`, when the
+    generated feature list in `INTENT.md` no longer matches what is captured, or when a broken
+    marker pair means nothing can refresh it (hi: INDEX-4.b). All three go into `Report::note`,
+    which `Report::ok` never reads. `hi check` fails on a structurally broken file and on nothing
+    else, and adding a quality gate here would break the whole premise (hi: CHECK-1).
+20. The index note is the first thing `check` nags about that hi itself maintains. The other two
+    are about words only a person can write: the product-level why, and the reason a criterion was
+    retired. This one is about a list hi generates, and it is admissible only because capture and
+    retire now keep that list current themselves, so the note fires for exactly one cause: somebody
+    typed a criterion into a file by hand, which `FILE-14` allows and no verb can see
+    (DECISIONS.md §30).
 
 ## Behavioral Examples
 
@@ -263,6 +280,15 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
   treats the fence as opaque, so the example reaches `check` neither as a criterion nor as a stray
   (hi: FILE-9)
 
+### Scenario: A criterion typed straight into a file
+
+- **Given** a `hi/chat.md` with a second criterion written in by hand, and an `INTENT.md` whose
+  generated block still counts one
+- **When** `run` executes
+- **Then** `problems` is empty, `Report::ok()` is true, `hi check` exits 0, and `note` carries
+  `INTENT.md's feature list is behind what is captured. Run \`hi index\`` (hi: INDEX-4.b, CHECK-1)
+- **And** running `hi index` clears it, because the note is a comparison rather than a memory
+
 ### Scenario: Locating a problem
 
 - **Given** any reported problem
@@ -298,10 +324,12 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 | Crate/Module | What is used |
 |-------------|-------------|
 | `std::collections::HashMap` | `seen` (id to first file and line) and `retired` (id to the file that retired it). |
+| `std::fs` | `read_to_string`, for `INTENT.md` in `product_intent_note` and for each path in `Workspace::skipped`. The only I/O this module does, and all of it is reading. |
 | `serde` | `Serialize` derive on `Kind`, `Problem`, and `Report`, plus `#[serde(rename_all = "kebab-case")]` on `Kind`, for `hi check --json`. |
 | `doc` | `Section::Criteria` / `Section::Retired`, `Doc::all()`, `Doc::path`, `Doc::front.families` (already parsed from either the inline or the YAML block frontmatter style), `Doc::retired`, `Doc::stray` (the `(0-based line, token)` pairs behind `StrayCriterion`), and the `Criterion` fields `id`, `raw_id`, `id_error`, `section` plus `Criterion::line_no()`. |
 | `workspace` | `Workspace::docs`, `Workspace::rel()`, `Workspace::criteria_count()`, `Workspace::families()`. |
 | `id` | `Id::parent()`, `Id::family`, `Id`'s `Display`, and `IdError`'s `Display` for the unparseable-id reason. `looks_like_id` is consumed indirectly, through `doc`, and decides which lines exist to be checked at all. |
+| `out` | `out::index_note`, read-only, for the note about the generated feature list, and nothing else in the module (hi: INDEX-4.b). |
 
 ### Consumed By
 
@@ -319,3 +347,4 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 | 2026-09-16 | Leif | Reconciled with the bug-fix pass. Purpose now names all six kinds rather than five; invariant 4 says a *seventh* kind would be the contract change; invariant 5 records that a stray's line is `Doc::stray`'s 0-based index plus one, not `line_no()`; added invariant 15 (a stray is never parsed as an `Id` and never counted) and invariant 16 (fences are opaque, so a fenced id-shaped line is neither criterion nor stray, hi: FILE-9). Added scenarios for the stray, for prose outside a section, and for the format documented inside a fence. `IdError::PaddedLevel` (`SEND-007`) joined the reachable unparseable set (hi: ID-1.c), `Doc::stray` joined the consumed surface, and the `UndeclaredFamily` rationale now notes that capture reaches `doc_for_family` only when the id has no existing parent (hi: CAPTURE-4.a). |
 | 2026-09-16 | Leif | Verification pass against the source, run against the built binary. Added invariant 17 and a scenario for the `## Intent` exception: `doc` collects an intent section as prose before the stray branch, so an id-shaped line there is neither criterion nor stray. The stray error case previously claimed every column-0 id-shaped line outside `## Criteria`/`## Retired` was reported. Recorded that the `UndeclaredFamily` comparison is against `Front::families` as parsed, so inline and YAML block styles behave identically (hi: FILE-7), and narrowed the fence error case from "anywhere in the file" to the body sections it actually covers. |
 | 2026-09-16 | Leif | Re-verified against the built binary after `looks_like_id` and `render_criterion` changed. `looks_like_id` is now case-insensitive on the family and requires the first level to start with a digit, so `IdError::BadFamily` is reachable from `check` (`send-2`, `Send-3`) while `SE-ND-1` and `SEND-a` are no longer offered at all; the reachable set is now `BadFamily`, `EmptyLevel`, `BadLevel`, `PaddedLevel` and `Alternation`, and only `MissingHyphen` and `NoLevels` are filtered out. Criteria render as nested list items, so `doc` matches trimmed lines and indentation no longer bounds either check: added invariant 18 and a scenario for an indented stray, and dropped "at column 0" everywhere. Recorded in invariant 15 and the `Problem` row that a stray's token keeps its markdown emphasis while a criterion's `raw_id` does not. Added scenarios for a wrongly-cased family and an ordinary hyphenated word, quoted the stray and unparseable messages exactly, cited CHECK-5 on invariant 2 and FILE-12 on invariant 5, and re-anchored the undeclared-family finding to CHECK-2.f, which now exists. |
+| 2026-09-17 | Claude | `run` gains a third note, `out::index_note`, for a generated feature list that no longer matches what is captured (hi: INDEX-4.b, DECISIONS.md §30). It is a note and not a seventh `Kind`: `Report::ok` does not read `note`, the exit code does not move, and the README's "exactly six" still holds. Added invariants 19 and 20, a scenario and REQ-check-014. This pass also documented `Report::note` itself, which the module has carried since 0.5.0 and this spec had never listed. |

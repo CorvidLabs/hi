@@ -47,6 +47,13 @@ spec: out.spec.md
   (hi: INDEX-2.a)
 - As someone who edited `INTENT.md` by hand and broke a marker, I want hi to stop and tell me,
   rather than guess where my block ended and take the prose with it (hi: INDEX-2.b)
+- As the owner of the repository, I want the list at the front of my product to be true after every
+  command that changes it, without me remembering to refresh it (hi: INDEX-4)
+- As someone capturing a thought, I want a capture that stored my criterion never to be reported as
+  a failure because the list could not be refreshed, because the thought is the thing that mattered
+  (hi: INDEX-4.a)
+- As someone who typed a criterion straight into a file, I want hi to tell me the list is behind
+  rather than leave it wrong, because no verb saw me do it (hi: INDEX-4.b)
 - As someone browsing what has been captured, I want a flat listing of every criterion grouped by
   file, so I can see the shape of the intent at a glance
 
@@ -385,6 +392,54 @@ Acceptance Criteria
 - Nothing here validates, rewrites or reports on the wrapping of a file hi did not write. The
   convention travels as documentation and as the example hi sets; FILE-4 forbids the rewrite and
   CHECK-1 forbids the gate.
+
+### REQ-out-017
+
+`refresh_index` SHALL rewrite the generated list for a verb that has just changed the live count,
+and SHALL hand back any reason it could not rather than raising one (hi: INDEX-4, INDEX-4.a).
+
+Acceptance Criteria
+
+- It is `write_index` with the `Result` turned into an `Option<String>`. Every rule REQ-out-011,
+  REQ-out-012 and REQ-out-013 state about what is replaced, what is preserved and what is refused
+  holds unchanged; only who carries the failure moves.
+- `capture` calls it after the criterion is on disk, and `hi retire` calls it after the criterion
+  and its cases have been moved and saved. Nothing else calls it. `hi index` still goes through
+  `write_index` directly, because there the failure is the whole answer and belongs in the exit
+  code.
+- INDEX-2.b's refusal to guess at an unpaired marker comes back as `Some(<message>)`. The file is
+  still left byte for byte as it was, and the caller still exits 0, because the criterion that
+  prompted the refresh is already stored (hi: INDEX-4.a).
+- It acquires no lock. `capture` and the `hi retire` arm both hold `lock::acquire` across their
+  whole read-modify-write and it is not reentrant, so a lock taken here would deadlock every
+  writer (hi: FILE-19).
+- The cost is accepted rather than unnoticed: a bulk capture of N criteria rewrites `INTENT.md` N
+  times. fledge's adoption was 197 captures. Each rewrite is one atomic replace of a file of a few
+  hundred bytes, under a lock that already serializes those captures.
+- A person who deleted the generated block from `INTENT.md` gets one back on the next capture,
+  through `write_index`'s existing append branch. That is the same thing `hi index` has always done
+  and is recorded here because it is now reached without being asked for.
+
+### REQ-out-018
+
+`index_note` SHALL say when the generated list no longer matches the workspace, and SHALL write
+nothing and decide nothing (hi: INDEX-4.b).
+
+Acceptance Criteria
+
+- It rebuilds the whole generated block and compares it to the bytes `index_span` found, so it
+  answers exactly the question `scripts/index-is-current.sh` answers by regenerating: would running
+  `hi index` change anything?
+- When they differ it returns `<path>'s feature list is behind what is captured. Run \`hi index\``.
+- When there is an opening marker line that `index_span` could not close, it returns
+  `<path> has an opening <!-- hi:index --> with no matching <!-- /hi:index -->, so nothing can
+  refresh its feature list`. That case is otherwise silent now, because REQ-out-017 swallows the
+  refusal on the capture path, and a list nothing can refresh is a list left wrong.
+- It returns `None` for a matching block, for an `INTENT.md` that cannot be read, and for one with
+  no marker line at all. A file with no generated list is not a list that is behind, and the next
+  capture adds one.
+- It never writes, never opens a `hi/*.md`, and never produces a `check::Kind`. `check` prints it
+  as a `note:` and the exit code does not move (hi: CHECK-1).
 
 ## Constraints
 

@@ -26,7 +26,10 @@ never mutates a `hi/*.md` file, and never consults the network. The one write it
 `INTENT.md`, and once that file carries a marker pair the write is confined to the generated block
 between them (hi: INDEX-2); the starter and append branches, which run only when there is no
 opening marker line at all, are the two that add text of their own. The one external process it may
-start is `gh`, and only when the caller asked for it with `--create` (hi: ISSUE-1.b).
+start is `gh`, and only when the caller asked for it with `--create` (hi: ISSUE-1.b). That one
+write is now also reached from outside this module: `refresh_index` is what `capture` and
+`hi retire` call once the criterion they wrote is on disk, so the generated list is true after every
+command that changes it rather than after somebody remembers `hi index` (hi: INDEX-4).
 
 Nothing here fails because intent is incomplete. `ls` over an empty repository prints a hint and
 succeeds; a whole-repo `export` of a repository with no criteria emits an empty `files` list and
@@ -50,6 +53,8 @@ atomic write goes through. Error Cases below lists all eight.
 | `starter_intent` | The opening of a product-level `INTENT.md`: a title and a prompt for the holistic why, on one line. Shared with `capture`, which creates the file on the first capture so nobody has to discover it (hi: INDEX-3). |
 | `agent_instructions` | The text of `hi/AGENTS.md`: the habit an agent follows before building, and nothing else. Shared with `capture`, which writes it on the first capture so an agent finds it without being told (hi: HABIT-1, HABIT-2, HABIT-3). It carries no id grammar, no file format and no list of existing families, because the file is written once and never rewritten, so anything hi could change underneath it would be wrong later with nothing to notice (DECISIONS.md §27). It says one thing about form, which is that prose here is one line per paragraph: that is how markdown reads a newline rather than anything about hi's format, so it cannot go stale with a format that is not frozen (DECISIONS.md §29, hi: FILE-21). The text is itself one line per paragraph (hi: FILE-21.a). |
 | `write_index` | Rewrite the generated block inside `INTENT.md`, matching the `hi:index` markers on whole lines only, creating the file or the `## Features` section when they do not exist yet, and refusing when an opening marker has no close; the replacement goes through `doc::write_atomically`, and the path written is returned relative to the workspace root. |
+| `refresh_index` | Run `write_index` for a verb that has just changed the live count, handing back the reason it could not be done instead of raising it. Called by `capture` and by `hi retire` after the criterion they wrote is already on disk, so the list at the front of the product stays true without anyone remembering to run `hi index` (hi: INDEX-4, INDEX-4.a). Takes no lock of its own. |
+| `index_note` | Read-only. What to say when the generated block in `INTENT.md` no longer matches the workspace, or when a broken marker pair means nothing can refresh it. Used by `check` as a `note:`, never as a problem and never as an exit code (hi: INDEX-4.b, CHECK-1). |
 
 ### Structs & Enums
 
@@ -73,6 +78,8 @@ atomic write goes through. Error Cases below lists all eight.
 | `export` | `fn export(workspace: &Workspace, scope: Option<&str>) -> Result<String>` | Selects the files the scope reaches, filters their criteria when the scope is a family, and serializes one envelope (`hi`, `scope`, an optional `product`, and `files`) as pretty-printed JSON. File selection goes through the private `matches_file`, which accepts the stem, `<stem>.md`, or any string that ends with `hi/<stem>.md` once a leading `./` is trimmed, so the repository-relative path `ls` and `export` themselves print is accepted back. Errors only when a stated scope selected no file at all, which includes a family declared in frontmatter that no criterion actually uses. |
 | `index_block` | `fn index_block(workspace: &Workspace) -> String` | Emits `- [<stem>](hi/<stem>.md): <families> (<n> criteria)` per file, using frontmatter families when declared and used families otherwise, `no families yet` when neither exists, and singular `criterion` at a count of one. An empty workspace yields `- nothing captured yet`. |
 | `write_index` | `fn write_index(workspace: &Workspace) -> Result<String>` | Splices the generated block into `INTENT.md` between `<!-- hi:index -->` and `<!-- /hi:index -->` when the private `index_span` finds both on lines of their own, in that order; bails when the private `has_marker_line` still sees an opening marker line that `index_span` could not close; writes a whole starter file when `INTENT.md` is absent or blank (hi: INDEX-1.a); otherwise appends a `## Features` section carrying the block to the existing prose. Whichever branch runs, the result reaches disk through `doc::write_atomically`: a sibling `.INTENT.md.hi-tmp`, flushed and fsynced, then renamed over the target. |
+| `refresh_index` | `fn refresh_index(workspace: &Workspace) -> Option<String>` | `write_index(workspace).err().map(|err| format!("{err:#}"))`. Every failure, including INDEX-2.b's refusal to guess at a broken marker pair, comes back as a string for the caller to print rather than as an `Err`. Acquires no lock: `capture` and `hi retire` already hold `lock::acquire` across their whole read-modify-write and it is not reentrant. |
+| `index_note` | `fn index_note(workspace: &Workspace) -> Option<String>` | Reads `INTENT.md`. With both marker lines present, compares the bytes between them to `INDEX_OPEN` + `index_block` + `INDEX_CLOSE` and returns `<path>'s feature list is behind what is captured. Run \`hi index\`` when they differ. With an opening marker line that `index_span` could not close, returns `<path> has an opening <!-- hi:index --> with no matching <!-- /hi:index -->, so nothing can refresh its feature list`. Returns `None` for a missing or unreadable `INTENT.md`, for one with no marker line at all, and for a block that already matches. Writes nothing. |
 
 ## Invariants
 
@@ -156,6 +163,18 @@ atomic write goes through. Error Cases below lists all eight.
    (hi: FILE-21.a). `agent_instructions` and `starter_intent` both pass through `unwrap_soft_breaks`
    unchanged, and a test asserts that rather than leaving it to a reader's eye. The convention
    travels this way and by documentation, never by hi reformatting anybody's file.
+14. `refresh_index` and `index_note` add no new way for `INTENT.md` to be rewritten. `refresh_index`
+   is `write_index` with the `Result` turned into an `Option<String>`, so every invariant above
+   about what is replaced, what is preserved and what is refused holds unchanged; the only
+   difference is who carries the failure. `index_note` writes nothing at all. Neither takes a lock:
+   the two verbs that call `refresh_index` already hold `lock::acquire` across their whole
+   read-modify-write, and the lock is not reentrant, so taking one here would deadlock every writer
+   (hi: FILE-19, INDEX-2, INDEX-4).
+15. `index_note` compares whole bytes, not counts. It rebuilds `INDEX_OPEN` + `index_block` +
+   `INDEX_CLOSE` and compares it to the span `index_span` found, so it answers the same question
+   `scripts/index-is-current.sh` answers by regenerating: would running `hi index` change anything?
+   A file whose block still carries CRLF endings inside it therefore reads as behind until it has
+   been through `write_index` once, which is true rather than a false positive.
 
 ## Behavioral Examples
 
@@ -279,6 +298,35 @@ atomic write goes through. Error Cases below lists all eight.
   and `## Features` heading included: `read_product_intent` strips the generated block and nothing
   else, and it does not use `view::strip_comments`
 
+### Scenario: A verb that changed the live count refreshes the list
+
+- **Given** an `INTENT.md` whose generated block says `(1 criterion)` while the workspace now holds
+  two, because a criterion was just captured or retired
+- **When** `refresh_index` runs, which `capture` and `hi retire` both do after the criterion they
+  wrote is already on disk
+- **Then** the block reads `(2 criteria)`, the prose either side of the markers is byte-for-byte
+  what it was, and `None` comes back because nothing went wrong (hi: INDEX-4)
+
+### Scenario: A refusal the caller must survive
+
+- **Given** an `INTENT.md` holding an opening marker line with no close, and a capture that has
+  just stored its criterion
+- **When** `refresh_index` runs
+- **Then** `write_index` refuses as it always has, nothing is written, and the refusal comes back
+  as `Some(<message>)` rather than as an `Err`, so the caller prints a line and still succeeds
+  (hi: INDEX-2.b, INDEX-4.a)
+
+### Scenario: A list that is behind because somebody typed a criterion in
+
+- **Given** a `hi/chat.md` with a second criterion written into it by hand, which `FILE-14` allows
+  and no verb can see, and an `INTENT.md` whose block still counts one
+- **When** `index_note` runs
+- **Then** it returns `INTENT.md's feature list is behind what is captured. Run \`hi index\``,
+  `check` prints it as a `note:`, and the exit code is 0 because a note is not a problem
+  (hi: INDEX-4.b, CHECK-1)
+- **And** the note goes away once `hi index` has been run, and never appears for a block that
+  already matches or for an `INTENT.md` with no block in it at all
+
 ### Scenario: Nothing captured yet
 
 - **Given** a workspace whose `hi/` directory holds no criteria
@@ -305,6 +353,8 @@ atomic write goes through. Error Cases below lists all eight.
 | `INTENT.md` holds only the *closing* marker, or holds markers only inside sentences | Not an error: no opening marker line exists, so the existing text is preserved and a fresh `## Features` section carrying the block is appended below it, producing a second `## Features` heading when the file already had one |
 | `INTENT.md` begins with a BOM immediately followed by the opening marker | Not an error: the BOM is not whitespace, so that line is not a marker line to either `index_span` or `has_marker_line` and the append branch runs. `read_product_intent` misses the same line, so the stale block reaches `product` |
 | `INTENT.md` carries the two markers on lines of their own inside a fenced code block | Not an error: `index_span` tracks ``` fences and skips any marker inside one, so the illustration is left byte-identical and the real pair below it is rewritten. Exit 0 (hi: INDEX-2.a) |
+| Any of the above reached through `refresh_index` rather than `hi index` | Not an error at the call site: the message comes back as `Some(<text>)` and `capture` and `hi retire` print it on stderr as `note: the feature list in INTENT.md was not refreshed: <text>` and still exit 0. The criterion is already on disk, and nothing about `INTENT.md` may turn a capture that stored one into a reported failure (hi: INDEX-4.a) |
+| `INTENT.md` is missing, unreadable, or holds no marker line at all, during `index_note` | Not an error and not a note: there is no generated list to be behind. `check` already nags about a missing `INTENT.md` through `product_intent_note`, and the next capture appends a block the way `hi index` would |
 
 ## Dependencies
 
@@ -325,7 +375,9 @@ atomic write goes through. Error Cases below lists all eight.
 
 | Module | What is used |
 |--------|-------------|
-| `main` (CLI) | `out::ls` for `hi ls`, `out::issue` for `hi issue`, `out::export` for `hi export`, `out::write_index` for `hi index` |
+| `main` (CLI) | `out::ls` for `hi ls`, `out::issue` for `hi issue`, `out::export` for `hi export`, `out::write_index` for `hi index`, and `out::refresh_index` after `hi retire` has moved a criterion |
+| `capture` | `out::starter_intent` and `out::agent_instructions` for the files a first capture writes, and `out::refresh_index` once the new criterion is on disk (hi: INDEX-4) |
+| `check` | `out::index_note`, as a `note:` that never reaches the exit code (hi: INDEX-4.b) |
 
 ## Change Log
 
@@ -337,3 +389,4 @@ atomic write goes through. Error Cases below lists all eight.
 | 2026-09-16 | Claude | Verification pass over the reconciliation. Confirmed the six exports, the marker helpers, and every error case against `src/out.rs`; added what the reconciliation missed. The parser now fills `front.families` from a YAML block list too, so a block-style file's declared families reach `export` and `index_block` (invariant 11). Recorded that `INTENT.md` receives none of the BOM stripping, line-ending detection, or atomic replacement the bug-fix pass gave `hi/*.md` (invariant 12), and added the BOM-before-the-marker row to Error Cases. |
 | 2026-09-16 | Claude | Re-verified every claim against `src/out.rs` and `./target/release/hi`. Quoted `export`'s new refusal byte for byte; documented `matches_file`, so a file scope is now the stem, `<stem>.md`, or any path ending in `hi/<stem>.md`; recorded that `write_index` writes through `doc::write_atomically`, which makes invariant 12's no-atomicity claim and the read-only-file error row obsolete and turns a read-only `INTENT.md` into a successful replace. Added two places where the code does not meet a criterion as it now reads: a fenced marker pair is still adopted as the real block (hi: INDEX-2.a), and `issue_markdown` writes the depth indent after the `- `, so a case does not render nested (hi: ISSUE-3.a). Added the ISSUE-5, EXPORT-4, INDEX-1.a, and FILE-12 citations the criteria now support. Public API is unchanged at six exports. |
 | 2026-09-17 | Claude | `issue_markdown` unwraps the soft line breaks in the intent prose it carries. A GitHub issue body is rendered with hard line breaks on, so the wrapping a person applied in their own editor arrived as a `<br>` after every line and the ticket read as a narrow column down a wide pane; `CorvidLabs/corvid-bot`'s `hi/host.md` is where it was seen. Added REQ-out-015 for the rule and what it deliberately leaves alone, REQ-out-016 for hi's own written text being one line per paragraph, invariant 13, and a scenario. `unwrap_soft_breaks`, `block_start`, `is_heading`, `is_thematic_break` and `is_list_item` are private; the Public API is unchanged at eight exports. `hi view` was checked and left alone: HTML collapses a newline to a space, so `view::paragraphs` already renders these paragraphs whole. `export` was checked and deliberately left verbatim; the payload is a transport rather than a rendering, no JSON consumer turns a `\n` into a break, and unwrapping there would discard the author's wrapping irreversibly for every downstream reader (DECISIONS.md §29). |
+| 2026-09-17 | Claude | `refresh_index` and `index_note` added, at nine and ten exports. The generated list is regenerated by `capture` and `hi retire` themselves rather than waiting for `hi index`, because nothing made anyone run it and three adopter repositories had already drifted (DECISIONS.md §30, hi: INDEX-4). The refresh hands its failure back as an `Option<String>` so a capture that stored a criterion can never be reported as a failure, INDEX-2.b's refusal included (hi: INDEX-4.a). `index_note` is the read-only half, for the hand-written criterion no verb can see (hi: INDEX-4.b). Nothing about what gets rewritten moved: `refresh_index` is `write_index` with the error type changed, so invariants 2, 3 and 12 stand as written. Added REQ-out-017 and REQ-out-018, invariants 14 and 15, three scenarios and two error rows. |
