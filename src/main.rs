@@ -193,6 +193,12 @@ fn run_capture(root: Option<&std::path::Path>, raw_id: &str, rest: &[String]) ->
         println!("{}  created", done.file);
     }
     println!("{}  +{}", done.file, done.id);
+    // The criterion is stored and this command succeeded. Said on stderr, so
+    // stdout stays the record of what landed and nothing reads this as the
+    // capture having failed (hi: INDEX-4.a).
+    if let Some(why) = &done.index_error {
+        eprintln!("note: the feature list in INTENT.md was not refreshed: {why}");
+    }
     Ok(())
 }
 
@@ -262,6 +268,13 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 // Named, not counted: a case may belong to a different concern
                 // than its parent, and you should see what went with it.
                 println!("        its cases went too: {}", taken.join(", "));
+            }
+            // Retiring changes the live count too, so the list at the front of
+            // the product is no longer true either. Inside the lock above, and
+            // best effort for the same reason capture's is: what was retired is
+            // already on disk (hi: INDEX-4, INDEX-4.a).
+            if let Some(why) = out::refresh_index(&workspace) {
+                eprintln!("note: the feature list in INTENT.md was not refreshed: {why}");
             }
             Ok(ExitCode::SUCCESS)
         }

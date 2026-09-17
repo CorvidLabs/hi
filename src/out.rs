@@ -633,6 +633,56 @@ pub fn write_index(workspace: &Workspace) -> Result<String> {
     Ok(workspace.rel(&path))
 }
 
+/// Refresh the generated index after a write that changed what it counts.
+///
+/// Returns why it could not be done, for the caller to print as a line. Never
+/// an error: the criterion that prompted this is already on disk, and a
+/// capture that stored one must not be reported as a failure because
+/// `INTENT.md` could not be rewritten. That is the rule
+/// `capture::start_product_intent` already follows for the file's creation
+/// (hi: INDEX-4, INDEX-4.a, INDEX-3, CAPTURE-1.a).
+///
+/// Takes no lock of its own. `capture` and `retire` already hold
+/// `lock::acquire` across their whole read-modify-write and the lock is not
+/// reentrant, so acquiring one here would deadlock every writer (hi: FILE-19).
+pub fn refresh_index(workspace: &Workspace) -> Option<String> {
+    write_index(workspace).err().map(|err| format!("{err:#}"))
+}
+
+/// What to say about the generated index, if anything.
+///
+/// Read-only, and a note rather than a problem: `hi check` fails on a
+/// structurally broken file and on nothing else, so this never touches the
+/// exit code (hi: CHECK-1, and the INDEX-3.a precedent).
+///
+/// Every verb that changes the live count refreshes the block itself, so the
+/// remaining way to make it wrong is to type a criterion straight into a file,
+/// which `FILE-14` explicitly allows and no verb can see (hi: INDEX-4.b).
+pub fn index_note(workspace: &Workspace) -> Option<String> {
+    let path = workspace.intent_path();
+    let existing = fs::read_to_string(&path).ok()?;
+    let file = workspace.rel(&path);
+
+    match index_span(&existing) {
+        Some(span) => {
+            let generated = format!("{INDEX_OPEN}\n{}{INDEX_CLOSE}", index_block(workspace));
+            (existing[span] != generated).then(|| {
+                format!("{file}'s feature list is behind what is captured. Run `hi index`")
+            })
+        }
+        // hi refuses to guess where a block ends (INDEX-2.b), and the verbs now
+        // swallow that refusal so it cannot fail a capture. Somebody has to say
+        // it, or the list stays wrong with nothing left to notice.
+        None if has_marker_line(&existing, INDEX_OPEN) => Some(format!(
+            "{file} has an opening {INDEX_OPEN} with no matching {INDEX_CLOSE}, \
+             so nothing can refresh its feature list"
+        )),
+        // No block at all is not a list that is behind. The next capture adds
+        // one, the same way `hi index` would.
+        None => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -876,5 +926,63 @@ mod tests {
         assert!(block.contains("[chat](hi/chat.md)"));
         assert!(block.contains("SEND"));
         assert!(block.contains("(3 criteria)"));
+    }
+
+    /// A real directory, because `index_note` and `refresh_index` read and
+    /// write `INTENT.md`. The pid is in the name: a fixed scratch path is what
+    /// made the suite flake and lost bulk captures (DECISIONS.md §26).
+    fn on_disk(name: &str, intent: &str) -> Workspace {
+        let root = std::env::temp_dir().join(format!("hi-out-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("hi")).unwrap();
+        fs::write(root.join("hi/chat.md"), CHAT).unwrap();
+        fs::write(root.join("INTENT.md"), intent).unwrap();
+        Workspace::load(&root).unwrap()
+    }
+
+    const CURRENT: &str = "# P\n\nMine.\n\n## Features\n\n<!-- hi:index -->\n- [chat](hi/chat.md): SEND (3 criteria)\n<!-- /hi:index -->\n";
+
+    #[test]
+    fn a_list_that_matches_is_worth_no_note() {
+        assert_eq!(index_note(&on_disk("current", CURRENT)), None);
+    }
+
+    #[test]
+    fn a_list_that_disagrees_is_a_note() {
+        let stale = CURRENT.replace("(3 criteria)", "(1 criterion)");
+        let note = index_note(&on_disk("behind", &stale)).expect("a note");
+        assert!(note.contains("feature list is behind"), "{note}");
+        assert!(note.contains("INTENT.md"), "{note}");
+    }
+
+    #[test]
+    fn a_list_hi_can_no_longer_refresh_is_a_note_too() {
+        // The verbs swallow this refusal so it cannot fail a capture, so check
+        // is the only thing left that can say the list is stuck (hi: INDEX-4.b).
+        let note = index_note(&on_disk("unclosed", "# P\n\n<!-- hi:index -->\n- a\n"));
+        let note = note.expect("a note");
+        assert!(note.contains("no matching"), "{note}");
+    }
+
+    #[test]
+    fn a_file_with_no_block_at_all_is_not_a_list_that_is_behind() {
+        assert_eq!(
+            index_note(&on_disk("noblock", "# P\n\nJust prose.\n")),
+            None
+        );
+    }
+
+    #[test]
+    fn refresh_hands_back_a_refusal_instead_of_raising_it() {
+        // INDEX-2.b still refuses to guess; the caller just must not die of it.
+        let workspace = on_disk("refusal", "# P\n\n<!-- hi:index -->\n- a\n");
+        let before = fs::read_to_string(workspace.intent_path()).unwrap();
+        let why = refresh_index(&workspace).expect("the refusal, handed back");
+        assert!(why.contains("no matching"), "{why}");
+        assert_eq!(
+            fs::read_to_string(workspace.intent_path()).unwrap(),
+            before,
+            "and nothing was guessed at"
+        );
     }
 }

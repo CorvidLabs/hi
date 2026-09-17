@@ -244,6 +244,14 @@ pub fn run(workspace: &Workspace) -> Report {
     if let Some(note) = product_intent_note(workspace) {
         notes.push(note);
     }
+    // The first thing check nags about that hi itself maintains. Capture and
+    // retire keep the generated list current, so the one way left to make it
+    // wrong is to type a criterion straight into a file, which FILE-14 allows
+    // and no verb can see. A note, never a problem, and never the exit code
+    // (hi: INDEX-4.b, CHECK-1, DECISIONS.md §30).
+    if let Some(note) = crate::out::index_note(workspace) {
+        notes.push(note);
+    }
     // Retiring in a hurry is fine; never saying why is a decision nobody can
     // reconstruct later. A note rather than a problem, and never a failure.
     // Only the root of a retirement needs a reason. A case went with its

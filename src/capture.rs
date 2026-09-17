@@ -29,6 +29,10 @@ pub struct Captured {
     /// Files started so an agent finds the habit without being told: usually
     /// `hi/AGENTS.md` and the `hi/CLAUDE.md` beside it.
     pub started_agent: Vec<String>,
+    /// Why the generated index in `INTENT.md` could not be refreshed, when it
+    /// could not. A line to print, never a failure: the criterion is already
+    /// stored (hi: INDEX-4.a).
+    pub index_error: Option<String>,
 }
 
 /// Add one criterion. Returns an error rather than writing when the id is taken
@@ -134,11 +138,30 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
     doc.insert(&id, sentence)?;
     doc.save()?;
 
+    // `Doc::insert` splices the line in and shifts the indexes around it; it
+    // does not add the criterion to `doc.criteria`, so the Doc in memory still
+    // describes the file as it was a moment ago. Anything that counts from here
+    // would be one short, and the generated index below counts. Read back what
+    // was just written rather than teach a second place how to bookkeep.
+    if let Ok(saved) = Doc::load(&workspace.docs[index].path) {
+        workspace.docs[index] = saved;
+    }
+
     // Only after the criterion is safely on disk. A product with criteria but
     // no stated why is the common failure, so the file exists from the start
     // rather than waiting to be discovered.
     let started_intent = start_product_intent(workspace);
     let started_agent = start_agent_files(workspace);
+
+    // The live count just changed, so the list at the front of the product is
+    // no longer true. Nothing made anyone run `hi index`, and three adopter
+    // repositories drifted; refreshing here makes that structurally impossible
+    // rather than merely detectable (hi: INDEX-4, DECISIONS.md §30).
+    //
+    // Best effort, for the same reason INTENT.md's creation is: the criterion
+    // is already on disk above, so no failure here may turn a capture that
+    // stored it into a reported failure (hi: INDEX-4.a).
+    let index_error = crate::out::refresh_index(workspace);
 
     let file = workspace.rel(&workspace.docs[index].path);
     Ok(Captured {
@@ -147,6 +170,7 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
         created_file,
         started_intent,
         started_agent,
+        index_error,
     })
 }
 
@@ -466,6 +490,50 @@ mod tests {
             !fs::read_to_string(root.join("hi/decl.md"))
                 .unwrap()
                 .contains("SEND-1.a")
+        );
+    }
+
+    #[test]
+    fn a_capture_leaves_the_generated_list_true() {
+        // An INTENT.md typed by a person, with a count that is already wrong.
+        let mut workspace = seeded("indexrefresh");
+        fs::write(
+            workspace.root.join("INTENT.md"),
+            "# P\n\nMine.\n\n## Features\n\n<!-- hi:index -->\n- [chat](hi/chat.md): SEND (7 criteria)\n<!-- /hi:index -->\n\nAlso mine.\n",
+        )
+        .unwrap();
+
+        let done = capture(&mut workspace, "SEND-2", "It reaches them.").unwrap();
+        assert_eq!(done.index_error, None);
+
+        let body = fs::read_to_string(workspace.root.join("INTENT.md")).unwrap();
+        assert!(body.contains("(2 criteria)"), "{body}");
+        assert!(
+            body.contains("Mine.") && body.contains("Also mine."),
+            "{body}"
+        );
+    }
+
+    #[test]
+    fn an_index_that_cannot_be_refreshed_is_not_a_failed_capture() {
+        // The criterion is on disk before the index is touched, so nothing the
+        // index does may turn this into a refusal (hi: INDEX-4.a).
+        let mut workspace = seeded("indexrefusal");
+        let intent = "# P\n\n<!-- hi:index -->\n- a\n";
+        fs::write(workspace.root.join("INTENT.md"), intent).unwrap();
+
+        let done = capture(&mut workspace, "SEND-2", "It reaches them.").unwrap();
+        assert!(done.index_error.is_some(), "and hi has a line to print");
+        assert!(
+            fs::read_to_string(workspace.root.join("hi/chat.md"))
+                .unwrap()
+                .contains("**SEND-2**  It reaches them."),
+            "the thought is what matters, and it landed"
+        );
+        assert_eq!(
+            fs::read_to_string(workspace.root.join("INTENT.md")).unwrap(),
+            intent,
+            "the broken file is left exactly as it was"
         );
     }
 
