@@ -43,12 +43,12 @@ atomic write goes through. Error Cases below lists all eight.
 | Export | Description |
 |--------|-------------|
 | `ls` | Print every criterion grouped by file, indented by id depth, optionally filtered to one family and optionally including retired lines. |
-| `issue_markdown` | Render one criterion as a `(title, body)` ticket pair carrying its id, its cases, and the file's intent prose. |
+| `issue_markdown` | Render one criterion as a `(title, body)` ticket pair carrying its id, its cases, and the file's intent prose with its soft line breaks unwrapped for a medium that renders a newline as a break. |
 | `issue` | Resolve an id and print its ticket, or hand the same ticket to `gh issue create` when `create` is set. |
 | `export` | Build the agent payload as pretty-printed JSON for a family, a file named by its stem, its file name, or any path ending in `hi/<stem>.md`, or the whole repository. |
 | `index_block` | Build the generated feature list: one Markdown bullet per hi file, with its families and active-criterion count. |
-| `starter_intent` | The opening of a product-level `INTENT.md`: a title and a prompt for the holistic why. Shared with `capture`, which creates the file on the first capture so nobody has to discover it (hi: INDEX-3). |
-| `agent_instructions` | The text of `hi/AGENTS.md`: the habit an agent follows before building, and nothing else. Shared with `capture`, which writes it on the first capture so an agent finds it without being told (hi: HABIT-1, HABIT-2, HABIT-3). It carries no id grammar, no file format and no list of existing families, because the file is written once and never rewritten, so anything hi could change underneath it would be wrong later with nothing to notice (DECISIONS.md §27). |
+| `starter_intent` | The opening of a product-level `INTENT.md`: a title and a prompt for the holistic why, on one line. Shared with `capture`, which creates the file on the first capture so nobody has to discover it (hi: INDEX-3). |
+| `agent_instructions` | The text of `hi/AGENTS.md`: the habit an agent follows before building, and nothing else. Shared with `capture`, which writes it on the first capture so an agent finds it without being told (hi: HABIT-1, HABIT-2, HABIT-3). It carries no id grammar, no file format and no list of existing families, because the file is written once and never rewritten, so anything hi could change underneath it would be wrong later with nothing to notice (DECISIONS.md §27). It says one thing about form, which is that prose here is one line per paragraph: that is how markdown reads a newline rather than anything about hi's format, so it cannot go stale with a format that is not frozen (DECISIONS.md §29, hi: FILE-21). The text is itself one line per paragraph (hi: FILE-21.a). |
 | `write_index` | Rewrite the generated block inside `INTENT.md`, matching the `hi:index` markers on whole lines only, creating the file or the `## Features` section when they do not exist yet, and refusing when an opening marker has no close; the replacement goes through `doc::write_atomically`, and the path written is returned relative to the workspace root. |
 
 ### Structs & Enums
@@ -68,7 +68,7 @@ atomic write goes through. Error Cases below lists all eight.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `ls` | `fn ls(workspace: &Workspace, family: Option<&str>, include_retired: bool)` | Walks `workspace.docs` in load order. Prints the workspace-relative path of each file that has something to show, then each criterion as `<2×depth spaces><raw_id>  <text>`; retired lines gain a trailing `  (retired)`. A file with nothing matching is skipped entirely, including its heading. When no criterion at all was printed, prints the capture hint instead. Returns `()` and cannot fail. |
-| `issue_markdown` | `fn issue_markdown(doc: &Doc, criterion: &Criterion) -> (String, String)` | Title is the criterion sentence with trailing `.` characters trimmed. Body is the sentence, a blank line, `hi: <raw_id>`, an optional `Cases:` bullet list of the criterion's active descendants, each line written as `- `, then two spaces per level below the subject, then `<raw_id> <text>`; the indent is emitted *after* the list marker, so in source a deeper case is offset and in rendered Markdown it is a peer. When `doc.intent` is not blank the body ends with a `---` rule, `Intent for <file stem>:`, and the prose (hi: ISSUE-5). |
+| `issue_markdown` | `fn issue_markdown(doc: &Doc, criterion: &Criterion) -> (String, String)` | Title is the criterion sentence with trailing `.` characters trimmed. Body is the sentence, a blank line, `hi: <raw_id>`, an optional `Cases:` bullet list of the criterion's active descendants, each line written as `- `, then two spaces per level below the subject, then `<raw_id> <text>`; the indent is emitted *after* the list marker, so in source a deeper case is offset and in rendered Markdown it is a peer. When `doc.intent` is not blank the body ends with a `---` rule, `Intent for <file stem>:`, and the prose, passed through the private `unwrap_soft_breaks` first (hi: ISSUE-5, ISSUE-7). |
 | `issue` | `fn issue(workspace: &Workspace, raw_id: &str, create: bool, repo: Option<&str>) -> Result<()>` | Parses `raw_id`, finds the criterion in the workspace (active or retired), refuses a retired one, then either prints `## <title>` followed by the body or spawns `gh issue create --title <title> --body <body>`, adding `--repo <repo>` when supplied. |
 | `export` | `fn export(workspace: &Workspace, scope: Option<&str>) -> Result<String>` | Selects the files the scope reaches, filters their criteria when the scope is a family, and serializes one envelope (`hi`, `scope`, an optional `product`, and `files`) as pretty-printed JSON. File selection goes through the private `matches_file`, which accepts the stem, `<stem>.md`, or any string that ends with `hi/<stem>.md` once a leading `./` is trimmed, so the repository-relative path `ls` and `export` themselves print is accepted back. Errors only when a stated scope selected no file at all, which includes a family declared in frontmatter that no criterion actually uses. |
 | `index_block` | `fn index_block(workspace: &Workspace) -> String` | Emits `- [<stem>](hi/<stem>.md): <families> (<n> criteria)` per file, using frontmatter families when declared and used families otherwise, `no families yet` when neither exists, and singular `criterion` at a count of one. An empty workspace yields `- nothing captured yet`. |
@@ -116,9 +116,17 @@ atomic write goes through. Error Cases below lists all eight.
 7. Printing is the default and `--create` is opt-in, so `hi issue` works with no auth, no network,
    and no tracker integration (hi: ISSUE-1.a). `gh` is spawned with an argument vector, never
    through a shell, so a criterion sentence is passed as one argument and is never interpreted.
-8. `issue_markdown` reproduces the criterion sentence verbatim; the only transformation applied
-   anywhere in this module is trimming trailing `.` from the ticket title. hi never rewrites human
-   prose (hi: FILE-4).
+8. `issue_markdown` reproduces the criterion sentence verbatim. Two transformations exist in this
+   module and both are render-time, on the way into a ticket that nobody will ever read as a file:
+   trailing `.` is trimmed from the title, and the intent prose goes through the private
+   `unwrap_soft_breaks`, which folds a newline inside a paragraph into a space and leaves every
+   newline that means something — a blank line, a list item, a block quote, a heading, a table row,
+   a rule, the inside of a fence, and a line that ends in an explicit hard break. It exists because
+   a GitHub issue body is rendered with hard line breaks on, so where a person wrapped their own
+   prose becomes a visible break and a wide pane shows a narrow column (hi: ISSUE-7, ISSUE-7.a,
+   ISSUE-7.b). The file is never touched. hi does not rewrite, reflow or reformat prose somebody
+   wrote (hi: FILE-4), there is no rewrite-on-write anywhere in hi, and `check` has no opinion on
+   wrapping (DECISIONS.md §29).
 9. `index_block` counts active criteria only. Retired ids stay reserved but are not features, so
    they never appear in the `INTENT.md` index.
 10. `ls` and `issue_markdown` derive indentation from `Id::depth()`, falling back to depth 1 when a
@@ -143,6 +151,11 @@ atomic write goes through. Error Cases below lists all eight.
    (hi: INDEX-2, FILE-8). Two consequences follow from the rename: the directory has to be
    writable, not the file, so a read-only `INTENT.md` is replaced rather than refused; and the new
    file carries the temporary file's permission bits rather than the old file's.
+13. The text this module hands to `capture` for a file hi creates is itself one line per paragraph,
+   because the first file an adopter reads is the one they write the rest of their prose to match
+   (hi: FILE-21.a). `agent_instructions` and `starter_intent` both pass through `unwrap_soft_breaks`
+   unchanged, and a test asserts that rather than leaving it to a reader's eye. The convention
+   travels this way and by documentation, never by hi reformatting anybody's file.
 
 ## Behavioral Examples
 
@@ -157,6 +170,19 @@ atomic write goes through. Error Cases below lists all eight.
 - **And** with a deeper tree, `SEND-1.a.1` is written as `  - **SEND-1.a.1**  <text>`: the depth
   indent sits *before* the bullet, so a renderer nests it under `SEND-1.a` instead of showing a flat
   list of peers. That is ISSUE-3.a, and it landed in 0.2.0
+
+### Scenario: Intent prose a person wrapped at their own margin
+
+- **Given** `hi/host.md` whose `## Intent` holds two paragraphs, each hard-wrapped across several
+  lines at about 76 columns, with one blank line between them
+- **When** `issue_markdown` renders any criterion from that file
+- **Then** each paragraph arrives in the body as a single line, with every authored wrap replaced by
+  one space, and the blank line between the two paragraphs is still there (hi: ISSUE-7, ISSUE-7.a)
+- **And** `hi/host.md` on disk is byte for byte what it was, because this module never writes a hi
+  file at all (hi: FILE-4)
+- **And** a list, a fenced example, a block quote, a heading, a table row, a rule and a line ending
+  in two spaces all keep their own newlines, because those are the newlines somebody meant
+  (hi: ISSUE-7.b)
 
 ### Scenario: Whole-repo export
 
@@ -310,3 +336,4 @@ atomic write goes through. Error Cases below lists all eight.
 | 2026-09-16 | Claude | Reconciled with the bug-fix pass. `write_index` now matches the `hi:index` markers on whole lines via the new private `index_span` / `has_marker_line` (hi: INDEX-2.a) and refuses an unclosed opening marker instead of appending (hi: INDEX-2.b), so the eighth error case is new and the old "only one marker is not an error" row was wrong. Recorded that the closing marker's newline stays outside the replaced span, added the invariant that this module reads only `criteria`/`retired` and never `Doc::stray`, and noted that fenced and stray id-shaped lines never reach any output here (hi: FILE-9, CHECK-2.e). Public API is unchanged at six exports. |
 | 2026-09-16 | Claude | Verification pass over the reconciliation. Confirmed the six exports, the marker helpers, and every error case against `src/out.rs`; added what the reconciliation missed. The parser now fills `front.families` from a YAML block list too, so a block-style file's declared families reach `export` and `index_block` (invariant 11). Recorded that `INTENT.md` receives none of the BOM stripping, line-ending detection, or atomic replacement the bug-fix pass gave `hi/*.md` (invariant 12), and added the BOM-before-the-marker row to Error Cases. |
 | 2026-09-16 | Claude | Re-verified every claim against `src/out.rs` and `./target/release/hi`. Quoted `export`'s new refusal byte for byte; documented `matches_file`, so a file scope is now the stem, `<stem>.md`, or any path ending in `hi/<stem>.md`; recorded that `write_index` writes through `doc::write_atomically`, which makes invariant 12's no-atomicity claim and the read-only-file error row obsolete and turns a read-only `INTENT.md` into a successful replace. Added two places where the code does not meet a criterion as it now reads: a fenced marker pair is still adopted as the real block (hi: INDEX-2.a), and `issue_markdown` writes the depth indent after the `- `, so a case does not render nested (hi: ISSUE-3.a). Added the ISSUE-5, EXPORT-4, INDEX-1.a, and FILE-12 citations the criteria now support. Public API is unchanged at six exports. |
+| 2026-09-17 | Claude | `issue_markdown` unwraps the soft line breaks in the intent prose it carries. A GitHub issue body is rendered with hard line breaks on, so the wrapping a person applied in their own editor arrived as a `<br>` after every line and the ticket read as a narrow column down a wide pane; `CorvidLabs/corvid-bot`'s `hi/host.md` is where it was seen. Added REQ-out-015 for the rule and what it deliberately leaves alone, REQ-out-016 for hi's own written text being one line per paragraph, invariant 13, and a scenario. `unwrap_soft_breaks`, `block_start`, `is_heading`, `is_thematic_break` and `is_list_item` are private; the Public API is unchanged at eight exports. `hi view` was checked and left alone: HTML collapses a newline to a space, so `view::paragraphs` already renders these paragraphs whole. `export` was checked and deliberately left verbatim; the payload is a transport rather than a rendering, no JSON consumer turns a `\n` into a break, and unwrapping there would discard the author's wrapping irreversibly for every downstream reader (DECISIONS.md §29). |

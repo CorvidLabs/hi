@@ -15,6 +15,9 @@ the intent sentence `It should feel like texting.`
 | Test File | Type | What It Covers |
 |-----------|------|----------------|
 | `src/out.rs::issue_body_carries_the_id_and_its_cases` | Unit | REQ-out-002, REQ-out-003. Asserts the title is the sentence with its trailing period trimmed, the body contains `hi: SEND-1`, the case `SEND-1.a` is present, the sibling `SEND-2` is absent, and the file's intent prose is carried into the body. |
+| `src/out.rs::a_ticket_unwraps_prose_the_author_only_wrapped` | Unit | REQ-out-003, REQ-out-015. Over the `WRAPPED` fixture, whose `## Intent` is two paragraphs hard-wrapped at about 76 columns with a blank line between them: asserts the first paragraph arrives as one line, that no authored wrap survives as a newline, and that the blank line between the paragraphs is still there. This is the regression test for the reported defect and it fails without the `unwrap_soft_breaks` call in `issue_markdown`. |
+| `src/out.rs::only_a_wrapped_line_is_joined` | Unit | REQ-out-015. Eleven cases straight against `unwrap_soft_breaks`: a wrapped paragraph joins; a blank line separates; a list, an ordered list, a backtick fence, a tilde fence, a heading, a table, a block quote and a thematic break all keep their own newlines; a wrapped list item is joined into the item it belongs to; and a line ending in two spaces keeps both the break and the marker. |
+| `src/out.rs::the_files_hi_writes_are_one_line_per_paragraph` | Unit | REQ-out-016. Asserts `agent_instructions()` and `starter_intent()` pass through `unwrap_soft_breaks` unchanged, so hi's own starter text cannot drift back into the wrapping it renders around. |
 | `src/out.rs::export_of_the_whole_repo_includes_every_file` | Unit | REQ-out-006, REQ-out-007, REQ-out-008. Asserts `scope == "repo"`, that all three criteria are present, that `criteria[1].parent == "SEND-1"`, and that the file's `intent` is the `## Intent` prose. |
 | `src/out.rs::export_scoped_to_a_family_keeps_only_that_family` | Unit | REQ-out-007. Two files (`chat.md` owning `SEND`, `billing.md` owning `BILLING`); scope `SEND` yields exactly one file entry, `hi/chat.md`. |
 | `src/out.rs::export_scoped_to_a_file_keeps_that_file` | Unit | REQ-out-006, REQ-out-007. Scope `chat` (the file stem without `.md`) yields `scope == "chat"` and exactly one file entry. |
@@ -26,6 +29,7 @@ the intent sentence `It should feel like texting.`
 | `tests/cli.rs::export_rejects_a_scope_that_matches_nothing` | Integration | REQ-out-009. `hi export NOPE` exits 1 and writes nothing to stdout, so a failed export cannot be piped into a consumer. |
 | `tests/cli.rs::export_accepts_the_path_it_prints` | Integration | REQ-out-007. Runs `hi export` three times over one repo with the scopes `chat`, `chat.md`, and `hi/chat.md`, asserting all three succeed, so the repository-relative path the tool prints is accepted back as a scope. It asserts on the exit status only, not on the payload. |
 | `tests/cli.rs::issue_prints_a_ticket_carrying_the_id` | Integration | REQ-out-002, REQ-out-003. `hi issue SEND-1` succeeds and stdout carries `hi: SEND-1` and the file's intent prose. |
+| `tests/cli.rs::a_ticket_unwraps_prose_and_leaves_the_file_alone` | Integration | REQ-out-015, and FILE-4 from the other side. Drives the real binary over a `hi/host.md` whose intent is hard-wrapped: stdout carries each paragraph whole with the blank line between them intact, and the file on disk is asserted byte-identical to what was written. |
 | `tests/cli.rs::index_rewrites_only_the_generated_block` | Integration | REQ-out-011. `hi index` over an `INTENT.md` with prose and a stale block keeps the prose, drops the stale text, and writes the new bullet. |
 | `tests/cli.rs::index_refuses_rather_than_guessing_when_a_marker_is_unclosed` | Integration | REQ-out-013. An `INTENT.md` with an opening marker and no close makes `hi index` exit 1, and the file is asserted byte-identical to what it was before the run. |
 | `tests/cli.rs::index_leaves_a_marker_quoted_in_prose_alone` | Integration | REQ-out-012. The quoted sentence survives a real `hi index`, the stale block is replaced, and `<!-- /hi:index -->\n\n` shows the blank line after the block survived. |
@@ -36,7 +40,7 @@ the intent sentence `It should feel like texting.`
 |-------------|------------------------------|
 | REQ-out-001 (`ls`) | None. Uncovered. See Gaps. |
 | REQ-out-002 (`issue` prints by default) | `issue_body_carries_the_id_and_its_cases`, `issue_prints_a_ticket_carrying_the_id` (the stdout path itself) |
-| REQ-out-003 (id, cases, intent in the body) | `issue_body_carries_the_id_and_its_cases`, `issue_prints_a_ticket_carrying_the_id` |
+| REQ-out-003 (id, cases, intent in the body) | `issue_body_carries_the_id_and_its_cases`, `issue_prints_a_ticket_carrying_the_id`, `a_ticket_unwraps_prose_the_author_only_wrapped` |
 | REQ-out-004 (`--create` shells to `gh`) | None. Uncovered. See Gaps. |
 | REQ-out-005 (retired never becomes work) | None. Uncovered. See Gaps. |
 | REQ-out-006 (one envelope at every scope) | `export_of_the_whole_repo_includes_every_file`, `export_scoped_to_a_file_keeps_that_file`, `export_stdout_is_parseable_json` |
@@ -47,6 +51,8 @@ the intent sentence `It should feel like texting.`
 | REQ-out-011 (`write_index` splice) | `index_rewrites_only_the_generated_block` (prose survives, stale block replaced). The starter-file and append branches are uncovered. See Gaps. |
 | REQ-out-012 (markers matched on whole lines) | `a_marker_quoted_in_prose_is_not_the_generated_block`, `index_leaves_a_marker_quoted_in_prose_alone` |
 | REQ-out-013 (unclosed marker refuses) | `an_unclosed_marker_has_no_span`, `index_refuses_rather_than_guessing_when_a_marker_is_unclosed` |
+| REQ-out-015 (soft breaks unwrapped into a ticket) | `a_ticket_unwraps_prose_the_author_only_wrapped`, `only_a_wrapped_line_is_joined`, `a_ticket_unwraps_prose_and_leaves_the_file_alone` |
+| REQ-out-016 (hi's own text is one line per paragraph) | `the_files_hi_writes_are_one_line_per_paragraph` |
 | REQ-out-014 (renders only parsed structure) | None here. The parser side is covered in `specs/doc`; nothing asserts that a fenced or stray id is absent from this module's output. See Gaps. |
 
 ## Manual Testing

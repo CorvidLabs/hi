@@ -806,7 +806,11 @@ pub fn criterion_tokens(text: &str) -> Vec<(usize, String)> {
 }
 
 /// A ``` or ~~~ run at the start of a trimmed line, with its length.
-fn fence_marker(trimmed: &str) -> Option<(char, usize)> {
+///
+/// Public because a fence means the same thing everywhere hi reads markdown:
+/// what is inside it is an example rather than structure (hi: FILE-9).
+/// `out::unwrap_soft_breaks` tracks fences for the same reason this does.
+pub fn fence_marker(trimmed: &str) -> Option<(char, usize)> {
     for marker in ['`', '~'] {
         let len = trimmed.chars().take_while(|c| *c == marker).count();
         if len >= 3 {

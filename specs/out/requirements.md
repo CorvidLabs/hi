@@ -18,6 +18,14 @@ spec: out.spec.md
   flattened into a list of peers (hi: ISSUE-3.a)
 - As whoever picks the ticket up, I want the feature's intent prose in the body, so I know why the
   work exists and not only what to build (hi: ISSUE-5)
+- As whoever picks the ticket up, I want that prose to read as paragraphs in a wide issue pane
+  rather than a narrow column broken after every line, because where the author wrapped their own
+  file is not where they wanted a break (hi: ISSUE-7)
+- As the author of that prose, I want the blank lines I left, and any list or example I wrote, to
+  arrive on the ticket intact, because those newlines are the ones I meant (hi: ISSUE-7.a,
+  ISSUE-7.b)
+- As somebody adopting hi, I want the files hi writes for me to be one line per paragraph, so the
+  first thing I read models the convention rather than an exception to it (hi: FILE-21.a)
 - As someone who changed their mind, I want a retired criterion to refuse to become a ticket, so
   a decision we reversed cannot quietly re-enter the backlog (hi: ISSUE-4)
 - As someone handing a feature to an agent, I want one command that emits the intent prose and
@@ -92,7 +100,7 @@ Acceptance Criteria
   not it; the shipped behavior is what is written here, and tasks.md carries the decision.
 - A sibling criterion is not a case and never appears.
 - When the file has non-blank `## Intent` prose, it is appended after a `---` rule under
-  `Intent for <file stem>:`.
+  `Intent for <file stem>:`, with its soft line breaks unwrapped as REQ-out-015 describes.
 - When the file has no intent prose, the rule and the section are both omitted rather than emitted
   empty.
 
@@ -325,6 +333,59 @@ Acceptance Criteria
 - This module still reports no structural problem of its own: it renders what it was given and
   leaves diagnosis to `check`.
 
+### REQ-out-015
+
+The intent prose a ticket carries SHALL have its soft line breaks unwrapped, and SHALL keep every
+newline that means something (hi: ISSUE-7, ISSUE-7.a, ISSUE-7.b).
+
+Acceptance Criteria
+
+- GitHub renders an issue or comment body with hard line breaks on, so a single newline there is a
+  `<br>` even though the same bytes in a repository file are not. A person's `## Intent` prose is
+  wrapped at their own margin, so without this the ticket is a narrow column down the left of a wide
+  pane, broken after every authored line. This is the whole reason the transformation exists.
+- A single newline between two lines of one paragraph is replaced by a single space, so the line
+  keeps going.
+- A blank line is a paragraph break and is preserved (hi: ISSUE-7.a).
+- A newline is structural, and is preserved, when the line under it opens a block: a list item
+  (`-`, `*`, `+`, or digits then `.` or `)`, each followed by a space or nothing), a block quote,
+  an ATX heading of one to six `#`, a table row, a thematic break of three or more `-`, `*` or `_`,
+  or a line opening raw HTML. A thematic break is tested before a list item, because `- - -` and
+  `* * *` are both.
+- Inside a fenced block every newline is the author's and nothing is joined. Fences are recognised
+  through `doc::fence_marker`, the same helper the parser uses, so a fence means the same thing
+  wherever hi reads markdown (hi: FILE-9, ISSUE-7.b).
+- A line that ends in two or more spaces, or in a backslash, is markdown asking for a break on
+  purpose. It is not a wrap, nothing is folded onto it, and the marker itself survives into the
+  body.
+- A wrapped line is joined onto a list item or a block quote as well as onto a paragraph, because a
+  lazy continuation belongs to the item above it. It is never joined onto a heading, a table row, a
+  rule or an HTML line.
+- Indentation is read only where it is the author's: a line that opens its own paragraph is emitted
+  exactly as written, so an indented code block survives, while a line reached with a paragraph
+  already open is a lazy continuation whatever its indent.
+- The transformation applies to `issue_markdown` alone. The printed ticket and the `--create` body
+  are the same string, so they cannot diverge (REQ-out-004).
+
+### REQ-out-016
+
+The text hi writes into a file it creates SHALL itself be one line per paragraph (hi: FILE-21.a).
+
+Acceptance Criteria
+
+- `agent_instructions` and `starter_intent` both pass unchanged through the unwrapping of
+  REQ-out-015: no paragraph in either is broken by a newline.
+- This is a property of the strings, not a runtime check. The first file an adopter reads is the
+  one they write the rest of their prose to match, so a hard-wrapped starter file propagates the
+  defect REQ-out-015 renders around.
+- `agent_instructions` says the convention in one sentence, which is the single narrowing of
+  DECISIONS.md §27's rule that the file carries the habit and nothing else. It is admissible there
+  because it is how markdown reads a newline rather than anything about hi's format, so it cannot
+  go stale with a format that is not frozen (DECISIONS.md §29).
+- Nothing here validates, rewrites or reports on the wrapping of a file hi did not write. The
+  convention travels as documentation and as the example hi sets; FILE-4 forbids the rewrite and
+  CHECK-1 forbids the gate.
+
 ## Constraints
 
 - No network access. `export`, `ls`, `index`, and the default `issue` read local files only, and
@@ -333,10 +394,14 @@ Acceptance Criteria
   binds this module directly is ISSUE-1.a.
 - No mutation of `hi/*.md`. The only file this module writes is `INTENT.md`, and only inside the
   generated block. Capture owns every edit to a feature file.
-- No prose rewriting. Criterion sentences are reproduced verbatim; trimming trailing `.` from a
-  ticket title is the only text transformation in the module (hi: FILE-4). Bullets and bold around
-  an id are stripped by the parser before this module sees anything, so `ls`, `issue`, and `export`
-  all carry the bare `raw_id` whether the line was written `- **SEND-1**  x` or `SEND-1  x`.
+- No prose rewriting on disk. Criterion sentences are reproduced verbatim everywhere. Two text
+  transformations exist and both are render-time: trimming trailing `.` from a ticket title, and
+  unwrapping the soft line breaks in the intent prose a ticket carries (REQ-out-015). Neither ever
+  reaches a file. hi does not rewrite, reflow or reformat prose somebody wrote, which is FILE-4 for
+  a `hi/*.md` and INDEX-2 for `INTENT.md`, and this module writes only the generated block in the
+  latter. Bullets and bold around an id are stripped by the parser before this module sees
+  anything, so `ls`, `issue`, and `export` all carry the bare `raw_id` whether the line was written
+  `- **SEND-1**  x` or `SEND-1  x`.
 - Output must stay stable and diffable: paths are printed relative to the workspace root, files are
   walked in the workspace's sorted load order, and the JSON is `serde_json` pretty-printed.
 - Every path this module emits comes from `Workspace::rel`, which joins components with `/` on

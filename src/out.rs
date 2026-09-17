@@ -68,6 +68,144 @@ fn print_criterion(criterion: &Criterion) {
 
 // --- issue -------------------------------------------------------------
 
+/// How a line behaves when the line under it is only a wrap.
+enum Block {
+    /// A list item or a block quote: a wrapped line under it belongs to it.
+    Continued,
+    /// A heading, a rule, a table row or raw HTML: its newline is structural,
+    /// and nothing may be folded onto it.
+    Closed,
+}
+
+/// Join the lines somebody only wrapped, and leave every newline that means
+/// something exactly where it is.
+///
+/// GitHub renders an issue body with hard line breaks on, so a newline is a
+/// `<br>` there even though the same file on a repository page is not. Prose
+/// wrapped at a person's own margin therefore arrives as a narrow column down
+/// the left of a wide pane, broken after every authored line. A single newline
+/// inside a paragraph is where an editor wrapped; a blank line is the break
+/// somebody asked for (hi: ISSUE-7, ISSUE-7.a).
+///
+/// This is the rendering, never the file. hi does not reflow prose a person
+/// wrote, here or anywhere else (hi: FILE-4).
+fn unwrap_soft_breaks(prose: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    // A fence makes its contents an example, so every newline inside one is
+    // the author's. The same reading `doc` takes under `## Intent`, through
+    // the same helper (hi: FILE-9, ISSUE-7.b).
+    let mut fence: Option<(char, usize)> = None;
+    // True while the last line emitted is one a wrapped line may continue.
+    let mut open = false;
+
+    for line in prose.lines() {
+        let trimmed = line.trim();
+
+        if let Some(marker) = crate::doc::fence_marker(trimmed) {
+            match fence {
+                Some((opened, width)) if opened == marker.0 && marker.1 >= width => fence = None,
+                Some(_) => {}
+                None => fence = Some(marker),
+            }
+            out.push(line.to_string());
+            open = false;
+            continue;
+        }
+        if fence.is_some() {
+            out.push(line.to_string());
+            continue;
+        }
+
+        if trimmed.is_empty() {
+            out.push(String::new());
+            open = false;
+            continue;
+        }
+
+        match (open, block_start(trimmed)) {
+            // A wrap, not a break: the line keeps going.
+            (true, None) => {
+                if let Some(last) = out.last_mut() {
+                    last.truncate(last.trim_end().len());
+                    last.push(' ');
+                    last.push_str(line.trim_start());
+                }
+            }
+            (_, block) => {
+                out.push(line.to_string());
+                open = !matches!(block, Some(Block::Closed));
+            }
+        }
+
+        // Two trailing spaces, or a trailing backslash, is a break somebody
+        // typed rather than a margin they hit. Nothing folds onto it.
+        if line.ends_with("  ") || line.ends_with('\\') {
+            open = false;
+        }
+    }
+
+    out.join("\n")
+}
+
+/// What kind of block a line begins, or `None` when it is ordinary prose.
+///
+/// Indentation is not read here. A line only reaches this function while a
+/// paragraph or a list item is already open, where four spaces is a lazy
+/// continuation rather than a code block; a line that opens its own paragraph
+/// is emitted as it was written, indentation and all.
+fn block_start(trimmed: &str) -> Option<Block> {
+    // A thematic break is tested first, because `- - -` and `* * *` are one
+    // and would otherwise read as a list item.
+    if is_thematic_break(trimmed)
+        || is_heading(trimmed)
+        || trimmed.starts_with('|')
+        || trimmed.starts_with('<')
+    {
+        return Some(Block::Closed);
+    }
+    if is_list_item(trimmed) || trimmed.starts_with('>') {
+        return Some(Block::Continued);
+    }
+    None
+}
+
+/// One to six `#` followed by a space or nothing: an ATX heading.
+fn is_heading(trimmed: &str) -> bool {
+    let hashes = trimmed.chars().take_while(|c| *c == '#').count();
+    (1..=6).contains(&hashes)
+        && trimmed[hashes..]
+            .chars()
+            .next()
+            .is_none_or(|c| c == ' ' || c == '\t')
+}
+
+/// Three or more `-`, `*` or `_`, with nothing else but spaces.
+fn is_thematic_break(trimmed: &str) -> bool {
+    ['-', '*', '_'].into_iter().any(|marker| {
+        trimmed.chars().filter(|c| *c == marker).count() >= 3
+            && trimmed
+                .chars()
+                .all(|c| c == marker || c == ' ' || c == '\t')
+    })
+}
+
+/// A bullet or an ordered marker, followed by a space or nothing.
+fn is_list_item(trimmed: &str) -> bool {
+    if matches!(trimmed, "-" | "*" | "+")
+        || trimmed.starts_with("- ")
+        || trimmed.starts_with("* ")
+        || trimmed.starts_with("+ ")
+    {
+        return true;
+    }
+    let digits = trimmed.chars().take_while(|c| c.is_ascii_digit()).count();
+    if digits == 0 || digits > 9 {
+        return false;
+    }
+    let rest = &trimmed[digits..];
+    rest.starts_with(". ") || rest.starts_with(") ") || rest == "." || rest == ")"
+}
+
 /// Render a criterion and its cases as a ticket body.
 pub fn issue_markdown(doc: &Doc, criterion: &Criterion) -> (String, String) {
     let title = criterion.text.trim_end_matches('.').to_string();
@@ -107,7 +245,10 @@ pub fn issue_markdown(doc: &Doc, criterion: &Criterion) -> (String, String) {
         body.push_str(&format!(
             "\n---\n\nIntent for {}:\n\n{}\n",
             doc.name(),
-            intent.trim()
+            // An issue body is rendered with hard line breaks on, so the
+            // author's own wrapping would arrive as a break after every line
+            // (hi: ISSUE-7).
+            unwrap_soft_breaks(intent.trim())
         ));
     }
 
@@ -300,6 +441,9 @@ fn read_product_intent(workspace: &Workspace) -> Option<String> {
 /// This is the holistic why, above any one feature. It exists from the first
 /// capture rather than waiting for someone to discover `hi index`, because a
 /// file nobody knows about is the silence worth fearing.
+///
+/// One line per paragraph, like everything hi writes. The first file somebody
+/// sees is the one they write the rest of their prose to match (hi: FILE-21.a).
 pub fn starter_intent(workspace: &Workspace) -> String {
     let title = workspace
         .root
@@ -308,29 +452,42 @@ pub fn starter_intent(workspace: &Workspace) -> String {
         .unwrap_or_else(|| "Product".to_string());
     format!(
         "# {title}\n\n\
-         <!-- What is this product for, holistically, and who is it for?\n\
-              Write it as a person. This is the part a spec can never carry. -->\n\n"
+         <!-- What is this product for, holistically, and who is it for? Write it as a person. \
+         This is the part a spec can never carry. -->\n\n"
     )
 }
 
 /// What hi writes into `hi/AGENTS.md` on the first capture.
 ///
-/// The habit and nothing else. It deliberately carries no id grammar, no file
-/// format and no list of the families already here: this file is written once
-/// and never rewritten, so anything in it that hi could change underneath it
-/// would be wrong later with nothing to notice (DECISIONS.md §27).
+/// The habit, and one sentence about how prose is written here. It carries no
+/// id grammar, no file format and no list of the families already here: this
+/// file is written once and never rewritten, so anything in it that hi could
+/// change underneath it would be wrong later with nothing to notice
+/// (DECISIONS.md §27).
+///
+/// The wrapping sentence is the one thing §27's "say less" rule was narrowed
+/// for, and it is narrowed by exactly one sentence. It is not the format and
+/// cannot go stale with it: it is how markdown reads a newline, which is the
+/// same whatever hi's format version is, and the agent that writes the prose
+/// is the only one who will ever see this file (DECISIONS.md §29, hi: FILE-21).
+///
+/// The text is itself one line per paragraph, because the file somebody reads
+/// first is the one they write the rest of their prose to match (FILE-21.a).
 pub fn agent_instructions() -> String {
     "# Human intent\n\n\
-     This repository writes down what people want before building it. Every\n\
-     sentence in this directory is something somebody wants, and each one has an\n\
-     id that never moves and is never reused.\n\n\
+     This repository writes down what people want before building it. Every sentence in this \
+     directory is something somebody wants, and each one has an id that never moves and is never \
+     reused.\n\n\
      Before you build a feature:\n\n\
      1. Read the files here, so you know what has already been said.\n\
-     2. Draft the criteria for what you are about to build, as plain sentences\n   \
-     about what somebody wants rather than what the code will do.\n\
+     2. Draft the criteria for what you are about to build, as plain sentences about what somebody \
+     wants rather than what the code will do.\n\
      3. Ask the person to confirm them. Nothing lands that they did not agree to.\n\
      4. Capture what they agreed to, then build it.\n\n\
      That happens before every feature, not only the first one.\n\n\
+     Write the prose in these files as one line per paragraph, with a blank line between \
+     paragraphs. A newline inside a paragraph is a visible break wherever the file is rendered, \
+     and it was only ever where your editor wrapped.\n\n\
      Run `hi --help` for the commands.\n"
         .to_string()
 }
@@ -552,6 +709,106 @@ mod tests {
             !body.contains("Intent for send"),
             "with no prose written there is no intent section to print: {body}"
         );
+    }
+
+    /// The prose here is wrapped the way a person wraps prose: at their own
+    /// margin, mid-sentence, with a blank line only where they meant a break.
+    const WRAPPED: &str = "---\nhi: 1\nfamilies: [HOST]\n---\n\n# Host\n\n## Intent\n\n\
+         Most people who would want this do not want a VPS, and should not have to\n\
+         learn one to give their community a role that matches what they hold.\n\n\
+         It has to work with nothing set up first.\n\n\
+         ## Criteria\n\n- **HOST-1**  I can run this without a server.\n";
+
+    #[test]
+    fn a_ticket_unwraps_prose_the_author_only_wrapped() {
+        // A GitHub issue body is rendered with hard line breaks on, so every
+        // place somebody wrapped their own prose becomes a `<br>` and the
+        // ticket reads as a narrow column down a wide pane (hi: ISSUE-7).
+        let doc = Doc::parse(PathBuf::from("/r/hi/host.md"), WRAPPED);
+        let (_, body) = issue_markdown(&doc, doc.criteria.first().unwrap());
+
+        assert!(
+            body.contains(
+                "Most people who would want this do not want a VPS, and should not have to learn \
+                 one to give their community a role that matches what they hold."
+            ),
+            "a paragraph the author wrapped has to arrive as one line: {body}"
+        );
+        assert!(
+            !body.contains("should not have to\n"),
+            "no authored wrap may survive as a newline: {body}"
+        );
+        assert!(
+            body.contains("what they hold.\n\nIt has to work with nothing set up first."),
+            "a blank line is a break somebody asked for and stays one (hi: ISSUE-7.a): {body}"
+        );
+    }
+
+    #[test]
+    fn only_a_wrapped_line_is_joined() {
+        // A newline is structural inside a list, a fence, a table, a heading
+        // and a rule. Folding one of those is a worse bug than the one being
+        // fixed, because it changes what the markdown means (hi: ISSUE-7.b).
+        for (name, raw, expected) in [
+            (
+                "a paragraph",
+                "one line\nand its wrap",
+                "one line and its wrap",
+            ),
+            (
+                "a blank line",
+                "one thought\nwrapped\n\nanother",
+                "one thought wrapped\n\nanother",
+            ),
+            (
+                "a list",
+                "the shape:\n- one thing\n- another, itself\n  wrapped",
+                "the shape:\n- one thing\n- another, itself wrapped",
+            ),
+            (
+                "an ordered list",
+                "1. first\n2. second\n   wrapped",
+                "1. first\n2. second wrapped",
+            ),
+            (
+                "a fence",
+                "look:\n\n```\nHOST-1  an example\nHOST-2  another\n```",
+                "look:\n\n```\nHOST-1  an example\nHOST-2  another\n```",
+            ),
+            ("a tilde fence", "~~~\na\nb\n~~~", "~~~\na\nb\n~~~"),
+            (
+                "a heading",
+                "### Why\nthe reason, which\nwrapped",
+                "### Why\nthe reason, which wrapped",
+            ),
+            ("a table", "| a | b |\n| - | - |", "| a | b |\n| - | - |"),
+            ("a quote", "> quoted\n> more", "> quoted\n> more"),
+            ("a rule", "above\n\n---\n\nbelow", "above\n\n---\n\nbelow"),
+            (
+                "a break somebody typed",
+                "one thought.  \na deliberately separate one",
+                "one thought.  \na deliberately separate one",
+            ),
+        ] {
+            assert_eq!(unwrap_soft_breaks(raw), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn the_files_hi_writes_are_one_line_per_paragraph() {
+        // hi models the convention it asks for. A hard-wrapped starter file is
+        // the thing every adopter copies (hi: FILE-21.a).
+        for (name, text) in [
+            ("hi/AGENTS.md", agent_instructions()),
+            ("INTENT.md", starter_intent(&workspace(&[]))),
+        ] {
+            let written = text.trim();
+            assert_eq!(
+                unwrap_soft_breaks(written),
+                written,
+                "{name} carries a soft wrap, so it models the defect it should model the fix for"
+            );
+        }
     }
 
     #[test]

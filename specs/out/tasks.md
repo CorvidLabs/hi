@@ -5,6 +5,20 @@ spec: out.spec.md
 ## Tasks
 
 - [x] Document the four read verbs against source. Evidence: `specs/out/out.spec.md` v1.
+- [x] Unwrap the soft line breaks in the intent prose a ticket carries (REQ-out-015). Evidence:
+      `unwrap_soft_breaks` in `src/out.rs`, pinned by
+      `src/out.rs::a_ticket_unwraps_prose_the_author_only_wrapped` (which fails without the call),
+      `src/out.rs::only_a_wrapped_line_is_joined`, and
+      `tests/cli.rs::a_ticket_unwraps_prose_and_leaves_the_file_alone`.
+- [x] Decide whether `hi view` and `hi export` need the same treatment (REQ-out-015). Evidence:
+      neither does, and neither was changed. `view::paragraphs` already joins a paragraph's lines
+      with spaces, and HTML collapses whitespace anyway, so the page has always rendered these
+      paragraphs whole. `export` is a transport and not a rendering, and unwrapping there would
+      throw the author's wrap points away for every downstream consumer irreversibly; see Gaps.
+      `ls` and `index_block` emit no intent prose at all.
+- [x] Make the text hi writes into a file it creates one line per paragraph (REQ-out-016).
+      Evidence: `agent_instructions` and `starter_intent` in `src/out.rs`, pinned by
+      `src/out.rs::the_files_hi_writes_are_one_line_per_paragraph`.
 - [ ] Add a unit test for `issue` refusing a retired id (REQ-out-005). The `CHAT` fixture needs a
       `## Retired` section, then assert the error message names "retired".
 - [x] Add a unit test for `write_index` splicing between the markers and leaving surrounding prose
@@ -68,6 +82,17 @@ spec: out.spec.md
 - Nothing covers `write_index`'s atomicity now that it has some (REQ-out-011). There is no
   regression test alongside the capture one, and nothing pins that a read-only `INTENT.md` is
   replaced rather than refused.
+- `export` deliberately carries the intent prose verbatim, wrapping and all, while `issue_markdown`
+  unwraps it (REQ-out-008, REQ-out-015). The payload is a transport rather than a rendering: no JSON
+  consumer turns a `\n` into a visible break the way a GitHub issue body does, a consumer that wants
+  it unwrapped can unwrap it, and one that wants the source form cannot get it back once hi has
+  thrown the wrap points away. Decided rather than overlooked; revisit only if an agent is found
+  propagating the wrapping into something a person reads.
+- The wrapping convention has no test outside this repository and no enforcement anywhere
+  (REQ-out-016). hi writes one-line paragraphs, hi's own files are one-line paragraphs, `hi/AGENTS.md`
+  says so and the README says so, and that is all there is. Whether adopters' files follow is not
+  measured, and measuring it is not the same as gating on it: FILE-4 forbids rewriting their prose
+  and CHECK-1 forbids a seventh structural problem (DECISIONS.md §29).
 
 ## Review Sign-offs
 
