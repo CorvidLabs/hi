@@ -17,10 +17,12 @@ to maintain, and it stops being written.
 ## Features
 
 <!-- hi:index -->
+- [adopt](hi/adopt.md): ADOPT (0 criteria)
 - [capture](hi/capture.md): CAPTURE (20 criteria)
 - [check](hi/check.md): CHECK (13 criteria)
 - [format](hi/format.md): FILE, ID (32 criteria)
 - [generate](hi/generate.md): ISSUE, EXPORT, INDEX (23 criteria)
+- [habit](hi/habit.md): HABIT (3 criteria)
 - [retire](hi/retire.md): RETIRE (10 criteria)
 - [view](hi/view.md): VIEW (31 criteria)
 <!-- /hi:index -->
