@@ -4,7 +4,7 @@ spec: capture.spec.md
 
 ## Automated Testing
 
-Unit coverage is the inline `#[cfg(test)] mod tests` at the bottom of `src/capture.rs`: eight tests, each against a real temporary directory. Behind it, `tests/cli.rs` drives the release binary and covers what only a process has: argv routing, exit codes, and which stream output lands on. Run them with `cargo test capture::` and `cargo test --test cli` (or `fledge run test` for the full suite).
+Unit coverage is the inline `#[cfg(test)] mod tests` at the bottom of `src/capture.rs`: ten tests, each against a real temporary directory. Behind it, `tests/cli.rs` drives the release binary and covers what only a process has: argv routing, exit codes, and which stream output lands on. Run them with `cargo test capture::` and `cargo test --test cli` (or `fledge run test` for the full suite).
 
 | Test File | Type | What It Covers |
 |-----------|------|----------------|
@@ -31,6 +31,7 @@ Unit coverage is the inline `#[cfg(test)] mod tests` at the bottom of `src/captu
 | REQ-capture-011 (a missing `## Criteria` section is created) | **Not covered here.** No capture test starts from a file without a `## Criteria` heading; the behavior lives in `Doc::insert` and is covered by `specs/doc/` |
 | REQ-capture-012 (the write cannot damage the destination) | **Not covered by a failure-injection test.** `write_atomically` is exercised by every passing capture test on its success path; no test simulates a full disk or a failed rename |
 | REQ-capture-013 (the file comes back in the person's own style) | `cli::block_style_frontmatter_is_understood_and_preserved` (a block `families:` list survives a capture that has to add a second family, and is not collapsed to inline; hi: FILE-7); line endings and the BOM are covered in `specs/doc/`, and `cli::a_bom_does_not_make_a_valid_file_look_broken` covers the read side only. **Not fully covered:** nothing tests a destination file whose last line has no trailing newline, which gains one (see Edge Cases) |
+| REQ-capture-016 (the generated feature list stays true) | `a_capture_leaves_the_generated_list_true` (a hand-written `INTENT.md` whose block said `(7 criteria)` reads `(2 criteria)` afterwards, with the prose either side untouched and `index_error` `None`), `an_index_that_cannot_be_refreshed_is_not_a_failed_capture` (an unpaired marker: `Ok`, the criterion on disk, `INTENT.md` byte-identical, `index_error` set); `cli::a_capture_refreshes_the_feature_list` and `cli::a_capture_survives_an_index_it_cannot_refresh` through the real binary. Each was checked by reverting its fix: removing the `refresh_index` call fails all four, and removing the `Doc::load` reload fails the two that assert the count |
 
 ### What Each Test Asserts
 
@@ -44,6 +45,8 @@ Unit coverage is the inline `#[cfg(test)] mod tests` at the bottom of `src/captu
 | `refuses_an_empty_sentence` | `capture(.., "SEND-2", "   ")` is an error |
 | `a_case_lands_in_the_file_holding_its_parent` | With `hi/decl.md` and `hi/real.md` both declaring `families: [SEND]` and only `hi/real.md` holding `SEND-1`, capturing `SEND-1.a` gives `done.file == "hi/real.md"`, `hi/real.md` contains `SEND-1.a`, and `hi/decl.md` does not |
 | `accepts_a_case_under_an_existing_parent` | The byte offset of `SEND-1 ` (with one trailing space, which matches the fixture's bare line) in the file is less than the offset of `SEND-1.a`, i.e. the case follows its parent. The test asserts ordering only; the bullet and the two-space indent capture writes are asserted by `cli::a_hi_file_renders_as_a_list_not_a_wall_of_text` |
+| `a_capture_leaves_the_generated_list_true` | Over an `INTENT.md` nobody's hi wrote, with a deliberately wrong `(7 criteria)` so the assertion cannot pass by the block never moving: the block reads `(2 criteria)`, both hand-written paragraphs survive, and `done.index_error` is `None` |
+| `an_index_that_cannot_be_refreshed_is_not_a_failed_capture` | With an unpaired opening marker in `INTENT.md`: `capture` returns `Ok`, `hi/chat.md` holds the criterion, `done.index_error` is `Some`, and `INTENT.md` is compared byte-for-byte against what was written |
 
 ### What Each Integration Test Asserts
 

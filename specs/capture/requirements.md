@@ -20,6 +20,11 @@ spec: capture.spec.md
 - As someone who just captured something, I want to be told which file it landed in, so that I never have to go looking for it (hi: CAPTURE-11)
 - As the author of `hi check`, I want capture to refuse a case whose parent I have not written yet and to name what is missing, so that the ordinary way of mistyping a sub-id does not author the structural error the checker then reports (hi: CAPTURE-2.b)
 
+- As the owner of the repository, I want the feature list at the front of my product to be true after
+  a capture, without me remembering to run `hi index` (hi: INDEX-4)
+- As someone capturing a thought, I want a capture that stored my criterion never to be reported as a
+  failure because that list could not be refreshed (hi: INDEX-4.a)
+
 ## Acceptance Criteria
 
 ### REQ-capture-001
@@ -197,6 +202,19 @@ Acceptance Criteria
 - The refusal happens after id and sentence validation and before any filesystem write, and names the file that family would want.
 - The refusal does not depend on the filesystem folding case. `start_file` lowercases a family name, so `AGENTS` wants `hi/agents.md`: the same path as `hi/AGENTS.md` on macOS or Windows, a confusing neighbour on Linux. Refusing on both is what keeps the behaviour one behaviour.
 
+
+### REQ-capture-016
+
+The capture module SHALL leave the generated feature list in `INTENT.md` true, and SHALL never report a capture that stored its criterion as a failure for doing so (hi: INDEX-4, INDEX-4.a).
+
+Acceptance Criteria
+
+- `out::refresh_index` is called after `Doc::save`, so the criterion is on disk before anything else is attempted. Every refusal path still returns before any filesystem write (REQ-capture-006, hi: CAPTURE-5).
+- The refresh counts what is on disk. `Doc::insert` splices the rendered line into `Doc::lines` without adding the criterion to `doc.criteria`, so capture reloads the file it just saved through `Doc::load` first. Without that reload the generated list comes out one criterion short.
+- Any reason the refresh could not happen, including `write_index`'s refusal to guess past a broken marker pair (hi: INDEX-2.b), is carried out on `Captured.index_error` for `main` to print. The call still returns `Ok` and the process still exits 0.
+- This is the same rule `start_product_intent` and `start_agent_files` already follow, and for the same reason: the thought is what mattered and it is already stored (hi: INDEX-3, HABIT-1, CAPTURE-1.a).
+- The refresh runs inside the lock `main::run_capture` already holds and takes none of its own, because `lock::acquire` is not reentrant (hi: FILE-19).
+- The accepted cost is that a bulk capture rewrites `INTENT.md` once per criterion. fledge's adoption was 197 captures. That is 197 atomic replaces of a few hundred bytes, serialized by a lock those captures already contend for.
 
 ## Constraints
 

@@ -33,6 +33,15 @@ the intent sentence `It should feel like texting.`
 | `tests/cli.rs::index_rewrites_only_the_generated_block` | Integration | REQ-out-011. `hi index` over an `INTENT.md` with prose and a stale block keeps the prose, drops the stale text, and writes the new bullet. |
 | `tests/cli.rs::index_refuses_rather_than_guessing_when_a_marker_is_unclosed` | Integration | REQ-out-013. An `INTENT.md` with an opening marker and no close makes `hi index` exit 1, and the file is asserted byte-identical to what it was before the run. |
 | `tests/cli.rs::index_leaves_a_marker_quoted_in_prose_alone` | Integration | REQ-out-012. The quoted sentence survives a real `hi index`, the stale block is replaced, and `<!-- /hi:index -->\n\n` shows the blank line after the block survived. |
+| `src/out.rs::a_list_that_matches_is_worth_no_note` | Unit | REQ-out-018. Over a real temp directory (the `on_disk` helper, pid in its name), an `INTENT.md` whose block already matches yields `None`. The negative half: it fails under a mutation that makes `index_note` always nag. |
+| `src/out.rs::a_list_that_disagrees_is_a_note` | Unit | REQ-out-018. The same file with `(3 criteria)` changed to `(1 criterion)` yields a note naming `INTENT.md` and saying the feature list is behind. Fails when `index_note` is mutated to return `None`. |
+| `src/out.rs::a_list_hi_can_no_longer_refresh_is_a_note_too` | Unit | REQ-out-018. An unpaired opening marker yields the note that nothing can refresh the list, which is the only thing left that says so once REQ-out-017 swallows the refusal on the capture path. |
+| `src/out.rs::a_file_with_no_block_at_all_is_not_a_list_that_is_behind` | Unit | REQ-out-018. Prose with no marker line yields `None`. The second negative half. |
+| `src/out.rs::refresh_hands_back_a_refusal_instead_of_raising_it` | Unit | REQ-out-017. Over an unpaired opening marker, `refresh_index` returns `Some` carrying INDEX-2.b's message and the file is asserted byte-identical afterwards. Fails when `refresh_index` is mutated to discard the reason. |
+| `tests/cli.rs::a_capture_refreshes_the_feature_list` | Integration | REQ-out-017. Over a hand-written `INTENT.md` whose block says `(1 criterion)`, a real capture leaves it saying `(2 criteria)` while the prose above and below the markers is asserted byte-identical with `starts_with` and `ends_with`. Fails both when the refresh is removed from `capture` and when `capture` stops reloading the file it just saved. |
+| `tests/cli.rs::a_retire_refreshes_the_feature_list` | Integration | REQ-out-017. Three live criteria, a block hand-set to `(9 criteria)` so the assertion cannot pass by the block never moving, then a real `hi retire`: the block reads `(2 criteria)`. |
+| `tests/cli.rs::a_capture_survives_an_index_it_cannot_refresh` | Integration | REQ-out-017. An `INTENT.md` with an unpaired opening marker: the capture exits 0, the criterion is in `hi/chat.md`, `INTENT.md` is byte-identical, and stderr says the list was not refreshed. |
+| `tests/cli.rs::check_says_the_feature_list_is_behind_without_failing` | Integration | REQ-out-018. A criterion typed into `hi/chat.md` by hand: `hi check` exits 0, says the feature list is behind, and prints no problem. Running `hi index` clears the note. |
 
 ### Requirement Coverage Map
 
@@ -53,6 +62,8 @@ the intent sentence `It should feel like texting.`
 | REQ-out-013 (unclosed marker refuses) | `an_unclosed_marker_has_no_span`, `index_refuses_rather_than_guessing_when_a_marker_is_unclosed` |
 | REQ-out-015 (soft breaks unwrapped into a ticket) | `a_ticket_unwraps_prose_the_author_only_wrapped`, `only_a_wrapped_line_is_joined`, `a_ticket_unwraps_prose_and_leaves_the_file_alone` |
 | REQ-out-016 (hi's own text is one line per paragraph) | `the_files_hi_writes_are_one_line_per_paragraph` |
+| REQ-out-017 (`refresh_index`) | `refresh_hands_back_a_refusal_instead_of_raising_it`, `a_capture_refreshes_the_feature_list`, `a_retire_refreshes_the_feature_list`, `a_capture_survives_an_index_it_cannot_refresh`, and `capture::tests::a_capture_leaves_the_generated_list_true` / `an_index_that_cannot_be_refreshed_is_not_a_failed_capture` in `specs/capture` |
+| REQ-out-018 (`index_note`) | `a_list_that_matches_is_worth_no_note`, `a_list_that_disagrees_is_a_note`, `a_list_hi_can_no_longer_refresh_is_a_note_too`, `a_file_with_no_block_at_all_is_not_a_list_that_is_behind`, `check_says_the_feature_list_is_behind_without_failing` |
 | REQ-out-014 (renders only parsed structure) | None here. The parser side is covered in `specs/doc`; nothing asserts that a fenced or stray id is absent from this module's output. See Gaps. |
 
 ## Manual Testing
@@ -157,6 +168,10 @@ These flows run against this repository's own `hi/` directory, which is the modu
 | `ls`, `export`, or `index` over a file with an id-shaped line outside every section | Invisible here: this module never reads `Doc::stray`. `hi check` reports it as `stray-criterion` (hi: CHECK-2.e) |
 | `issue` given a zero-padded id such as `SEND-007` | Rejected at parse: `'SEND-007' is not a valid id: level '007' has a leading zero; write it as '7', so the id always means the same thing` (hi: ID-1.c) |
 | `write_index` where `INTENT.md` is whitespace-only | Treated as absent: a full starter file is written |
+| `refresh_index` where `write_index` would refuse or fail | `Some(<message>)` comes back, `INTENT.md` is untouched, and the caller exits 0 (hi: INDEX-4.a) |
+| `refresh_index` where `INTENT.md` has no generated block at all | `write_index`'s append branch runs, so a `## Features` section appears on the next capture. Someone who deleted the block gets one back |
+| `index_note` over an `INTENT.md` whose block still carries CRLF inside it | Read as behind, because `hi index` would in fact rewrite it to LF. True rather than a false positive |
+| `index_note` where `INTENT.md` is missing, unreadable, or has no marker line | `None`. There is no generated list to be behind; `check::product_intent_note` covers the missing file |
 | `write_index` where `INTENT.md` is read-only but its directory is writable | Succeeds. `doc::write_atomically` renames a sibling temp over it, so the mode of the old file never matters; the replacement carries the temp file's permission bits |
 | `write_index` where the directory holding `INTENT.md` is not writable, or the disk is full | Fails with `writing <path>` wrapping the I/O error, the temp file is removed, and `INTENT.md` keeps every byte it had |
 | `write_index` where both markers sit alone on lines inside a fenced code block | The fenced pair is skipped and the real block below it is rewritten; the illustration is left byte-identical. Exit 0 (hi: INDEX-2.a) |

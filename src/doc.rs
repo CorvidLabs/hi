@@ -463,6 +463,13 @@ impl Doc {
             self.rewrite_families()?;
         }
 
+        // Deliberately no reparse here, unlike `retire` and
+        // `set_retired_reason`. The shifting above is the contract with
+        // `rewrite_families` and with the next insert, and re-deriving would
+        // make it untestable. The cost is that `self.criteria` does not yet
+        // hold the line just spliced in, so a caller that goes on to count
+        // criteria has to reload the saved file first; `capture` does
+        // (hi: INDEX-4).
         Ok(())
     }
 

@@ -573,6 +573,129 @@ fn index_rewrites_only_the_generated_block() {
     assert!(body.contains("hi/chat.md"));
 }
 
+/// An INTENT.md no hi ever wrote: hand-typed prose either side of a block whose
+/// count is already wrong. Every write-path test that asserted on a file hi
+/// produced itself missed four id bugs, so these assert on somebody else's file
+/// (DECISIONS.md §26).
+const HAND_WRITTEN_INTENT: &str = "# Product\n\nWhat we are for, in my own words.\n\n## Features\n\n<!-- hi:index -->\n- [chat](hi/chat.md): SEND (1 criterion)\n<!-- /hi:index -->\n\n## Bets\n\nIntent before code.\n";
+
+#[test]
+fn a_capture_refreshes_the_feature_list() {
+    let repo = Repo::with_chat("captureindex");
+    repo.write("INTENT.md", HAND_WRITTEN_INTENT);
+
+    let out = repo.run(&["SEND-2", "it reaches them and the mark changes to sent"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    let body = repo.read("INTENT.md");
+    assert!(
+        body.contains("(2 criteria)"),
+        "the list has to be true after the command that changed it:\n{body}"
+    );
+    // And only the list. The prose either side of the markers is the person's.
+    assert!(
+        body.starts_with("# Product\n\nWhat we are for, in my own words.\n\n## Features\n\n"),
+        "prose above the block is mine:\n{body}"
+    );
+    assert!(
+        body.ends_with("<!-- /hi:index -->\n\n## Bets\n\nIntent before code.\n"),
+        "prose below the block is mine:\n{body}"
+    );
+}
+
+#[test]
+fn a_retire_refreshes_the_feature_list() {
+    // Retiring changes the live count too, so it owes the list the same.
+    let repo = Repo::with_chat("retireindex");
+    repo.run(&["SEND-2", "it reaches them"]);
+    repo.run(&["SEND-3", "I can see when they read it"]);
+    // A count that is neither the one before the retirement nor the one after,
+    // so the assertion below cannot pass by the block simply never moving.
+    repo.write(
+        "INTENT.md",
+        &HAND_WRITTEN_INTENT.replace("(1 criterion)", "(9 criteria)"),
+    );
+
+    let out = repo.run(&["retire", "SEND-3", "we dropped read receipts"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    let body = repo.read("INTENT.md");
+    assert!(
+        body.contains("(2 criteria)"),
+        "a retired id is not a feature any more:\n{body}"
+    );
+    assert!(
+        body.contains("Intent before code."),
+        "prose is mine:\n{body}"
+    );
+}
+
+#[test]
+fn a_capture_survives_an_index_it_cannot_refresh() {
+    // hi refuses to guess where a broken block ends (INDEX-2.b). That refusal
+    // must never reach a capture whose criterion is already stored.
+    let repo = Repo::with_chat("indexrefusal");
+    repo.write(
+        "INTENT.md",
+        "# Product\n\nMine.\n\n<!-- hi:index -->\n- a\n",
+    );
+    let before = repo.read("INTENT.md");
+
+    let out = repo.run(&["SEND-2", "it reaches them"]);
+    assert!(
+        out.status.success(),
+        "a stored criterion is not a failure: {}",
+        stderr(&out)
+    );
+    assert!(
+        repo.read("hi/chat.md")
+            .contains("**SEND-2**  it reaches them"),
+        "the criterion still lands"
+    );
+    assert_eq!(repo.read("INTENT.md"), before, "and nothing was guessed at");
+    assert!(
+        stderr(&out).contains("not refreshed"),
+        "but hi says so rather than going quiet:\n{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn check_says_the_feature_list_is_behind_without_failing() {
+    // FILE-14 lets somebody type a criterion straight into the file, and no
+    // verb can see that happen. `hi check` is what notices afterwards.
+    let repo = Repo::with_chat("handedit");
+    repo.write(
+        "hi/chat.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\nSEND-1  I hit enter and it shows up.\nSEND-2  It reaches them.\n",
+    );
+    repo.write("INTENT.md", HAND_WRITTEN_INTENT);
+
+    let out = repo.run(&["check"]);
+    assert!(
+        out.status.success(),
+        "a stale list is never a build failure (CHECK-1): {}",
+        stdout(&out)
+    );
+    assert!(
+        stdout(&out).contains("feature list is behind"),
+        "{}",
+        stdout(&out)
+    );
+    assert!(
+        !stdout(&out).contains("problem"),
+        "a note is not a seventh problem:\n{}",
+        stdout(&out)
+    );
+
+    // And running the verb it names clears it.
+    assert!(repo.run(&["index"]).status.success());
+    assert!(
+        !stdout(&repo.run(&["check"])).contains("feature list is behind"),
+        "the note goes away once the list is true"
+    );
+}
+
 #[test]
 fn an_unknown_subcommand_is_a_usage_error() {
     let repo = Repo::with_chat("usage");

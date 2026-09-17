@@ -42,3 +42,6 @@ Generation must work with no auth, no network, and no integration, because the m
   - **INDEX-2.b**  I get a refusal when those comments are broken or unpaired, rather than hi guessing where its list ends.
 - **INDEX-3**  The product-level file exists from my first capture, so I never have to discover it.
   - **INDEX-3.a**  hi keeps reminding me while the product-level why is still unwritten.
+- **INDEX-4**  The list at the front of my product is true after every command that changes it, without me remembering to refresh it.
+  - **INDEX-4.a**  A capture that stored my criterion is never reported as a failure because the list could not be refreshed.
+  - **INDEX-4.b**  If I write a criterion into the file by hand, hi tells me the list is behind rather than leaving it wrong.

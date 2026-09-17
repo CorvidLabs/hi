@@ -12,7 +12,7 @@ It holds intent and identity. Nothing else. It stores no state, tracks no lifecy
 - [capture](hi/capture.md): CAPTURE (20 criteria)
 - [check](hi/check.md): CHECK (13 criteria)
 - [format](hi/format.md): FILE, ID (34 criteria)
-- [generate](hi/generate.md): ISSUE, EXPORT, INDEX (26 criteria)
+- [generate](hi/generate.md): ISSUE, EXPORT, INDEX (29 criteria)
 - [habit](hi/habit.md): HABIT (6 criteria)
 - [retire](hi/retire.md): RETIRE (10 criteria)
 - [view](hi/view.md): VIEW (31 criteria)

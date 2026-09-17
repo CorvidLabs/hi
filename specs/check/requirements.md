@@ -26,6 +26,9 @@ spec: check.spec.md
 
 ## Acceptance Criteria
 
+- Notes are not problems. `Report::note` carries the product-level why, the unexplained
+  retirements, and the generated feature list being behind; `Report::ok` reads none of them and the
+  exit code never moves for any of them (hi: CHECK-1, INDEX-3.a, RETIRE-3, INDEX-4.b)
 - `run` reports exactly six kinds of problem and nothing else: `duplicate-id`, `orphan-case`,
   `retired-collision`, `unparseable-id`, `undeclared-family`, `stray-criterion`
 - Absence of downstream work (no spec, no ticket, no test, no evidence) is never reported in any
@@ -53,6 +56,18 @@ Acceptance Criteria
 - A fenced block in such a file is an example rather than structure, exactly as it is under `## Intent` (hi: FILE-9), so documenting the format in a `hi/README.md` does not report a loss.
 - A file that cannot be read is skipped rather than reported, because an unreadable file is not evidence of a criterion.
 
+
+### REQ-check-014
+
+The check module SHALL say when the generated feature list in `INTENT.md` no longer matches what is captured, as a note that never reaches the exit code (hi: INDEX-4.b, CHECK-1).
+
+Acceptance Criteria
+
+- The note comes from `out::index_note`, which rebuilds the block and compares bytes. It is pushed onto the same `notes` vector as the product-level why and the unexplained retirements, and `Report::ok` reads none of them.
+- It is not a seventh `Kind`. `run` still reports exactly six structural problems, `hi check` still exits 1 only on a structurally broken file, and the README's "exactly six" stands.
+- It is the first note about something hi itself maintains; the other two are about words only a person can write. It is admissible because capture and retire keep the list current themselves (REQ-capture-016, REQ-out-017), so the note fires for one cause: a criterion typed straight into a file, which FILE-14 allows and no verb can see.
+- The note names the file and the verb that fixes it, and it goes away once that verb has been run.
+- No `INTENT.md`, no markers in it, or a block that already matches: no note. A missing `INTENT.md` is already covered by `product_intent_note`.
 
 ## Constraints
 

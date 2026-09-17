@@ -9,6 +9,38 @@ only version so far.
 
 ## Unreleased
 
+### The feature list in INTENT.md stays true by itself
+
+`hi index` regenerated the list and nothing made anyone run it. Three adopter
+repositories had already drifted: peck's block said 56 against 57 actual, podo-web's
+said 53 against 57. This repository escaped it only because
+`scripts/index-is-current.sh` is in its gate, which no adopter has.
+
+Capture and `hi retire` now refresh the block themselves, so the list is true after
+every command that changes it. Drift is structurally impossible rather than merely
+detectable.
+
+**A capture that stored your criterion is never reported as a failure.** The refresh
+runs only after the criterion is on disk, and any reason it could not happen is
+printed as a note on stderr while the command still exits 0. That includes hi's
+existing refusal to guess where a broken `hi:index` marker pair ends: it still
+refuses, it still writes nothing, and your capture still succeeds. This is how
+`INTENT.md`'s creation has behaved since it was added.
+
+**Nothing about what gets rewritten changed.** The prose in `INTENT.md` is still
+yours; hi still only ever replaces the list between its own markers, still leaves a
+marker quoted in prose or inside a fence alone, and still refuses rather than guesses.
+
+`hi check` now says when the list is behind, for the one case no verb can see: a
+criterion typed straight into a file, which hi has always accepted. It is a note and
+never a problem. `hi check` still fails on exactly six structural things and the exit
+code does not move for this.
+
+Two costs, both accepted and both recorded in DECISIONS.md §30. A bulk capture
+rewrites `INTENT.md` once per criterion; fledge's adoption was 197 captures. And an
+`INTENT.md` you had removed the generated block from gets one back on the next
+capture.
+
 ### The fledge plugin declares what it now does
 
 `plugin.toml` moves to 0.2.0. The plugin gained two lifecycle hooks and `exec = true` in 0.5.0 and its own version never moved, so a `fledge plugins list` could not tell a plugin that runs a script at `work start` and `push` from one that only adds a command. It missed the 0.6.0 tag, so it lands here.
