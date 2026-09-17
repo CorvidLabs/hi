@@ -111,6 +111,29 @@ pub fn run(workspace: &Workspace) -> Report {
         }
     }
 
+    // A file hi skips is still a file somebody may have written a criterion
+    // into. Skipping quietly is the FILE-20 failure with a new cause, so look
+    // inside rather than assume (DECISIONS.md §27).
+    for path in &workspace.skipped {
+        let Ok(raw) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let file = workspace.rel(path);
+        for (line, token) in crate::doc::criterion_tokens(&raw) {
+            problems.push(Problem {
+                kind: Kind::StrayCriterion,
+                file: file.clone(),
+                line: line + 1,
+                id: token.clone(),
+                message: format!(
+                    "{token} sits in {file}, which hi does not read as criteria \
+                     because its name is not lowercase. Move it into a lowercase \
+                     file under ## Criteria, because nothing reads it where it is"
+                ),
+            });
+        }
+    }
+
     for doc in &workspace.docs {
         let file = workspace.rel(&doc.path);
 
@@ -279,6 +302,7 @@ mod tests {
             root: PathBuf::from("/r"),
             dir: PathBuf::from("/r/hi"),
             docs,
+            skipped: Vec::new(),
         }
     }
 

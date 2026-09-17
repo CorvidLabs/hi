@@ -1095,3 +1095,97 @@ changed and the assumptions did not, which is the ordinary way a tool becomes un
 
 **What would change this decision:** nothing about the promise. If the locking proves too coarse
 for a real workflow, the lock can narrow from the repository to the file. The promise does not move.
+
+---
+
+## 27. How hi gets reached for
+
+§22 asked whether hi is ever reached for unprompted and said the answer has to be measured on
+somebody with a Tuesday. That is still true, and it hid a second thing: most of the reaching is now
+done by agents, and an agent cannot form a habit at all. It reaches for whatever is in its context.
+hi put nothing there, so a null result was measuring the distribution as much as the demand.
+
+The death is not a `hi/` that goes stale. It is earlier than that. Someone reads the README, agrees
+with it, installs the binary and never runs a second command, so there is no `hi/` to rot. That is
+what `HABIT-1`, `HABIT-2` and `HABIT-3` are about, and this section is how they get served.
+
+### hi writes its own file, and still never writes outside `hi/`
+
+The obvious mechanism is a marked block in the repository's own `CLAUDE.md` or `AGENTS.md`, owned
+by hi the way `INDEX-2` owns its generated block in `INTENT.md`. That was refused. §9 already
+declined to stamp into human-authored, human-named files, and "but ours is visible" is how a
+refused decision comes back wearing a hat. hi writes `hi/AGENTS.md` and nothing outside `hi/`.
+
+`hi/CLAUDE.md` is a symlink to it, so both conventions are served by one truth rather than two
+copies that drift. Where a symlink cannot be created — Windows without Developer Mode, or any
+checkout with `core.symlinks` false, which is the Git-for-Windows default — hi writes a one-line
+pointer file instead. That is two code paths and a committed result that differs by platform, and
+it is still better than the alternative: a committed symlink checks out on those machines as a text
+file containing the literal string `AGENTS.md`, which an agent reads as the whole instruction.
+
+### Written at first capture, best effort
+
+Exactly the `INTENT.md` pattern (`INDEX-3`): after the criterion is safely on disk, never before,
+and a capture that succeeded is never reported as a failure because this could not be written.
+There is no init step and no new verb, because `CAPTURE-1.a` promises hi is useful without one and
+the death above *is* a second command that never gets run.
+
+### It says the habit and nothing else
+
+Read the files here, draft the criteria, ask the person to confirm them, capture what they agree
+to, then build. For anything about verbs or syntax it points at `hi --help`.
+
+That is a deliberate refusal of two better-sounding files. One carries the id grammar and the
+one-line rule, so an agent needs nothing else — and describes a format DECISIONS says is not
+frozen, in a file nothing keeps current. The other lists the families already written here, which
+is wrong immediately after the next capture. A file written once has to be a file that cannot go
+stale, and the only way to get that is to say less.
+
+The confirmation in `HABIT-3` belongs to the agent and never to hi. `hi` itself still asks nothing
+in the middle of a capture (`CAPTURE-1.b`); the question happens in the conversation, which is the
+one place where a question is already the medium.
+
+### `hi/` was not a free directory
+
+Writing the instruction into `hi/` collided with what `hi/` already means. `Workspace::load` reads
+every `*.md` directly inside it as criteria, so `AGENTS.md` and `CLAUDE.md` became documents with no
+families, counted by `check` and listed by `index` as two features of the product:
+
+```
+- [AGENTS](hi/AGENTS.md): no families yet (0 criteria)
+- [CLAUDE](hi/CLAUDE.md): no families yet (0 criteria)
+```
+
+That list is `INTENT.md`'s feature list and it is what gets published. The rule that resolves it is
+derived rather than invented: **a criteria file is lowercase**, because `capture::start_file`
+lowercases every family name, so an uppercase name in `hi/` is never a file hi wrote as criteria and
+is therefore hi's own. One rule, and room for a later file without a growing list of names.
+
+The cost is real and was accepted: a file somebody hand-named `Chat.md` stops being read as
+criteria. What makes that survivable is the second half. **Skipping quietly would be the `FILE-20`
+failure arriving by a new route**, so `Workspace::skipped` keeps every skipped path and `check`
+reads inside them, reporting any criterion-shaped line as `stray-criterion`. The kind is reused
+rather than added to: a criterion in a skipped file is the same failure that kind already
+describes, nothing reads it where it is, and the README promises exactly six structural problems.
+A fenced block in such a file stays an example rather than structure, exactly as under `## Intent`
+(`FILE-9`), so documenting the format in a `hi/README.md` is not reported as a loss.
+
+**`AGENTS` and `CLAUDE` are not available as family names.** A family names its own file,
+lowercased, so `AGENTS-1` wants `hi/agents.md`: the same path as `hi/AGENTS.md` on a
+case-insensitive filesystem, and a confusing neighbour on a case-sensitive one. Before the refusal
+existed, capturing `AGENTS-1` on macOS produced `hi/agents.md has no frontmatter, so add ...`,
+which is an instruction to convert hi's own instruction file into a criteria file. Capture now
+refuses both names on every platform, before any write, because a rule that depends on the
+filesystem folding case is two behaviours wearing one name.
+
+### What this does not solve
+
+An agent only reads `hi/CLAUDE.md` once it is already looking in `hi/`. Nothing here makes it look.
+For a repository that has hi committed this is a small gap, and for a repository that has never
+seen hi it is the whole of `HABIT-1` still open: the file cannot introduce hi to an agent working
+in a repo where the file does not exist yet. Whatever closes that is not a file hi writes, and it
+is not decided here.
+
+**What would change this decision:** a way to reach an agent before `hi/` exists that does not
+involve writing into somebody else's file. If one turns up, the first two subsections stay and the
+last one gets an answer.

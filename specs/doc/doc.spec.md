@@ -60,6 +60,7 @@ any output for a human. Those belong to `id`, `capture`, `workspace`, and `out`/
 | `set_retired_reason` | Record why an already retired criterion was retired, replacing an existing note rather than stacking one. Retiring in a hurry and explaining later is the normal shape of changing your mind, and without this the only way to add the reason was to hand-edit (hi: RETIRE-1.c). |
 | `write_atomically` | Write a string to a path without ever leaving the target truncated: sibling temp file, flush, fsync, rename. Public so `out::write_index` can give `INTENT.md` the same protection `Doc::save` gives `hi/*.md` (hi: FILE-8). |
 | `new_file_text` | The starting text for a brand-new feature file, already parseable as an empty hi document. |
+| `criterion_tokens` | Find criterion-shaped lines in a file the workspace does not load as criteria, returning each zero-based line and its id-shaped token. `check` runs it over `Workspace::skipped`, so an uppercase-named file in `hi/` cannot swallow a criterion silently (hi: FILE-20). A fenced block is an example rather than structure, exactly as it is under `## Intent` (hi: FILE-9). |
 | `one_line` | Collapse any run of whitespace, newlines included, so a string hi writes into a file cannot become more than one line. |
 | `strip_emphasis` | Remove markdown emphasis from around an id token, so `**SEND-1**` and `SEND-1` compare equal. |
 

@@ -186,6 +186,9 @@ fn run_capture(root: Option<&std::path::Path>, raw_id: &str, rest: &[String]) ->
     if let Some(intent) = &done.started_intent {
         println!("{intent}  created, for the product-level why");
     }
+    for file in &done.started_agent {
+        println!("{file}  created, so an agent finds this without being told");
+    }
     if done.created_file {
         println!("{}  created", done.file);
     }

@@ -174,6 +174,30 @@ Acceptance Criteria
 - A leading UTF-8 BOM is stripped by `Doc::parse` and is not written back, so the saved file has no BOM. `Workspace::find`'s `holds_hi_files` strips one too, so a BOM does not hide the workspace from discovery either.
 - The one shape that is not round-tripped: `Doc::to_text` ends every non-empty file with that same line ending (`if self.trailing_newline || !out.is_empty()`), so a destination file whose last line carried no newline gains one. `Doc::trailing_newline` only suppresses the ending for a file with no lines at all. Reproduced against the built binary; recorded here rather than claimed as preservation.
 
+### REQ-capture-014
+
+The capture module SHALL leave the working habit where an agent will read it, without being asked and without an init step (hi: HABIT-1, HABIT-2, HABIT-3).
+
+Acceptance Criteria
+
+- `start_agent_files` writes `hi/AGENTS.md` from `out::agent_instructions` when no entry of that name exists, and `hi/CLAUDE.md` beside it pointing at the same text, and returns what it started so `main` can name each file.
+- `link_to_agents` makes `hi/CLAUDE.md` a symlink to `AGENTS.md` where the platform allows one, and falls back to a one-line `See @AGENTS.md` file where it does not. A symlink keeps one truth; a committed symlink on a checkout with `core.symlinks` false would otherwise arrive as a text file holding the literal target, which an agent reads as the whole instruction (DECISIONS.md §27).
+- Presence is tested with `symlink_metadata`, so an existing symlink, including a broken one, is left alone rather than treated as absent.
+- `hi/CLAUDE.md` is written only when `hi/AGENTS.md` is a real file, so the pointer never dangles.
+- Both are written only after the criterion is on disk, and every failure is swallowed: a capture that stored its criterion is never reported as a failure because these could not be written (hi: CAPTURE-1.a; the `INDEX-3` pattern).
+- Neither file is rewritten on a later capture. hi writes them once and they belong to the repository afterwards.
+
+### REQ-capture-015
+
+The capture module SHALL refuse a family whose file would be one hi keeps for itself, identically on every platform (hi: CAPTURE-5).
+
+Acceptance Criteria
+
+- `RESERVED_FAMILIES` is `AGENTS` and `CLAUDE`, compared with `eq_ignore_ascii_case`, and is exactly the set of files `start_agent_files` writes.
+- The refusal happens after id and sentence validation and before any filesystem write, and names the file that family would want.
+- The refusal does not depend on the filesystem folding case. `start_file` lowercases a family name, so `AGENTS` wants `hi/agents.md`: the same path as `hi/AGENTS.md` on macOS or Windows, a confusing neighbour on Linux. Refusing on both is what keeps the behaviour one behaviour.
+
+
 ## Constraints
 
 - hi holds intent and identity only. Capture stores no lifecycle, status, checkbox, timestamp, author, or evidence link alongside the criterion. The line is an id and a sentence and nothing else.

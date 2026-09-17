@@ -148,6 +148,42 @@ fn check_is_clean_on_unfinished_intent() {
 }
 
 #[test]
+fn a_criterion_in_a_file_hi_skips_is_reported_rather_than_vanishing() {
+    // Written by hand, not by hi. Three bugs shipped because every test
+    // asserted over files hi itself produced (DECISIONS.md §26).
+    let repo = Repo::with_chat("skipped-criterion");
+    repo.write(
+        "hi/NOTES.md",
+        "# Notes\n\n- **SEND-9**  a criterion somebody put in the wrong file.\n",
+    );
+
+    let out = repo.run(&["check"]);
+    assert_eq!(out.status.code(), Some(1));
+    let text = stdout(&out);
+    assert!(text.contains("stray-criterion"), "{text}");
+    assert!(text.contains("SEND-9"), "{text}");
+    assert!(text.contains("hi/NOTES.md"), "{text}");
+    assert!(text.contains("not lowercase"), "{text}");
+}
+
+#[test]
+fn hi_s_own_files_are_not_counted_as_features() {
+    let repo = Repo::with_chat("own-files");
+    repo.run(&["SEND-2", "It reaches them."]);
+
+    // AGENTS.md and the CLAUDE.md beside it sit in hi/ and are hi's, so they
+    // are neither criteria files nor lines in the product's feature list.
+    let out = repo.run(&["check"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+    assert!(stdout(&out).contains("1 file"), "{}", stdout(&out));
+
+    repo.run(&["index"]);
+    let intent = repo.read("INTENT.md");
+    assert!(!intent.contains("AGENTS"), "{intent}");
+    assert!(!intent.contains("CLAUDE"), "{intent}");
+}
+
+#[test]
 fn check_fails_on_a_structural_problem() {
     let repo = Repo::new("orphan");
     repo.write(

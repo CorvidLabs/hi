@@ -766,6 +766,56 @@ fn is_criterion_line(trimmed: &str) -> bool {
         .is_some_and(looks_like_id)
 }
 
+/// Criterion-shaped lines in a file hi does not load as criteria.
+///
+/// `check` runs this over `Workspace::skipped` so an uppercase-named file in
+/// `hi/` cannot swallow a criterion silently (hi: FILE-20). Returns the
+/// zero-based line and the id-shaped token on it.
+///
+/// A fence makes its contents an example rather than structure, exactly as it
+/// does under `## Intent` (hi: FILE-9). These files are prose all the way
+/// down, so a documented example is never reported as a lost criterion.
+pub fn criterion_tokens(text: &str) -> Vec<(usize, String)> {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let mut found = Vec::new();
+    let mut fence: Option<(char, usize)> = None;
+
+    for (index, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if let Some(marker) = fence_marker(trimmed) {
+            match fence {
+                Some((open, len)) if open == marker.0 && marker.1 >= len => fence = None,
+                Some(_) => {}
+                None => fence = Some(marker),
+            }
+            continue;
+        }
+        if fence.is_some() || trimmed.is_empty() || !is_criterion_line(trimmed) {
+            continue;
+        }
+        let token = strip_bullet(trimmed)
+            .split_whitespace()
+            .next()
+            .map(strip_emphasis)
+            .unwrap_or("")
+            .to_string();
+        found.push((index, token));
+    }
+
+    found
+}
+
+/// A ``` or ~~~ run at the start of a trimmed line, with its length.
+fn fence_marker(trimmed: &str) -> Option<(char, usize)> {
+    for marker in ['`', '~'] {
+        let len = trimmed.chars().take_while(|c| *c == marker).count();
+        if len >= 3 {
+            return Some((marker, len));
+        }
+    }
+    None
+}
+
 /// Walk back from `before` to the last line with content on it.
 fn last_content_line(lines: &[String], before: usize) -> usize {
     let mut index = before.min(lines.len());
@@ -1349,6 +1399,19 @@ mod tests {
             doc.intent
         );
         assert_eq!(doc.criteria.len(), 1);
+    }
+
+    #[test]
+    fn criterion_tokens_finds_a_criterion_in_prose_and_ignores_an_example() {
+        let text = "# Notes\n\n\
+                    - **SEND-9**  a criterion somebody put in the wrong file.\n\n\
+                    ```\n\
+                    - **SEND-4**  an example of the format.\n\
+                    ```\n";
+        let found = criterion_tokens(text);
+        assert_eq!(found.len(), 1, "the fenced line is an example, not a loss");
+        assert_eq!(found[0].1, "SEND-9");
+        assert_eq!(found[0].0, 2);
     }
 
     #[test]

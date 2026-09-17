@@ -399,6 +399,7 @@ mod tests {
             root: PathBuf::from("/r"),
             dir: PathBuf::from("/r/hi"),
             docs,
+            skipped: Vec::new(),
         }
     }
 
