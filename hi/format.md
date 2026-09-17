@@ -42,6 +42,8 @@ a standup a year from now and have it still mean the same line.
 - **FILE-18**  I understand a criterion as what this should be, not as a report of what it currently does.
 - **FILE-19**  Two captures running at the same time both land, instead of one quietly overwriting the other.
 - **FILE-20**  A criterion hi cannot see is never silently invisible; it is reported rather than ignored.
+- **FILE-21**  One paragraph of my prose is one line, however long it runs, so a break only ever appears where I left a blank line.
+  - **FILE-21.a**  The files hi writes for me start out that way, so the first thing I read is the convention rather than an exception to it.
 
 - **ID-1**  An id never moves once written, so I can say it out loud a year later and still mean the same line.
   - **ID-1.a**  Inserting a criterion never renumbers anything around it.
