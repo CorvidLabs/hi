@@ -198,10 +198,11 @@ Acceptance Criteria
   and not a list it could have derived itself.
 - A missing, unreadable, or effectively empty `INTENT.md` omits `product` rather than failing or
   emitting an empty string.
-- Only the generated block is stripped. `read_product_intent` does not use `view::strip_comments`,
-  so an HTML comment in the prose reaches `product` as written, including the
-  `<!-- What is this product for, holistically? ... -->` prompt in a starter file that nobody has
-  filled in yet, along with the `# <root>` and `## Features` headings around it.
+- `read_product_intent` takes the same reading the page takes: `view::strip_index` then
+  `view::strip_comments`, so the generated block, the `# <root>` title, the generated `## Features`
+  heading and any HTML comment are all dropped. An agent asking what this product is for gets what a
+  person wrote or nothing, never the `<!-- What is this product for, holistically? ... -->` prompt hi
+  left behind in a starter file nobody has filled in yet (hi: EXPORT-5).
 
 ### REQ-out-009
 

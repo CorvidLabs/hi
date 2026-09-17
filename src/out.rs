@@ -421,7 +421,7 @@ pub fn export(workspace: &Workspace, scope: Option<&str>) -> Result<String> {
     Ok(serde_json::to_string_pretty(&export)?)
 }
 
-/// The prose from INTENT.md, with the generated index stripped out.
+/// The prose from INTENT.md, with the generated index and hi's own prompts stripped out.
 fn read_product_intent(workspace: &Workspace) -> Option<String> {
     let raw = fs::read_to_string(workspace.intent_path()).ok()?;
     // The same reading the page takes: drop the generated index, the title and
