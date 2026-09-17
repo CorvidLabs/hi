@@ -242,7 +242,12 @@ mod nudge {
         let missing = PathBuf::from("/nope/does/not/exist");
 
         for moment in ["start", "push", "", "unknown-moment"] {
-            for root in [Some(present.as_path()), Some(with_hi.as_path()), Some(missing.as_path()), None] {
+            for root in [
+                Some(present.as_path()),
+                Some(with_hi.as_path()),
+                Some(missing.as_path()),
+                None,
+            ] {
                 let out = run(moment, root);
                 assert_eq!(
                     out.status.code(),
@@ -286,7 +291,10 @@ mod nudge {
         std::fs::create_dir_all(root.join("hi")).unwrap();
         for moment in ["start", "push"] {
             let out = run(moment, Some(&root));
-            assert!(out.stderr.is_empty(), "{moment} spoke despite a hi/ being present");
+            assert!(
+                out.stderr.is_empty(),
+                "{moment} spoke despite a hi/ being present"
+            );
         }
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -298,16 +306,27 @@ mod nudge {
         // from cwd would read the wrong tree and say the wrong thing.
         // The working directory here is a repository with no `hi/`, so a hook
         // that guessed from cwd would speak and this would catch it.
-        assert!(run("start", None).stderr.is_empty(), "spoke with no root given");
-        assert!(run("push", None).stderr.is_empty(), "spoke at push with no root given");
         assert!(
-            run("start", Some(&PathBuf::from("/nope/does/not/exist"))).stderr.is_empty(),
+            run("start", None).stderr.is_empty(),
+            "spoke with no root given"
+        );
+        assert!(
+            run("push", None).stderr.is_empty(),
+            "spoke at push with no root given"
+        );
+        assert!(
+            run("start", Some(&PathBuf::from("/nope/does/not/exist")))
+                .stderr
+                .is_empty(),
             "spoke about a root that does not exist"
         );
         let not_a_repo = std::env::temp_dir().join(format!("hi-nudge-bare-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&not_a_repo);
         std::fs::create_dir_all(&not_a_repo).unwrap();
-        assert!(run("start", Some(&not_a_repo)).stderr.is_empty(), "spoke outside a repository");
+        assert!(
+            run("start", Some(&not_a_repo)).stderr.is_empty(),
+            "spoke outside a repository"
+        );
         let _ = std::fs::remove_dir_all(&not_a_repo);
     }
 }
