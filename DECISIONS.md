@@ -1301,3 +1301,85 @@ reformatted its own and none of theirs. Ours are ours.
 look like the wrapping reaching somewhere a person reads that hi does not render — a spec an agent
 wrote out of `hi export`, say. The answer then is still not a rewrite of their file; it is to decide
 whether `export` should carry a second, unwrapped field beside the verbatim one.
+
+---
+
+## 30. The generated list has to be true by itself
+
+`INTENT.md` carries a feature list hi generates between two markers, and `hi index` regenerates it.
+Nothing made anyone run it. Three adopter repositories had already drifted: `peck`'s block said 56
+against 57 actual, `podo-web`'s said 53 against 57. This repository is the one that did not, and
+only because `scripts/index-is-current.sh` is wired into its gate, which no adopter has.
+
+That is the same shape as §26's concurrency finding. A guarantee that depends on somebody
+remembering is not a guarantee, and the first place it fails is the repository that adopted hi
+without adopting hi's own build.
+
+### Capture keeps it current, rather than check reporting it
+
+The verb that changes the live count refreshes the block. Both of them: `capture` and `hi retire`,
+since retiring changes the count too. Drift is then structurally impossible rather than merely
+detectable, which is the difference between a promise and a report.
+
+The alternative was a seventh `check::Kind`. It was refused for the reason §9 and `CHECK-1` refuse
+every other quality gate: `hi check` fails on a structurally broken file and on nothing else, and
+adding a build failure for a stale generated file would make hi one more thing that turns a build
+red on a Friday.
+
+### Best effort, never fatal
+
+The refresh runs only after the criterion is on disk, and any reason it could not happen is printed
+as a line rather than raised. A capture that stored a criterion must never be reported as a failure,
+because the report sends somebody looking for a sentence that is in fact there, and the four seconds
+that sentence cost is the whole thing hi is protecting (`CAPTURE-1`, `INDEX-4.a`).
+
+This is exactly how `INTENT.md`'s creation has behaved since it was added (`start_product_intent`,
+`INDEX-3`, `CAPTURE-1.a`). The rule is now written down rather than repeated: everything capture
+does after `Doc::save` is best effort and cannot fail the capture.
+
+`INDEX-2.b`'s refusal to guess past a broken marker pair is included in that. It still refuses, it
+still writes nothing, and the caller still exits 0. The refusal is printed on stderr, so stdout
+stays the record of what landed.
+
+### And `check` nags when the block still disagrees
+
+One way to make the list wrong survives: type a criterion straight into a file. `FILE-14` explicitly
+allows that, and no verb sees it happen. `hi check` compares the block to what it would generate and
+says so, as a `note:` that never touches the exit code, following `INDEX-3.a`.
+
+**This is the first time `check` nags about something hi itself maintains**, and that is worth
+naming rather than letting it read as a natural extension. `INDEX-3.a` nags about a product-level
+why, and `RETIRE-3` about a reason for a retirement: both are words only a person can write, and hi
+is asking for something it could never supply. This one is about a list hi generates. The only thing
+that makes it admissible is that capture and retire now keep that list current, so the note has
+exactly one cause left and that cause is a human edit. If a future change makes the note fire for
+something hi could have fixed itself, the answer is to fix it, not to keep nagging.
+
+### What this costs
+
+A bulk capture rewrites `INTENT.md` once per criterion. fledge's adoption was 197 captures, so 197
+atomic replaces of a file a few hundred bytes long, serialized by a lock those captures already
+contend for. That is real and it is accepted; the alternative is a list that is wrong 196 times out
+of 197 and right by luck at the end.
+
+A person who deleted the generated block gets one back on the next capture, through the append
+branch `write_index` has always had. That branch was previously only ever reached by somebody typing
+`hi index`, and it is now reached without being asked for.
+
+`scripts/index-is-current.sh` stays in the gate. It is no longer the thing that keeps this
+repository's list true — capture is — and it is now a backstop for hand-edits here, which is what
+`INDEX-4.b` covers for everybody else.
+
+One more thing was found on the way in, and it is the reason the first version of this shipped a
+count that was one too low: `Doc::insert` splices the rendered line into `Doc::lines` and shifts the
+indexes around it, but does not add the criterion to `doc.criteria`. The in-memory `Doc` therefore
+described the file as it was a moment earlier, and anything that counted from it counted short.
+Capture reloads the file it just saved before anything counts. `Doc::insert` was deliberately left
+alone: `retire` and `set_retired_reason` both end by reparsing, and making `insert` do the same
+would have made its index bookkeeping — which the next insert and `rewrite_families` both depend on
+— untestable, and there is a test that catches exactly that.
+
+**What would change this decision:** a repository where the rewrite-per-capture is genuinely too
+expensive, which would look like a bulk import measured in thousands rather than hundreds. The
+answer then is not to stop refreshing; it is for a bulk path to refresh once at the end, which needs
+a bulk path to exist first.

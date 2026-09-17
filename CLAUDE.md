@@ -104,6 +104,24 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   then reparses the whole file rather than patching line indexes in two directions. Capture,
   `hi issue` and `hi check` all treat a retired id as taken forever (`hi: RETIRE-2`, DECISIONS.md
   §4 and §8.3).
+- **A verb that changes the live count refreshes `INTENT.md`'s generated list.** `capture` and the
+  `hi retire` arm both call `out::refresh_index` after the criterion is on disk, because nothing
+  made anyone run `hi index` and three adopter repositories had drifted. It is best effort: every
+  failure, `INDEX-2.b`'s refusal to guess at broken markers included, comes back as a string and is
+  printed on stderr, and the command still exits 0. Do not let it raise, do not move it above
+  `Doc::save`, and do not give it a lock: `capture` and `retire` already hold `lock::acquire` and
+  it is not reentrant (DECISIONS.md §30, `hi: INDEX-4`, `INDEX-4.a`).
+- **`hi check`'s note about that list is a note, not a seventh problem.** `out::index_note` is
+  pushed onto `Report::note`, which `Report::ok` never reads, so the exit code cannot move. It is
+  the first thing `check` nags about that hi itself maintains, and it is only admissible because
+  capture and retire keep the list current, leaving one cause: a criterion typed in by hand, which
+  `FILE-14` allows (DECISIONS.md §30, `hi: INDEX-4.b`, `CHECK-1`).
+- **`Doc::insert` does not add the criterion to `doc.criteria`.** It splices the line into
+  `Doc::lines` and shifts the indexes, and that is all. Anything that counts after an insert must
+  reload the saved file first, which `capture` does. Do not "fix" this by reparsing at the end of
+  `insert` the way `retire` does: the index shifting is the contract with `rewrite_families` and
+  with the next insert, and `doc::tests::block_style_insert_keeps_line_positions_correct` stops
+  being able to fail.
 - **`INTENT.md` is created by capture, best effort, and only after the criterion is on disk.** A
   capture that succeeded must never be reported as a failure because `INTENT.md` could not be
   written. `check::product_intent_note` then nags until there is prose in it, as a `note:` that
