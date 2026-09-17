@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# CI only ever reads the repository: it builds, tests and lints. Nothing here
+# publishes, comments or tags, so the token gets nothing beyond checkout.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
