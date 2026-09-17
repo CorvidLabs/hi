@@ -426,8 +426,9 @@ fn a_ticket_unwraps_prose_and_leaves_the_file_alone() {
 
 #[test]
 fn an_id_is_never_handed_out_twice() {
-    // The one promise hi makes. Four of its own verbs used to break it; each
-    // line below is one of them (hi: FILE-13, FILE-20, RETIRE-5, RETIRE-6).
+    // The one promise hi makes. Six of its own write paths have broken it; each
+    // block below is one of them, and the concurrent one has a test of its own
+    // (hi: FILE-13, FILE-20, FILE-22, RETIRE-5, RETIRE-6).
     let repo = Repo::new("permanence");
 
     // 1. Retiring into a file whose `## Retired` is not the last section used
@@ -491,6 +492,62 @@ fn an_id_is_never_handed_out_twice() {
         !out.status.success(),
         "an id hi cannot read is still taken: {}",
         stdout(&out)
+    );
+
+    // 4. A properly closed example of the format in somebody's own prose, which
+    //    `FILE-9` explicitly invites. `retired_heading` scanned raw lines, so
+    //    the `## Retired` inside the example was the section `hi retire` moved
+    //    into: the criterion landed in the intent prose, the command printed
+    //    success, and the id was handed straight back out (hi: FILE-22).
+    let documented = Repo::new("permanence-documented");
+    documented.write(
+        "hi/send.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n# Chat\n\n## Intent\n\nA file has three sections, and a criterion looks like this:\n\n```markdown\n## Intent\n\n## Criteria\n\n- **SEND-4**  an example of the shape.\n\n## Retired\n```\n\nThat is all there is to it.\n\n## Criteria\n\n- **SEND-1**  I hit enter and it is on its way.\n",
+    );
+    let out = documented.run(&["retire", "SEND-1", "changed my mind"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let listed = stdout(&documented.run(&["ls", "--retired"]));
+    assert!(
+        listed.contains("SEND-1"),
+        "a retirement hi cannot read back is a lost criterion:\n{listed}"
+    );
+    let out = documented.run(&["SEND-1", "a completely different thing"]);
+    assert!(
+        !out.status.success(),
+        "a documented example must not free a real id: {}",
+        stdout(&out)
+    );
+    assert!(
+        documented
+            .read("hi/send.md")
+            .contains("```markdown\n## Intent\n\n## Criteria\n\n- **SEND-4**  an example of the shape.\n\n## Retired\n```"),
+        "and the example is still the person's prose, untouched"
+    );
+    // The other half of the same rule: an example is an example, so the id it
+    // draws was never spoken for and is still free (hi: FILE-9).
+    assert!(
+        documented.run(&["SEND-4", "a real one"]).status.success(),
+        "a drawn id must not be burned by being drawn"
+    );
+
+    // 5. A fence the person never closed swallowed the `## Criteria` section
+    //    `insert` appended below it, so capture reported the same id saved
+    //    twice, both lines invisible, `hi check` clean (hi: FILE-22.a).
+    let unfinished = Repo::new("permanence-unfinished");
+    let half_written = "---\nhi: 1\nfamilies: [SEND]\n---\n\n# Chat\n\n## Intent\n\nI was in the middle of writing this out:\n\n```markdown\n## Criteria\n";
+    unfinished.write("hi/send.md", half_written);
+    for sentence in ["I hit enter.", "Something completely different."] {
+        let out = unfinished.run(&["SEND-1", sentence]);
+        assert!(
+            !out.status.success(),
+            "a capture nothing can read back is not a capture: {}",
+            stdout(&out)
+        );
+    }
+    assert_eq!(
+        unfinished.read("hi/send.md"),
+        half_written,
+        "and the unfinished prose is left exactly as it was (hi: CAPTURE-5)"
     );
 }
 
