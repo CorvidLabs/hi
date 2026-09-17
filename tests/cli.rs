@@ -608,14 +608,20 @@ fn a_retire_refreshes_the_feature_list() {
     // Retiring changes the live count too, so it owes the list the same.
     let repo = Repo::with_chat("retireindex");
     repo.run(&["SEND-2", "it reaches them"]);
-    repo.write("INTENT.md", HAND_WRITTEN_INTENT);
+    repo.run(&["SEND-3", "I can see when they read it"]);
+    // A count that is neither the one before the retirement nor the one after,
+    // so the assertion below cannot pass by the block simply never moving.
+    repo.write(
+        "INTENT.md",
+        &HAND_WRITTEN_INTENT.replace("(1 criterion)", "(9 criteria)"),
+    );
 
-    let out = repo.run(&["retire", "SEND-2", "we dropped read receipts"]);
+    let out = repo.run(&["retire", "SEND-3", "we dropped read receipts"]);
     assert!(out.status.success(), "{}", stderr(&out));
 
     let body = repo.read("INTENT.md");
     assert!(
-        body.contains("(1 criterion)"),
+        body.contains("(2 criteria)"),
         "a retired id is not a feature any more:\n{body}"
     );
     assert!(
