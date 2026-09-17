@@ -1474,6 +1474,24 @@ It costs a thread and a channel per write, for a hold that is normally measured 
 usually ends before the first heartbeat fires. That is cheap, and the alternative was leaving in a
 rule that can take a lock away from somebody who is using it.
 
+### Windows made the fail-closed rule say more than it meant
+
+Failing closed says: if you could not take the lock, do not pretend you did. The first version read
+that as "any error is a failure", and Windows disagrees. A removed file there stays present until
+every handle to it closes, so a waiter whose create lands in the window between one writer
+releasing and the file actually going is told **access denied** rather than **already exists**.
+Thirty-two queued captures are thirty-one handoffs, and one of them failed a capture on CI.
+
+A handoff is not a locked-out directory, and the difference between them is not the error code but
+whether it is still happening a moment later. An error that is neither "somebody has it" nor "the
+directory went away" is now retried for half a second before it is reported. Nothing about failing
+closed moved: no guard is handed back, ever. What moved is how long hi waits before deciding an
+error was the truth.
+
+Worth saying plainly, because it is the second time on this page: the bug was found by running the
+thing in the state it actually runs in. Thirty-two concurrent processes on a filesystem that is not
+the author's found it in one CI run, and no amount of reading the arm would have.
+
 ### What this says about the audit
 
 Thirteen agents looked for what a 1.0 would freeze, found four ways the promise broke, and closed

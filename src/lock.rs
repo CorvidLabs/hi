@@ -21,6 +21,12 @@
 //! first and fails closed on anything else, so a `Guard` cannot exist without
 //! the file it names.
 //!
+//! Windows is the reason the "anything else" arm waits out `GRACE` first: a
+//! removed file lingers there until every handle to it is closed, so a waiter
+//! that arrives during a handoff is told access is denied rather than that the
+//! lock already exists. It still fails closed; it just does not mistake a
+//! handoff for a locked-out directory.
+//!
 //! **A lock is broken because nobody is holding it, never because it is old.**
 //! The holder refreshes the file four times a second from a thread of its own,
 //! and a waiter breaks the lock only after watching that mtime stand still for
@@ -50,6 +56,13 @@ const HEARTBEAT: Duration = Duration::from_millis(250);
 const ABANDONED: Duration = Duration::from_secs(5);
 /// How often a waiter looks again.
 const RETRY: Duration = Duration::from_millis(20);
+/// How long an error that is neither "somebody has it" nor "the directory went
+/// away" has to keep happening before it counts as a real one. Windows marks a
+/// file for deletion rather than removing it, so a waiter whose create lands in
+/// the window between one writer releasing and the file actually going is told
+/// access is denied. With thirty-two captures queued there are thirty-one of
+/// those handoffs, and one of them failed a capture on CI.
+const GRACE: Duration = Duration::from_millis(500);
 
 /// Held for as long as the caller may write. Releases on drop, including when
 /// the caller returns an error, so a refusal never leaves the lock behind.
@@ -146,6 +159,8 @@ fn acquire_within(hi_dir: &Path, patience: Duration, abandoned: Duration) -> Res
     let waited = Instant::now();
     // The mtime last seen on somebody else's lock, and when we first saw it.
     let mut watched: Option<(SystemTime, Instant)> = None;
+    // When an error we are willing to sit out started.
+    let mut trouble: Option<Instant> = None;
 
     loop {
         match fs::OpenOptions::new()
@@ -154,7 +169,7 @@ fn acquire_within(hi_dir: &Path, patience: Duration, abandoned: Duration) -> Res
             .open(&path)
         {
             Ok(file) => return Ok(Guard::held(file, path, hi_dir.to_path_buf(), created_dir)),
-            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => trouble = None,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
                 // `hi/` went away under us: another writer refused and took the
                 // empty directory it had made with it. Put it back.
@@ -162,18 +177,27 @@ fn acquire_within(hi_dir: &Path, patience: Duration, abandoned: Duration) -> Res
                     .with_context(|| format!("creating {}", hi_dir.display()))?;
                 created_dir = true;
                 watched = None;
+                trouble = None;
             }
-            // Fail closed. A guard that was not acquired is not a lock, and
-            // handing one back is how every writer comes to believe it is alone.
+            // Anything else fails closed, because a guard that was not acquired
+            // is not a lock and handing one back is how every writer comes to
+            // believe it is alone. It fails closed after `GRACE` rather than at
+            // once: a release on Windows leaves the file briefly present and
+            // undeletable, and a waiter that arrives in that window is told
+            // access is denied when what is really happening is a handoff. An
+            // error still there half a second later is a real one.
             Err(err) => {
-                return Err(err).with_context(|| {
-                    format!(
-                        "could not take the write lock {}.\n\
-                         hint:  hi has to be able to write inside {}",
-                        path.display(),
-                        hi_dir.display()
-                    )
-                });
+                let since = *trouble.get_or_insert_with(Instant::now);
+                if since.elapsed() > GRACE {
+                    return Err(err).with_context(|| {
+                        format!(
+                            "could not take the write lock {}.\n\
+                             hint:  hi has to be able to write inside {}",
+                            path.display(),
+                            hi_dir.display()
+                        )
+                    });
+                }
             }
         }
 

@@ -53,6 +53,12 @@ clock against the file's, so clock skew cannot make a held lock look abandoned.
 `hi` now waits up to thirty seconds for another writer rather than five, which is
 also what a few hundred queued captures need.
 
+On Windows a removed file stays present until every handle to it closes, so a
+waiter arriving while another writer releases is told access is denied rather
+than that the lock exists. hi retries such an error for half a second before
+reporting it, which is a handoff rather than a locked directory. It still never
+hands back a lock it did not take.
+
 Recorded in DECISIONS.md §31, with why the §26 pass did not cover any of this.
 
 ## [0.7.0] 2026-09-17

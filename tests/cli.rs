@@ -569,10 +569,13 @@ fn concurrent_captures_into_a_repository_with_no_hi_directory_all_land() {
         .collect();
 
     let mut reported = Vec::new();
+    let mut refused = Vec::new();
     for handle in handles {
         let (n, out) = handle.join().unwrap();
         if out.status.success() {
             reported.push(n);
+        } else {
+            refused.push(format!("SEND-{n}: {}", stderr(&out).trim()));
         }
     }
 
@@ -584,10 +587,12 @@ fn concurrent_captures_into_a_repository_with_no_hi_directory_all_land() {
         );
     }
     // Nothing may quietly refuse either: an id nobody else asked for is free.
-    assert_eq!(
-        reported.len(),
-        32,
-        "every capture asked for an id of its own"
+    // The reason is printed rather than counted, because the one time this fired
+    // it was a lock handoff on Windows and a count says nothing about that.
+    assert!(
+        refused.is_empty(),
+        "every capture asked for an id of its own, and these did not land:\n{}",
+        refused.join("\n")
     );
 }
 
