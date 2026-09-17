@@ -419,7 +419,8 @@ Acceptance Criteria
 - A refusal restores the document to its pre-call state and returns an error naming the verb, the id
   and the file. Nothing is written, in memory or on disk (hi: CAPTURE-5).
 - When the proposed text contains a fence that is never closed, the refusal adds a hint naming the
-  1-based line it opens on, because a swallowed section is the likeliest cause.
+  1-based line it opens on and the marker it was opened with (``` or ~~~), because a swallowed
+  section is the likeliest cause.
 - `insert` discards the verified parse rather than adopting it, so its line-index bookkeeping remains
   the contract with `rewrite_families` and the next insert, and `capture` still reloads the file it
   saved before anything counts (DECISIONS.md §30).

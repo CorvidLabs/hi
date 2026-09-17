@@ -453,9 +453,10 @@ impl Doc {
         // saying so is the difference between a refusal somebody can act on and
         // one they can only be annoyed by.
         let hint = match fence_map(&after.lines, after.body_start()).unclosed {
-            Some(line) => format!(
-                "\nhint:  an unclosed ``` fence opens on line {}, so everything below it is an \
+            Some((marker, line)) => format!(
+                "\nhint:  an unclosed {} fence opens on line {}, so everything below it is an \
                  example rather than part of the file. Close it, then try again",
+                marker.to_string().repeat(3),
                 line + 1
             ),
             None => String::new(),
@@ -1029,8 +1030,10 @@ pub fn fence_marker(trimmed: &str) -> Option<(char, usize)> {
 struct Fences {
     /// True for every line between a fence's markers, markers included.
     inside: Vec<bool>,
-    /// Where the fence that is never closed opens, when one is left open.
-    unclosed: Option<usize>,
+    /// The marker and the line of a fence that is never closed, when one is
+    /// left open. The marker so a refusal can quote back what the person
+    /// actually typed, tildes and all.
+    unclosed: Option<(char, usize)>,
 }
 
 /// Run `fence_marker`'s open/close state machine over a whole file.
@@ -1067,7 +1070,7 @@ fn fence_map(lines: &[String], start: usize) -> Fences {
 
     Fences {
         inside,
-        unclosed: open.map(|(_, _, line)| line),
+        unclosed: open.map(|(marker, _, line)| (marker, line)),
     }
 }
 

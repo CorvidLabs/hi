@@ -215,8 +215,8 @@ any output for a human. Those belong to `id`, `capture`, `workspace`, and `out`/
     the file already made readable still is (a multiset comparison of `raw_id`, so losing one of a
     duplicated pair still counts), and `stray` has not grown. A refusal restores the in-memory
     document to exactly what it was, so nothing reaches disk and an unfinished file keeps its
-    unfinished prose. The refusal names an unclosed fence and the line it opens on when there is
-    one, because that is the likeliest reason a write lands nowhere. This exists because the write
+    unfinished prose. The refusal names an unclosed fence, in the marker the person actually typed,
+    and the 1-based line it opens on, because that is the likeliest reason a write lands nowhere. This exists because the write
     path and the parse path disagreed about section boundaries twice, in two different verbs, and
     both times `hi check` exited 0 afterwards (DECISIONS.md §31).
 
