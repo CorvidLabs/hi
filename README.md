@@ -93,6 +93,16 @@ uppercase name in there is hi's own rather than criteria: your first capture lea
 repository finds it without being told. hi writes them once and never again, and they are yours
 afterwards. If a criterion ever ends up in one, `hi check` says so rather than letting it go quiet.
 
+That file only reaches an agent already looking in `hi/`, which is no use in a repository that has
+never seen hi. The other half is the fledge plugin: `fledge plugins install CorvidLabs/hi` installs
+once for you rather than once per repository, and from then on `fledge work start` in a repository
+with nothing written down says so, as does `fledge work push`. Both go quiet the moment a `hi/`
+exists, and neither can fail your command.
+
+The hooks need a fledge carrying [#520](https://github.com/CorvidLabs/fledge/pull/520), which is
+merged but not yet in a release: v1.7.2 and earlier skip them silently, and hi stays quiet rather
+than guessing at the wrong repository.
+
 ## Install
 
 ```bash
