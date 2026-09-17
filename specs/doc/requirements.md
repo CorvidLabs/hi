@@ -20,7 +20,12 @@ spec: doc.spec.md
 - As someone whose feature spans several id families, I want one file to hold all of them, each in
   its own readable block (hi: FILE-5)
 - As someone documenting the format inside my own intent, I want a fenced code block to stay prose so
-  that an example never becomes a real criterion (hi: FILE-9)
+  that an example never becomes a real criterion, whether hi is reading my file or writing into it
+  (hi: FILE-9, FILE-22.b)
+- As someone who is told a criterion was saved, I want it to really be somewhere hi can find again,
+  and a refusal rather than a cheerful message when it is not (hi: FILE-22)
+- As someone whose file is half written, with a fence I have not closed yet, I want hi to refuse
+  rather than save into the middle of my unfinished prose (hi: FILE-22.a)
 - As someone whose editor writes YAML its own way, I want hi to read my frontmatter in whichever
   style I wrote it and write it back the same way (hi: FILE-7)
 - As someone on Windows, or whose editor adds a byte-order mark, I want my file to work and to come
@@ -45,7 +50,11 @@ spec: doc.spec.md
   used is remembered, because hi has to write it back the same way (hi: FILE-7).
 - The parse is infallible. `Doc::parse` returns a `Doc` for any input, including one with no
   frontmatter, no sections and no valid ids. The only fallible operations are the two filesystem
-  calls and the missing-frontmatter refusal inside `insert`.
+  calls, the missing-frontmatter refusal inside `insert`, and the read-back refusal of REQ-doc-020.
+- No write site decides for itself where a section is. Anything that adds a `## Criteria` or
+  `## Retired` heading, or looks for one, goes through the same fence state machine the parser uses,
+  and then proves the result by parsing it (REQ-doc-020). A second raw-line scan for a heading is
+  how both of the bugs that requirement exists for were written.
 - The original lines are the source of truth for serialization. Any future feature that needs to
   rewrite content must do it as a line splice or an in-place single-line replacement, or invariant 1
   of the spec is lost.
@@ -271,8 +280,9 @@ Acceptance Criteria
 - `insert` mutates only the in-memory `lines`, `front` and criterion indices.
 - `new_file_text` returns a string; writing it is the caller's decision.
 - `save` is the module's only write, and it writes exactly `to_text()` to the document's own `path`.
-- When `insert` refuses because the file has no frontmatter, the in-memory document is already
-  spliced and must be discarded rather than saved; nothing has reached disk at that point.
+- Every refusal from `insert`, `retire` and `set_retired_reason` restores the in-memory document to
+  what it was before the call, so a caller holding one `Doc` for a whole run cannot save a
+  half-spliced buffer. Nothing has reached disk at that point either way.
 
 ### REQ-doc-012
 
@@ -307,6 +317,9 @@ Acceptance Criteria
   written after the fence closes is still intent, so a `# ` comment inside a shell snippet does not
   truncate the section.
 - Fence state carries across the whole body, so an unclosed fence makes everything after it opaque.
+- The write path reads the same map. `retired_heading` and `retired_end` skip fenced lines, so a
+  `## Retired` drawn inside somebody's example is never the section a retirement moves into, and the
+  example comes back byte-identical (hi: FILE-22.b).
 - `fence_marker` is the one definition of what opens or closes a fence, and it is public so that
   every part of hi that reads markdown gives the same answer. `out::unwrap_soft_breaks` uses it to
   leave the newlines inside a fenced example alone when it renders intent prose into a ticket
@@ -387,6 +400,31 @@ Acceptance Criteria
   second one, exactly as it would in an existing empty section (REQ-doc-007).
 - Everything already in the file, intent prose included, is left character for character
   (REQ-doc-006), and re-parsing the result finds the same intent, the new criterion and no stray.
+- When that last content line is inside a fence nobody closed, the created heading would be part of
+  the example, so the insert is refused by REQ-doc-020 and the unfinished prose is left alone. An
+  unfinished document is an ordinary thing to have; reporting a successful capture into one is not.
+
+### REQ-doc-020
+
+Every write SHALL parse the buffer it is about to save and SHALL refuse it unless the edit is
+readable where the verb said it would be (hi: FILE-22).
+
+Acceptance Criteria
+
+- `insert`, `retire` and `set_retired_reason` each parse their proposed text before returning `Ok`.
+  The check is: every id the verb named is present in the named section (`## Criteria` for `insert`,
+  `## Retired` for the other two, and for every case that went with a retirement); every `raw_id` the
+  document made readable before the call is still readable, compared as a multiset so that losing one
+  of a duplicated pair counts; and `stray` has not grown.
+- A refusal restores the document to its pre-call state and returns an error naming the verb, the id
+  and the file. Nothing is written, in memory or on disk (hi: CAPTURE-5).
+- When the proposed text contains a fence that is never closed, the refusal adds a hint naming the
+  1-based line it opens on, because a swallowed section is the likeliest cause.
+- `insert` discards the verified parse rather than adopting it, so its line-index bookkeeping remains
+  the contract with `rewrite_families` and the next insert, and `capture` still reloads the file it
+  saved before anything counts (DECISIONS.md §30).
+- The check is over what the parser reads, not over the lines that were spliced: a criterion written
+  into a fenced region is unreadable however plainly it sits on the page (REQ-doc-013).
 
 ### REQ-doc-019
 

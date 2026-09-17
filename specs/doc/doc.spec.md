@@ -34,6 +34,15 @@ inside their own intent (hi: FILE-9). The file's own byte shape (its line ending
 newline, its frontmatter style) is carried through a write rather than normalized (hi: FILE-7,
 FILE-10), and the write itself is atomic so a failure cannot leave a truncated file (hi: FILE-8).
 
+Because a fence is opaque, everything that *writes* into a file has to agree with the parser about
+where the sections are, and twice it did not: `retired_heading` scanned raw lines and took a
+`## Retired` inside somebody's fenced example for the real section, and `insert` appended a missing
+`## Criteria` heading below a fence nobody had closed. Both wrote a criterion where nothing would
+ever read it and both reported success, which freed an id that had been spoken for. So no write site
+is trusted to know where it landed: `insert`, `retire` and `set_retired_reason` each parse the buffer
+they are about to save and refuse it unless the edit really happened where the verb said
+(invariant 18, hi: FILE-22).
+
 This module is pure structure. It does not validate ids beyond recording why one failed to parse,
 does not decide whether a capture is allowed, does not enumerate files on disk, and does not render
 any output for a human. Those belong to `id`, `capture`, `workspace`, and `out`/`view` respectively.
@@ -56,7 +65,7 @@ any output for a human. Those belong to `id`, `capture`, `workspace`, and `out`/
 | `save` | Writes `to_text()` back to the document's own path, atomically: a sibling temp file, flushed and synced, then renamed over the target. |
 | `name` | The file stem, used as the document's display name (`hi/chat.md` is `chat`). |
 | `render_criterion` | Renders an id and a sentence as one markdown list item, `<indent>- **ID**<2 spaces>sentence`, indented two spaces per depth level, with the id in bold and all interior whitespace collapsed to single spaces. Never wraps. |
-| `retire` | Move a criterion and every case beneath it into `## Retired`, with an optional reason, creating the section when the file has none. Returns how many criteria moved. Re-parses the file afterwards rather than patching positions, because lines move in both directions (hi: RETIRE-1, RETIRE-1.a, RETIRE-1.b). |
+| `retire` | Move a criterion and every case beneath it into `## Retired`, with an optional reason, creating the section when the file has none. Returns how many criteria moved. Re-parses the file afterwards rather than patching positions, because lines move in both directions (hi: RETIRE-1, RETIRE-1.a, RETIRE-1.b), and that re-parse is the read-back of invariant 18: a retirement that did not land under `## Retired` is refused with the document untouched. |
 | `set_retired_reason` | Record why an already retired criterion was retired, replacing an existing note rather than stacking one. Retiring in a hurry and explaining later is the normal shape of changing your mind, and without this the only way to add the reason was to hand-edit (hi: RETIRE-1.c). |
 | `write_atomically` | Write a string to a path without ever leaving the target truncated: sibling temp file, flush, fsync, rename. Public so `out::write_index` can give `INTENT.md` the same protection `Doc::save` gives `hi/*.md` (hi: FILE-8). |
 | `new_file_text` | The starting text for a brand-new feature file, already parseable as an empty hi document. |
@@ -89,7 +98,7 @@ any output for a human. Those belong to `id`, `capture`, `workspace`, and `out`/
 | `line_no` | `Criterion::line_no(&self) -> usize` | `self.line + 1`. |
 | `all` | `Doc::all(&self) -> impl Iterator<Item = &Criterion>` | `criteria.iter().chain(retired.iter())`. |
 | `used_families` | `Doc::used_families(&self) -> Vec<String>` | Deduplicated families of every criterion whose id parsed, in document order. Criteria with unparseable ids contribute nothing. |
-| `insert` | `Doc::insert(&mut self, id: &Id, text: &str) -> Result<()>` | Creates a `## Criteria` section when the file has none, chooses an insertion point, renders the criterion, splices it into `lines`, shifts every recorded line index at or after the splice (criteria, retired, `criteria_end`, `criteria_heading` and `stray`), and appends the family to the frontmatter if it is not already declared. In-memory only. |
+| `insert` | `Doc::insert(&mut self, id: &Id, text: &str) -> Result<()>` | Creates a `## Criteria` section when the file has none, chooses an insertion point, renders the criterion, splices it into `lines`, shifts every recorded line index at or after the splice (criteria, retired, `criteria_end`, `criteria_heading` and `stray`), and appends the family to the frontmatter if it is not already declared. Then reads the proposed buffer back (invariant 18) and refuses it if the criterion is not readable under `## Criteria`. In-memory only, and any refusal restores the document to exactly what it was. The verified parse is discarded rather than adopted, so the index bookkeeping above stays the contract with `rewrite_families` and the next insert (DECISIONS.md §30). |
 | `to_text` | `Doc::to_text(&self) -> String` | `lines.join(self.newline)` plus one `self.newline` whenever the result is non-empty or the original had one. |
 | `save` | `Doc::save(&self) -> Result<()>` | `write_atomically(self.path, self.to_text())`, with the path in the error context. The only function in this module that writes to disk. |
 | `name` | `Doc::name(&self) -> String` | The path's file stem, falling back to the whole displayed path when there is no stem. |
@@ -197,7 +206,19 @@ any output for a human. Those belong to `id`, `capture`, `workspace`, and `out`/
 17. **`insert` always has a section to land in** (hi: CAPTURE-7). A file with no `## Criteria`
     heading gets a blank line, `## Criteria` and a blank line spliced in after its last line with
     content, before the insertion point is chosen. A criterion is therefore never appended into
-    intent prose or below a heading where nothing would read it.
+    intent prose or below a heading where nothing would read it. Where the file gives it nowhere to
+    put that section — an unfinished document whose last content line is inside a fence nobody
+    closed — invariant 18 refuses the write rather than appending into the example.
+18. **A write is read back before it is kept** (hi: FILE-22, CAPTURE-5). `insert`, `retire` and
+    `set_retired_reason` each parse the buffer they are about to hand to `save` and refuse it unless
+    three things hold: every id the verb named is readable in the section the verb named, every id
+    the file already made readable still is (a multiset comparison of `raw_id`, so losing one of a
+    duplicated pair still counts), and `stray` has not grown. A refusal restores the in-memory
+    document to exactly what it was, so nothing reaches disk and an unfinished file keeps its
+    unfinished prose. The refusal names an unclosed fence and the line it opens on when there is
+    one, because that is the likeliest reason a write lands nowhere. This exists because the write
+    path and the parse path disagreed about section boundaries twice, in two different verbs, and
+    both times `hi check` exited 0 afterwards (DECISIONS.md §31).
 
 ## Behavioral Examples
 
@@ -384,6 +405,9 @@ hand-edited file, not what hi writes. Every line hi writes is the list item of i
 | The first line is not `---` | Same as above: there is no frontmatter and the body starts at line 0. A leading BOM is stripped first, so a BOM before `---` is still frontmatter (hi: FILE-11) |
 | A fenced code block is never closed | The rest of the body is opaque: no further heading, criterion or stray is recognized (hi: FILE-9) |
 | The file has no `## Criteria` heading at all | `insert` creates one after the file's last line with content and lands the criterion under it (hi: CAPTURE-7) |
+| The file has no `## Criteria` heading and ends inside an unclosed fence | The created heading would be part of the example, so `insert` refuses: `capturing {id} would put it in {path} where hi cannot read it back, so nothing was written`, with a hint naming the line the fence opens on. The in-memory document is restored and the unfinished prose is untouched (hi: FILE-22.a) |
+| `## Retired` appears only inside a fenced example | Not a section. `retire` creates a real `## Retired` at the end of the file and the example is left byte-identical (hi: FILE-9, FILE-22.b) |
+| A write would leave any previously readable id unreadable | Refused by invariant 18 with the ids named, the document restored and nothing written |
 | `render_criterion` is given whitespace-only text | Returns one line, the indent, the bullet and `**{id}**` followed by the two separating spaces and nothing else. Rejecting an empty sentence is `capture`'s job |
 | A criterion line's family is lowercase, as in `send-2  ...` | `looks_like_id` is case-insensitive on the family, so the line is a criterion. `Id::parse` then fails with `IdError::BadFamily`, and it is recorded like any other malformed id rather than read as prose and lost (hi: CHECK-2.d) |
 | A line begins with an ordinary hyphenated word, as in `spec-sync is fine` | Not a criterion and not a stray. `looks_like_id` requires the first level after the hyphen to be a digit, so a hyphenated word is prose |
@@ -421,4 +445,5 @@ hand-edited file, not what hi writes. Every line hi writes is the list item of i
 | 2026-09-16 | Claude | Reconciled with the bug-fix pass: fenced blocks are opaque (FILE-9), a `# ` heading now records the append point, `stray` is recorded for criteria outside every section (CHECK-2.e), block-style frontmatter is parsed and preserved via `families_span`/`families_block` (FILE-7), a BOM is stripped (FILE-11), the file's line ending is kept in `newline` (FILE-10), `save` is atomic (FILE-8), and `insert` creates a missing `## Criteria` section (CAPTURE-7). |
 | 2026-09-16 | Claude | Verification pass against `src/doc.rs`: recorded that `## Intent` is excluded from `stray` because the intent branch runs first, restated the parent-insertion rule to match `insertion_point` (the parent itself counts, not only its descendants), corrected the no-frontmatter message's literal `\n`, and corrected the `std::io` surface (`sync_all` is `fs::File`'s, not `Write`'s). |
 | 2026-09-16 | Claude | Reconciled with the list-item rule and the new `looks_like_id`: every quoted render is now `- **ID**  sentence` indented two spaces per depth level; the criterion-line grammar no longer claims column 0, because `strip_bullet`, `strip_emphasis` and `is_criterion_line` accept a bullet, emphasis and any indent; an indented line is now a stray like any other, and the recorded token keeps its emphasis; a nested criterion line ends the continuation run above it; added the lowercase-family and hyphenated-word error cases; recorded `Id::depth` as consumed and `out`'s use of `write_atomically`, `criterion.note` and `criterion.id`. |
+| 2026-09-17 | Claude | Two write paths decided where a section was without asking the parser, and both freed an id that was spoken for: `retired_heading` and `retired_end` now skip fenced lines through the same state machine `parse_body` uses, and every write reads its buffer back before keeping it (invariant 18, new REQ-doc-020, hi: FILE-22). `insert`, `retire` and `set_retired_reason` now leave the in-memory document untouched on any refusal. The two helpers behind it are private, so the export count is still 22. |
 | 2026-09-17 | Claude | `fence_marker` is public. It was already the only definition of what a fence is that the parser uses, and `out::unwrap_soft_breaks` needs the same answer so that prose inside a fence is never reflowed into a ticket (hi: FILE-9, ISSUE-7.b). No behavior changed; the export count is 22. |

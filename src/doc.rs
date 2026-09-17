@@ -1026,7 +1026,7 @@ pub fn fence_marker(trimmed: &str) -> Option<(char, usize)> {
 
 /// Which body lines sit inside a fenced block, and where an unclosed fence
 /// opens.
-pub struct Fences {
+struct Fences {
     /// True for every line between a fence's markers, markers included.
     inside: Vec<bool>,
     /// Where the fence that is never closed opens, when one is left open.
@@ -1043,7 +1043,7 @@ pub struct Fences {
 /// appended a `## Criteria` section below an unfinished fence, which swallowed
 /// it, so capture reported the same id saved twice and `hi check` saw nothing.
 /// One state machine, one answer (hi: FILE-22, DECISIONS.md §31).
-pub fn fence_map(lines: &[String], start: usize) -> Fences {
+fn fence_map(lines: &[String], start: usize) -> Fences {
     let mut inside = vec![false; lines.len()];
     // Marker character, opening run length, and the line it opened on.
     let mut open: Option<(char, usize, usize)> = None;
