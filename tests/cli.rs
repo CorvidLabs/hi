@@ -183,6 +183,135 @@ fn hi_s_own_files_are_not_counted_as_features() {
     assert!(!intent.contains("CLAUDE"), "{intent}");
 }
 
+/// The fledge lifecycle hook, driven as a process the way fledge drives it.
+///
+/// `scripts/nudge-behaves.sh` covers the same ground, but only the local gate
+/// runs it. These run wherever `cargo test` does, which includes Windows.
+#[cfg(unix)]
+mod nudge {
+    use std::path::PathBuf;
+    use std::process::{Command, Output};
+
+    fn nudge() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bin/fledge-hi-nudge")
+    }
+
+    fn run(moment: &str, root: Option<&std::path::Path>) -> Output {
+        run_from(moment, root, &decoy())
+    }
+
+    /// A repository with no `hi/`, used as the hook's working directory.
+    ///
+    /// Running from the crate root instead would hide the bug this guards:
+    /// hi's own repo has a `hi/`, so a hook that ignored `FLEDGE_REPO_ROOT` and
+    /// guessed from its cwd would fall silent there and look correct. Mutation
+    /// testing found exactly that, passing for the wrong reason.
+    fn decoy() -> PathBuf {
+        let d = std::env::temp_dir().join(format!("hi-nudge-decoy-{}", std::process::id()));
+        std::fs::create_dir_all(d.join(".git")).unwrap();
+        let _ = std::fs::remove_dir_all(d.join("hi"));
+        d
+    }
+
+    fn run_from(moment: &str, root: Option<&std::path::Path>, cwd: &std::path::Path) -> Output {
+        let mut cmd = Command::new(nudge());
+        cmd.arg(moment);
+        match root {
+            // fledge sets the hook's cwd to the plugin directory, so the
+            // repository is only ever knowable from the environment.
+            Some(p) => cmd.env("FLEDGE_REPO_ROOT", p),
+            None => cmd.env_remove("FLEDGE_REPO_ROOT"),
+        };
+        cmd.current_dir(cwd).output().expect("running the nudge")
+    }
+
+    fn repo(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("hi-nudge-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        root
+    }
+
+    /// The one that can break somebody's day: `run_lifecycle_hook` propagates a
+    /// non-zero exit, so a hook that fails aborts the command that ran it.
+    #[test]
+    fn no_path_through_the_hook_can_abort_a_push() {
+        let present = repo("exit-present");
+        let with_hi = repo("exit-with-hi");
+        std::fs::create_dir_all(with_hi.join("hi")).unwrap();
+        let missing = PathBuf::from("/nope/does/not/exist");
+
+        for moment in ["start", "push", "", "unknown-moment"] {
+            for root in [Some(present.as_path()), Some(with_hi.as_path()), Some(missing.as_path()), None] {
+                let out = run(moment, root);
+                assert_eq!(
+                    out.status.code(),
+                    Some(0),
+                    "moment {moment:?} root {root:?} must exit 0, or it aborts the command"
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(&present);
+        let _ = std::fs::remove_dir_all(&with_hi);
+    }
+
+    #[test]
+    fn a_repository_with_nothing_written_down_is_told_so_at_both_moments() {
+        let root = repo("speaks");
+        let start = String::from_utf8(run("start", Some(&root)).stderr).unwrap();
+        let push = String::from_utf8(run("push", Some(&root)).stderr).unwrap();
+
+        assert!(start.contains("No hi/ here"), "{start}");
+        assert!(push.contains("before it ships"), "{push}");
+        assert_ne!(start, push, "the two moments say different things");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn nothing_reaches_stdout_so_a_json_envelope_stays_valid() {
+        // `fledge work start --json` puts its envelope on stdout. A hook that
+        // printed there would corrupt a command that had nothing to do with hi.
+        let root = repo("stdout");
+        for moment in ["start", "push"] {
+            let out = run(moment, Some(&root));
+            assert!(out.stdout.is_empty(), "{moment} wrote to stdout");
+            assert!(!out.stderr.is_empty(), "{moment} should speak on stderr");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn it_goes_quiet_once_something_is_written_down() {
+        let root = repo("quiet");
+        std::fs::create_dir_all(root.join("hi")).unwrap();
+        for moment in ["start", "push"] {
+            let out = run(moment, Some(&root));
+            assert!(out.stderr.is_empty(), "{moment} spoke despite a hi/ being present");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn it_never_guesses_at_a_repository_it_was_not_told_about() {
+        // An older fledge sets no FLEDGE_REPO_ROOT. The hook's own cwd is the
+        // plugin directory, which is a repository with a hi/ in it: guessing
+        // from cwd would read the wrong tree and say the wrong thing.
+        // The working directory here is a repository with no `hi/`, so a hook
+        // that guessed from cwd would speak and this would catch it.
+        assert!(run("start", None).stderr.is_empty(), "spoke with no root given");
+        assert!(run("push", None).stderr.is_empty(), "spoke at push with no root given");
+        assert!(
+            run("start", Some(&PathBuf::from("/nope/does/not/exist"))).stderr.is_empty(),
+            "spoke about a root that does not exist"
+        );
+        let not_a_repo = std::env::temp_dir().join(format!("hi-nudge-bare-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&not_a_repo);
+        std::fs::create_dir_all(&not_a_repo).unwrap();
+        assert!(run("start", Some(&not_a_repo)).stderr.is_empty(), "spoke outside a repository");
+        let _ = std::fs::remove_dir_all(&not_a_repo);
+    }
+}
+
 #[test]
 fn check_fails_on_a_structural_problem() {
     let repo = Repo::new("orphan");

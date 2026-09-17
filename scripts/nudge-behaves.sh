@@ -35,9 +35,11 @@ case "$out" in *"before it ships"*) pass "and told again, differently, before it
 
 # Nothing may reach stdout: `fledge work start --json` puts a JSON envelope
 # there and a hook writing into it would corrupt the envelope.
-out=$(FLEDGE_REPO_ROOT="$TMP/repo" "$NUDGE" start 2>/dev/null)
-[ -z "$out" ] && pass "says nothing on stdout, so a --json envelope stays valid" \
-  || bad "wrote to stdout: $out"
+for moment in start push; do
+  out=$(FLEDGE_REPO_ROOT="$TMP/repo" "$NUDGE" "$moment" 2>/dev/null)
+  [ -n "$out" ] && bad "$moment wrote to stdout: $out"
+done
+pass "says nothing on stdout at either moment, so a --json envelope stays valid"
 
 mkdir -p "$TMP/repo/hi"
 out=$(FLEDGE_REPO_ROOT="$TMP/repo" "$NUDGE" start 2>&1)
@@ -48,9 +50,15 @@ rm -rf "$TMP/repo/hi" "$TMP/repo/.git"
 out=$(FLEDGE_REPO_ROOT="$TMP/repo" "$NUDGE" start 2>&1)
 [ -z "$out" ] && pass "says nothing outside a repository" || bad "spoke outside a repo: $out"
 
-out=$(FLEDGE_REPO_ROOT="" "$NUDGE" start 2>&1)
-[ -z "$out" ] && pass "says nothing on a fledge too old to name the repository" \
-  || bad "guessed at a repository it was not told about: $out"
+# From inside a repository that has no hi/, so a hook that ignored the variable
+# and guessed from its own cwd would speak here. Running this from the hi repo
+# hid that: hi has a hi/, so a guessing hook falls silent and looks right.
+mkdir -p "$TMP/decoy/.git"
+for moment in start push; do
+  out=$(cd "$TMP/decoy" && FLEDGE_REPO_ROOT="" "$NUDGE" "$moment" 2>&1)
+  [ -n "$out" ] && bad "guessed at a repository it was not told about: $out"
+done
+pass "says nothing on a fledge too old to name the repository"
 
 [ "$fail" -eq 0 ] || { echo "nudge-behaves: FAILED"; exit 1; }
 echo "nudge-behaves: 7 checks passed."
