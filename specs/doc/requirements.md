@@ -307,6 +307,11 @@ Acceptance Criteria
   written after the fence closes is still intent, so a `# ` comment inside a shell snippet does not
   truncate the section.
 - Fence state carries across the whole body, so an unclosed fence makes everything after it opaque.
+- `fence_marker` is the one definition of what opens or closes a fence, and it is public so that
+  every part of hi that reads markdown gives the same answer. `out::unwrap_soft_breaks` uses it to
+  leave the newlines inside a fenced example alone when it renders intent prose into a ticket
+  (hi: ISSUE-7.b). It reports the marker and the run length only; the open/close state machine
+  belongs to each caller.
 
 ### REQ-doc-014
 

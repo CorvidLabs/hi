@@ -8,15 +8,9 @@ owner: leif
 
 ## Intent
 
-A hi file has to be something a person would write anyway. If someone deletes
-the binary tomorrow, the files should still read perfectly as a document.
-That is the whole test. Nothing below the frontmatter exists to serve the
-machine, and nothing the tool writes should look different from what a
-careful person would have typed by hand.
+A hi file has to be something a person would write anyway. If someone deletes the binary tomorrow, the files should still read perfectly as a document. That is the whole test. Nothing below the frontmatter exists to serve the machine, and nothing the tool writes should look different from what a careful person would have typed by hand.
 
-Ids are the one thing I am strict about, because an id that moves is worse
-than no id at all. You should be able to say "SEND-1.a is wrong" out loud in
-a standup a year from now and have it still mean the same line.
+Ids are the one thing I am strict about, because an id that moves is worse than no id at all. You should be able to say "SEND-1.a is wrong" out loud in a standup a year from now and have it still mean the same line.
 
 ## Criteria
 
@@ -42,6 +36,8 @@ a standup a year from now and have it still mean the same line.
 - **FILE-18**  I understand a criterion as what this should be, not as a report of what it currently does.
 - **FILE-19**  Two captures running at the same time both land, instead of one quietly overwriting the other.
 - **FILE-20**  A criterion hi cannot see is never silently invisible; it is reported rather than ignored.
+- **FILE-21**  One paragraph of my prose is one line, however long it runs, so a break only ever appears where I left a blank line.
+  - **FILE-21.a**  The files hi writes for me start out that way, so the first thing I read is the convention rather than an exception to it.
 
 - **ID-1**  An id never moves once written, so I can say it out loud a year later and still mean the same line.
   - **ID-1.a**  Inserting a criterion never renumbers anything around it.

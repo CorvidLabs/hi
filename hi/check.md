@@ -8,13 +8,9 @@ owner: leif
 
 ## Intent
 
-hi must be installable on a Friday afternoon without turning anyone's build
-red. It has no opinion about whether a criterion is any good, whether it is
-finished, or whether anything downstream implements it. Incomplete intent is
-the normal state of intent.
+hi must be installable on a Friday afternoon without turning anyone's build red. It has no opinion about whether a criterion is any good, whether it is finished, or whether anything downstream implements it. Incomplete intent is the normal state of intent.
 
-The only thing it will fail on is a file that is structurally wrong, because
-that is the one case where being quiet would let ids rot.
+The only thing it will fail on is a file that is structurally wrong, because that is the one case where being quiet would let ids rot.
 
 ## Criteria
 

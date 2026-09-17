@@ -8,13 +8,9 @@ owner: leif
 
 ## Intent
 
-The four seconds between having a thought and losing it is the only scarce
-resource here. Every acceptance-criteria tool that died, died at authoring
-time: a form appeared and the person went back to Slack. So capturing has to
-be a reflex, with no prompts, no wizard, no required fields and no init.
+The four seconds between having a thought and losing it is the only scarce resource here. Every acceptance-criteria tool that died, died at authoring time: a form appeared and the person went back to Slack. So capturing has to be a reflex, with no prompts, no wizard, no required fields and no init.
 
-The one thing I want it to be strict about is refusing to quietly clobber
-something that already exists.
+The one thing I want it to be strict about is refusing to quietly clobber something that already exists.
 
 ## Criteria
 

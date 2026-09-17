@@ -8,14 +8,9 @@ owner: leif
 
 ## Intent
 
-Intent is written once, by a human, and everything downstream is generated
-from it: tickets to work from, a payload an agent can turn into a spec, and
-the feature list at the front of the product so nobody keeps it by hand.
-That is what makes writing it down first pay for itself instead of being one
-more document to maintain.
+Intent is written once, by a human, and everything downstream is generated from it: tickets to work from, a payload an agent can turn into a spec, and the feature list at the front of the product so nobody keeps it by hand. That is what makes writing it down first pay for itself instead of being one more document to maintain.
 
-Generation must work with no auth, no network, and no integration, because
-the moment it needs setup it stops being used.
+Generation must work with no auth, no network, and no integration, because the moment it needs setup it stops being used.
 
 ## Criteria
 
@@ -29,6 +24,9 @@ the moment it needs setup it stops being used.
 - **ISSUE-4**  I cannot turn a retired criterion into work.
 - **ISSUE-5**  I get the feature's intent prose on the ticket, so I know why the work exists and not just what to build.
 - **ISSUE-6**  A ticket carries my intent prose, and nothing hi generated into the file around it.
+- **ISSUE-7**  I read the intent on a ticket as whole paragraphs, not as a narrow column broken wherever the lines happened to be wrapped in the file.
+  - **ISSUE-7.a**  A blank line I left between two thoughts is still a break on the ticket, because that is where I meant one.
+  - **ISSUE-7.b**  A list or an example in my intent arrives on the ticket with its own lines intact.
 
 - **EXPORT-1**  I can hand an agent everything it needs to write the spec in one command.
   - **EXPORT-1.a**  I get the intent prose and not just the criteria.

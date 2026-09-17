@@ -390,6 +390,41 @@ fn issue_prints_a_ticket_carrying_the_id() {
 }
 
 #[test]
+fn a_ticket_unwraps_prose_and_leaves_the_file_alone() {
+    // A GitHub issue body is rendered with hard line breaks on, so the margin
+    // somebody wrapped their own prose at arrives as a break after every line
+    // and a wide pane shows a narrow column. The ticket is unwrapped; the file
+    // it was read from is not (hi: ISSUE-7, FILE-4).
+    let repo = Repo::new("issue-wrapped");
+    let source = "---\nhi: 1\nfamilies: [HOST]\n---\n\n# Host\n\n## Intent\n\n\
+         Most people who would want this do not want a VPS, and should not have to\n\
+         learn one to give their community a role that matches what they hold.\n\n\
+         It has to work with nothing set up first.\n\n\
+         ## Criteria\n\n- **HOST-1**  I can run this without a server.\n";
+    repo.write("hi/host.md", source);
+
+    let out = repo.run(&["issue", "HOST-1"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.contains(
+            "Most people who would want this do not want a VPS, and should not have to learn one \
+             to give their community a role that matches what they hold."
+        ),
+        "the paragraph has to arrive whole: {text}"
+    );
+    assert!(
+        text.contains("what they hold.\n\nIt has to work with nothing set up first."),
+        "a blank line is a break somebody asked for: {text}"
+    );
+    assert_eq!(
+        repo.read("hi/host.md"),
+        source,
+        "rendering a ticket must not touch the file it read"
+    );
+}
+
+#[test]
 fn an_id_is_never_handed_out_twice() {
     // The one promise hi makes. Four of its own verbs used to break it; each
     // line below is one of them (hi: FILE-13, FILE-20, RETIRE-5, RETIRE-6).
