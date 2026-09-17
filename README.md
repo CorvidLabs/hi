@@ -39,9 +39,7 @@ owner: leif
 
 ## Intent
 
-I want to talk to people I trust without anyone in the middle being able to
-read it, and without it feeling like a security product. It should feel like
-texting.
+I want to talk to people I trust without anyone in the middle being able to read it, and without it feeling like a security product. It should feel like texting.
 
 ## Criteria
 
@@ -60,7 +58,7 @@ texting.
   retired: we decided this was a different product
 ```
 
-That is the whole format. Four rules:
+That is the whole format. Five rules:
 
 1. **A criterion is one markdown list item: a bold id, two spaces, and a sentence.** However long the
    sentence runs it stays on one line, so criteria stay greppable and diffable. And because it is
@@ -75,8 +73,15 @@ That is the whole format. Four rules:
    Captures running at the same time all land rather than overwriting each other. It cannot stop
    you renumbering a file by hand, so permanence is a convention the tool supports rather than one
    it enforces; what it can do is refuse to be the one that breaks it.
+5. **A paragraph of prose is one line, and a blank line is the only break.** In `## Intent`, let
+   the line keep going however long it runs, and leave a blank line where you want a break. The
+   newline you type only to stay inside your own margin is invisible in a file on GitHub and a
+   visible break in a GitHub *issue*, which is rendered with hard line breaks on, so hand-wrapped
+   prose reaches a ticket as a narrow column down a wide pane. `hi issue` unwraps it on the way
+   into the ticket, and hi never reflows the file it read it from: that one is yours
+   ([DECISIONS.md](DECISIONS.md) §29).
 
-There is no fifth rule about who the sentence speaks for. Notice that `SEND-1` says *I* and
+There is no rule about who the sentence speaks for. Notice that `SEND-1` says *I* and
 `SPEND-1` says *an operator*, and that the difference is in the sentence, where anyone can read it.
 On a product with a paying side and a using side, say which one you mean the way you would say it
 out loud. On a product with one audience, do not: the ceremony costs four words and buys nothing.

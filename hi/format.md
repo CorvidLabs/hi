@@ -8,15 +8,9 @@ owner: leif
 
 ## Intent
 
-A hi file has to be something a person would write anyway. If someone deletes
-the binary tomorrow, the files should still read perfectly as a document.
-That is the whole test. Nothing below the frontmatter exists to serve the
-machine, and nothing the tool writes should look different from what a
-careful person would have typed by hand.
+A hi file has to be something a person would write anyway. If someone deletes the binary tomorrow, the files should still read perfectly as a document. That is the whole test. Nothing below the frontmatter exists to serve the machine, and nothing the tool writes should look different from what a careful person would have typed by hand.
 
-Ids are the one thing I am strict about, because an id that moves is worse
-than no id at all. You should be able to say "SEND-1.a is wrong" out loud in
-a standup a year from now and have it still mean the same line.
+Ids are the one thing I am strict about, because an id that moves is worse than no id at all. You should be able to say "SEND-1.a is wrong" out loud in a standup a year from now and have it still mean the same line.
 
 ## Criteria
 

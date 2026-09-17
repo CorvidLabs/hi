@@ -8,14 +8,9 @@ owner: leif
 
 ## Intent
 
-Intent is written once, by a human, and everything downstream is generated
-from it: tickets to work from, a payload an agent can turn into a spec, and
-the feature list at the front of the product so nobody keeps it by hand.
-That is what makes writing it down first pay for itself instead of being one
-more document to maintain.
+Intent is written once, by a human, and everything downstream is generated from it: tickets to work from, a payload an agent can turn into a spec, and the feature list at the front of the product so nobody keeps it by hand. That is what makes writing it down first pay for itself instead of being one more document to maintain.
 
-Generation must work with no auth, no network, and no integration, because
-the moment it needs setup it stops being used.
+Generation must work with no auth, no network, and no integration, because the moment it needs setup it stops being used.
 
 ## Criteria
 

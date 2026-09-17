@@ -9,6 +9,35 @@ only version so far.
 
 ## Unreleased
 
+### A ticket reads as paragraphs, not as a narrow column
+
+A GitHub issue body is rendered with hard line breaks on, so a single newline in it
+is a visible break even though the same bytes in a file are not. `## Intent` prose is
+wrapped by hand at whatever margin its author works to, so every ticket `hi issue`
+produced arrived broken after each authored line, in a narrow column down the left of
+a wide pane.
+
+`hi issue` now unwraps the breaks nobody asked for. A newline inside a paragraph
+becomes a space; a blank line stays a paragraph break; and a newline that means
+something stays where it is, in a list, a block quote, a heading, a table, a rule, a
+fenced block, or after the two trailing spaces that are markdown asking for a break on
+purpose.
+
+`hi view` and `hi export` were checked and deliberately not changed. The page already
+renders these paragraphs whole, and the export payload is a transport rather than a
+rendering, so it keeps the prose exactly as written.
+
+**hi does not touch your file.** This is a render-time fix, and there is no
+rewrite-on-write and no new `hi check` problem for wrapping.
+
+### The prose hi writes is one line per paragraph
+
+The durable half of the same fix. What an adopter copies is whatever hi's own files
+model for them, so the text hi writes into `hi/AGENTS.md` and `INTENT.md` is now one
+line per paragraph, `hi/AGENTS.md` says the convention in one sentence, the README
+says it as the fifth rule of the format, and this repository's own `hi/*.md` intent
+blocks were reflowed to match, with no word changed.
+
 ### First contact, in a repository that has never seen hi
 
 `hi/AGENTS.md` only reaches an agent already looking in `hi/`, so it could never

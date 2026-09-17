@@ -39,6 +39,14 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   wraps, and always emits `- ID  sentence` indented two spaces per depth level. Bare lines look
   fine in the source and render as one run-together paragraph, which is the bug that falsified
   `FILE-1` (DECISIONS.md §10.1 and §12, `hi: FILE-6`, `FILE-1.b`).
+- **A paragraph of prose is one line, and hi never reflows anybody else's.** A newline inside a
+  paragraph is a `<br>` in a GitHub issue but not in a file, so `hi issue` folds it
+  (`out::unwrap_soft_breaks`) and keeps blank lines, lists, quotes, headings, tables, rules, fences
+  and explicit hard breaks. Everything hi *writes* is one line per paragraph — `agent_instructions`,
+  `starter_intent`, this repository's own `hi/*.md` intent blocks, the README's example — because
+  the file an adopter reads first is the one they copy. `hi view` and `hi export` were checked and
+  deliberately left alone. Do not make capture rewrap prose and do not add a seventh check kind for
+  wrapping: `FILE-4` and `CHECK-1` both say no (DECISIONS.md §29, `hi: ISSUE-7`, `FILE-21`).
 - **A criterion is a plain sentence, and hi never parses it.** No prefix, no fields, no subject
   read off the front. Every verb (`ls`, `export`, `issue`, `view`) prints the author's words
   through untouched. 0.2.0 through 0.2.5 required an `As a <role>,` opening and read it back with

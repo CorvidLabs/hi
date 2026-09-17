@@ -7,14 +7,9 @@ families: [VIEW]
 
 ## Intent
 
-The people who decide what we build mostly do not want to read a markdown
-file full of identifiers. If the only way to see what we agreed to is to open
-`hi/chat.md` in an editor, then the intent is written for engineers and the
-product side goes back to arguing from memory.
+The people who decide what we build mostly do not want to read a markdown file full of identifiers. If the only way to see what we agreed to is to open `hi/chat.md` in an editor, then the intent is written for engineers and the product side goes back to arguing from memory.
 
-So there has to be a view that is just the sentences. The why first, the
-criteria as a readable list, and the ids present but quiet. One file I can
-send to somebody.
+So there has to be a view that is just the sentences. The why first, the criteria as a readable list, and the ids present but quiet. One file I can send to somebody.
 
 ## Criteria
 

@@ -65,8 +65,7 @@ owner: leif
 
 ## Intent
 
-I want to talk to people I trust without anyone in the middle being able to read it,
-and without it feeling like a security product. It should feel like texting.
+I want to talk to people I trust without anyone in the middle being able to read it, and without it feeling like a security product. It should feel like texting.
 
 ## Criteria
 
@@ -93,7 +92,8 @@ and without it feeling like a security product. It should feel like texting.
 - **Frontmatter** declares `hi: 1` (format version), `families` (the ID families this file owns),
   `owner`. The `families` list is what lets capture resolve an ID to a file without scanning.
 - **`## Intent`** is human prose. What this feature is for and what it should feel like. This is
-  the thing a spec can never carry, and the first thing an agent should read.
+  the thing a spec can never carry, and the first thing an agent should read. One paragraph is one
+  line, however long it runs, and a blank line is the only break (§29).
 - **`## Criteria`** holds the numbered lines.
 - **`## Retired`** lists criteria we changed our minds about, keeping their IDs spoken for.
 
@@ -1228,3 +1228,76 @@ Two things this cost, both deliberate:
 use fledge. The mechanism works because the house norm is fledge-first, which makes it a CorvidLabs
 answer rather than a general one. A general answer would have to live in the agent rather than in
 any tool, and that is the option §27's interview declined for the instruction file.
+
+---
+
+## 29. A paragraph is one line, and only a blank line is a break
+
+Every `## Intent` block hi had ever written or shipped as an example was hard-wrapped at somebody's
+margin, because that is how a person wraps a paragraph in an editor. In a markdown *file* that is
+invisible: GitHub joins the lines back into a paragraph, and so does every other renderer. In a
+GitHub **issue or comment** it is not, because those are rendered with the hard-line-break extension
+on and a single newline becomes a `<br>`. A ticket from `hi issue` therefore arrived as a narrow
+column down the left of a wide pane, broken after every line the author had wrapped.
+`CorvidLabs/corvid-bot`'s `hi/host.md` is where it was seen.
+
+Two answers, and the second is the one that lasts.
+
+### `hi issue` unwraps at render time
+
+A single newline inside a paragraph is where an editor wrapped; a blank line is the break somebody
+asked for. `out::unwrap_soft_breaks` folds the first into a space and keeps the second, and leaves
+every newline that means something: a list item, a block quote, a heading, a table row, a thematic
+break, the inside of a fenced block, and a line ending in two spaces or a backslash, which is
+markdown asking for a break on purpose. Fences are recognised through `doc::fence_marker`, the same
+helper the parser uses, because a fence means the same thing everywhere hi reads markdown
+(`FILE-9`, `ISSUE-7.b`).
+
+The three other read verbs were checked and left alone. `hi view` already renders these paragraphs
+whole, twice over: `view::paragraphs` joins each block's lines with a space, and HTML collapses
+whitespace anyway. `hi ls` and `hi index` emit no prose at all. And `hi export` **keeps the prose
+verbatim**, deliberately: the payload is a transport rather than a rendering, no JSON consumer turns
+a `\n` into a visible break the way an issue body does, a consumer that wants it unwrapped can
+unwrap it in a line, and one that wants the source form can never get it back once hi has thrown the
+wrap points away. A lossy transform belongs at the edge that needs it.
+
+### The convention is one line per paragraph
+
+Unwrapping at render time papers over the file. The file is what the next adopter copies, and what
+they copy is whatever hi's own files, hi's own examples and the text hi writes into their repository
+model for them. So `out::agent_instructions` and `out::starter_intent` are one line per paragraph,
+this repository's own `hi/*.md` intent blocks were reflowed to match with no word changed, and the
+README's example file and rule 5 say it (`FILE-21`, `FILE-21.a`).
+
+`hi/AGENTS.md` says it too, in one sentence, and that is the single narrowing of §27's rule that the
+file carries the habit and nothing else. §27 refused to put the id grammar or the file format in
+there, because the file is written once and never rewritten and the format is not frozen, so
+anything hi could change underneath it would be wrong later with nothing to notice. This sentence is
+not the format. It is how markdown reads a newline, which is the same at `hi: 1` and at whatever
+comes after it, and the agent that writes the prose is the only reader that file ever has.
+
+A smaller thing the wrap had already cost: `check::product_intent_note` filters a line beginning
+`Write it as a person`, and that filter exists only because `starter_intent`'s HTML comment was
+wrapped onto a second line which no longer began with `<!--` and therefore read as human prose. The
+comment is one line now. The filter stays, inert for anything hi writes from here, because the
+`INTENT.md` files older versions already wrote still have the two-line form and are still owed the
+nag.
+
+### hi still never reformats a file it did not write
+
+The obvious next steps are capture rewrapping prose as it saves, and a seventh `check::Kind` for a
+hard-wrapped paragraph. Both are refused. `FILE-4` promises hi never rewrites, reflows or reformats
+prose somebody wrote; `INDEX-2` promises the same for `INTENT.md`; `FILE-7`, `FILE-10` and `FILE-11`
+promise their frontmatter style, their line endings and their byte-order mark come back untouched;
+and `CHECK-1` promises `hi check` fails on a structurally broken file and on nothing else. A wrapped
+paragraph is a preference, and §5 is the whole reason hi does not gate on preferences. The
+convention travels as documentation and as the example hi sets, which is the only way a convention
+is allowed to travel here.
+
+This was found in somebody else's repository, and hi's own files had exactly the same wrapping. hi
+reformatted its own and none of theirs. Ours are ours.
+
+**What would change this decision:** evidence that the render-time fix is not enough, which would
+look like the wrapping reaching somewhere a person reads that hi does not render — a spec an agent
+wrote out of `hi export`, say. The answer then is still not a rewrite of their file; it is to decide
+whether `export` should carry a second, unwrapped field beside the verbatim one.
