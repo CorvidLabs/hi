@@ -1383,3 +1383,108 @@ would have made its index bookkeeping — which the next insert and `rewrite_fam
 expensive, which would look like a bulk import measured in thousands rather than hundreds. The
 answer then is not to stop refreshing; it is for a bulk path to refresh once at the end, which needs
 a bulk path to exist first.
+
+---
+
+## 31. The fifth way, which was live through the audit that found the other four
+
+§26 named four ways hi broke its one promise, fixed them, and said the promise does not move. A
+fifth was open the whole time, in the fix for the fourth.
+
+Thirty-two concurrent `hi SEND-N "..."` in a fresh repository with no `hi/` yet: all thirty-two
+exit 0, nine of them are not in the file, `hi check` exits 0 and reports nothing wrong, and
+`hi SEND-1 "a completely different intent"` then succeeds and writes a second sentence under an id
+that had already been spent. That is not a torture test. It is ordinary bulk adoption, which is how
+this organisation uses hi: one repository holds 197 criteria and the estate about 1,600, nearly all
+of it captured by agents that do not wait for each other.
+
+### Why the lock did not cover the first capture
+
+The lock file lives in the directory it protects, `hi/.hi.lock`. Before `hi/` exists there is
+nowhere to create it, so `create_new` failed with `NotFound` — and `acquire` had this:
+
+```rust
+Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
+Err(_) => return Ok(Guard { path }),
+```
+
+The comment above that last arm said a `hi/` we cannot write to is a problem the caller will hit
+anyway, and it will say something more useful than "could not lock". That reasoning is sound for a
+directory somebody made read-only. It is wrong for the case it actually met most often, which is a
+directory that is not there yet, and it fails **open**: every writer is handed a guard, every writer
+believes it is alone, and the failure it causes is the silent one hi exists to prevent.
+
+The second half is worse. `Guard::drop` removed the lock file unconditionally, so a guard that had
+never acquired anything deleted the lock of a writer that had. One bootstrap capture could unlock
+the repository for everybody.
+
+Three things generalize out of that:
+
+**A lock that fails open is not a lock.** It is a lock-shaped thing that works when nothing is
+happening. Fail closed, and say which file could not be taken.
+
+**Do not hand back a token for work you did not do.** `Guard` is now constructed only by a private
+function that takes the `File` that was exclusively created. "A guard that did not acquire" stopped
+being a bug and started being a value that cannot exist, which is a stronger fix than remembering to
+check a flag in `drop`.
+
+**Bootstrap is a state, not a preamble.** The fix for §26's fourth failure was tested against a
+repository that already had a `hi/`, because every fixture in the suite makes one — `capture::tests`
+and `cli::Repo::new` both. The one state every adopting repository passes through was the one state
+nothing tested. `cli::Repo::bare` now makes a repository holding nothing but a `.git`, which is
+where the 32-way test starts.
+
+### Retire wrote from a snapshot
+
+Capture reloads the workspace under the lock, in as many words, with a comment saying why. `retire`
+took the lock after `run` had already loaded the workspace and never read it again. Two concurrent
+retires both print `retired`, both exit 0, and the file ends with one criterion retired and the
+other live again, with `hi check` reporting nothing wrong. It is the same defect as §26's fourth,
+one verb over, and it survived because the reload was written where the bug had been found rather
+than everywhere the shape occurs.
+
+The rule is now on both write paths and in `specs/main/`: **read inside the lock, or you are writing
+from before it.** Holding a lock around a write you decided on before you held it protects nothing.
+
+### Age is not death
+
+The old rule broke any lock file older than sixty seconds, on the grounds that its holder must have
+died. Age establishes that a process is old. A bulk capture is slow, a network filesystem is slow,
+and a stopped process is not a dead one; the rule as written could take a lock away from a writer in
+the middle of a read-modify-write, which is the exact failure the lock exists to prevent.
+
+Two honest options: never break a lock, and tell the person which file to delete; or make the holder
+say it is alive. Never breaking it is simpler and safer, and it wedges a repository on a `kill -9`
+until a human reads stderr — which for an estate captured by agents is a real cost, because an agent
+will retry rather than read.
+
+So the holder now proves it: a thread refreshes the lock file every 250ms while the guard is held,
+which moves its mtime. A waiter remembers the mtime it first saw and the moment it saw it, and
+breaks the lock only after that mtime has stood still for five seconds of **the waiter's own**
+elapsed time, re-reading it once more immediately before removing it so that a lock another waiter
+has just taken is never the one removed. Nothing compares this machine's clock against the file's,
+so clock skew on a shared filesystem cannot make a held lock look ancient.
+
+That inverts what is being inferred. Before, "old" was treated as evidence of death. Now, absence of
+a signal only the living emit is. `PATIENCE` went from five seconds to thirty, because a waiter has
+to outlast the abandonment window or a lock whose holder was killed could never be recovered, and
+because two hundred captures queueing through one lock is a few seconds on its own.
+
+It costs a thread and a channel per write, for a hold that is normally measured in milliseconds and
+usually ends before the first heartbeat fires. That is cheap, and the alternative was leaving in a
+rule that can take a lock away from somebody who is using it.
+
+### What this says about the audit
+
+Thirteen agents looked for what a 1.0 would freeze, found four ways the promise broke, and closed
+them. The fix for the fourth one shipped with the fifth inside it, and every test written to prove
+the fourth was fixed passed against it, because they all started from a repository that had already
+been bootstrapped. §26 said each regression test added there was written over a file hi did not
+produce. The same discipline applies one level up: **a write-path test has to start from a
+repository hi has not touched yet**, or the most common state in the estate is the one state nothing
+covers.
+
+**What would change this decision:** nothing about the promise. If the heartbeat proves to be more
+machinery than a small tool should carry, the fallback is to stop breaking locks at all and print
+the file to delete; that is strictly safer and strictly less convenient. The one thing that may not
+come back is age as evidence.
