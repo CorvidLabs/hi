@@ -25,6 +25,16 @@ impl Repo {
         Repo { root }
     }
 
+    /// A repository that has never run hi: a `.git` for `Workspace::find` to
+    /// stop at, and no `hi/` at all. This is the state every first capture in
+    /// an adopting repository starts in.
+    fn bare(name: &str) -> Repo {
+        let root = std::env::temp_dir().join(format!("hi-cli-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join(".git")).unwrap();
+        Repo { root }
+    }
+
     fn with_chat(name: &str) -> Repo {
         let repo = Repo::new(name);
         repo.write(
@@ -526,6 +536,59 @@ fn concurrent_captures_all_land() {
             "SEND-{n} was lost to a concurrent write:\n{body}"
         );
     }
+}
+
+#[test]
+fn concurrent_captures_into_a_repository_with_no_hi_directory_all_land() {
+    // The first capture in a repository has no `hi/` to put a lock file in, and
+    // the lock used to hand back a guard it had not taken when opening one
+    // failed. Every bootstrap capture then ran unlocked: thirty-two of these
+    // reported success into a fresh repository and nine of them were gone,
+    // `hi check` said nothing, and the ids they had spent were handed out again
+    // (hi: FILE-19, CAPTURE-14, DECISIONS.md §31).
+    //
+    // Thirty-two rather than eight because this is the shape adoption actually
+    // has, and because eight did not reproduce it reliably.
+    let repo = Repo::bare("bootstrap-race");
+    let handles: Vec<_> = (1..=32)
+        .map(|n| {
+            let root = repo.root.clone();
+            std::thread::spawn(move || {
+                let out = std::process::Command::new(BIN)
+                    .args([
+                        "--root",
+                        root.to_str().unwrap(),
+                        &format!("SEND-{n}"),
+                        "a sentence",
+                    ])
+                    .output()
+                    .unwrap();
+                (n, out)
+            })
+        })
+        .collect();
+
+    let mut reported = Vec::new();
+    for handle in handles {
+        let (n, out) = handle.join().unwrap();
+        if out.status.success() {
+            reported.push(n);
+        }
+    }
+
+    let body = repo.read("hi/send.md");
+    for n in &reported {
+        assert!(
+            body.contains(&format!("**SEND-{n}**")),
+            "SEND-{n} reported success and is not in the file:\n{body}"
+        );
+    }
+    // Nothing may quietly refuse either: an id nobody else asked for is free.
+    assert_eq!(
+        reported.len(),
+        32,
+        "every capture asked for an id of its own"
+    );
 }
 
 #[test]
