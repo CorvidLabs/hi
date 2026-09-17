@@ -661,6 +661,132 @@ fn a_capture_survives_an_index_it_cannot_refresh() {
 }
 
 #[test]
+fn a_root_file_hi_cannot_read_survives_a_capture_byte_for_byte() {
+    // Written by hand, not by hi, and not valid UTF-8. `write_index` turned
+    // every read error into an empty string and then wrote the starter
+    // scaffold over the file: years of somebody's prose replaced by a starter
+    // prompt and a generated list, exit 0, nothing said. 0.7.0 made every
+    // capture run that path (hi: INDEX-2, INDEX-2.c, DECISIONS.md §31).
+    let repo = Repo::with_chat("undecodable-intent");
+    let mut bytes =
+        b"# Product\n\nWhy we exist, in my own words, written over three years.\n\nCaf".to_vec();
+    bytes.push(0xe9); // Latin-1 e-acute: one byte, and not UTF-8.
+    bytes.extend_from_slice(b" is how we spell it.\n");
+    fs::write(repo.root.join("INTENT.md"), &bytes).unwrap();
+
+    let out = repo.run(&["SEND-2", "it reaches them and the mark changes to sent"]);
+
+    assert!(
+        out.status.success(),
+        "the criterion is what mattered: {}",
+        stderr(&out)
+    );
+    assert!(
+        repo.read("hi/chat.md")
+            .contains("**SEND-2**  it reaches them and the mark changes to sent"),
+        "and it is on disk"
+    );
+    assert_eq!(
+        fs::read(repo.root.join("INTENT.md")).unwrap(),
+        bytes,
+        "a file hi could not read is never a file hi replaces"
+    );
+    assert!(
+        stderr(&out).contains("not refreshed"),
+        "but hi says so rather than going quiet:\n{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn hi_index_refuses_a_root_file_it_cannot_read_rather_than_replacing_it() {
+    // The same read, reached by the verb that is allowed to install a section.
+    // There the empty-string fallback was fatal: `existing.trim().is_empty()`
+    // was true, so the starter scaffold was written straight over the file and
+    // the command reported success (hi: INDEX-2, INDEX-2.c).
+    let repo = Repo::with_chat("undecodable-index");
+    let mut bytes = b"# Product\n\nEverything I have ever written about why: ".to_vec();
+    bytes.push(0xe9);
+    bytes.extend_from_slice(b"\n");
+    fs::write(repo.root.join("INTENT.md"), &bytes).unwrap();
+
+    let out = repo.run(&["index"]);
+
+    assert!(
+        !out.status.success(),
+        "a file hi cannot read is not a file hi rewrites: {}",
+        stdout(&out)
+    );
+    assert_eq!(
+        fs::read(repo.root.join("INTENT.md")).unwrap(),
+        bytes,
+        "and every byte of it is still there"
+    );
+    assert!(stderr(&out).contains("INTENT.md"), "{}", stderr(&out));
+}
+
+#[test]
+fn a_retired_id_in_a_file_hi_skips_is_never_handed_out_again() {
+    // Written by hand, not by hi (DECISIONS.md §26). `check` reported this id
+    // and `capture` reissued it, because they were two separate scans over two
+    // different sets of files (hi: CAPTURE-14, DECISIONS.md §31).
+    let repo = Repo::with_chat("skipped-reservation");
+    repo.write(
+        "hi/Archive.md",
+        "# Archive\n\nWhat we dropped.\n\n## Retired\n\n- **SEND-4**  the old outbox.\n",
+    );
+
+    let out = repo.run(&["SEND-4", "a completely different thing"]);
+    assert!(
+        !out.status.success(),
+        "an id written where hi cannot read it is still taken:\n{}",
+        stdout(&out)
+    );
+    assert!(stderr(&out).contains("hi/Archive.md"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("lowercase"), "{}", stderr(&out));
+    // And nothing was written on the way to refusing (hi: CAPTURE-5).
+    assert!(!repo.read("hi/chat.md").contains("SEND-4"));
+
+    // check still reports it, from the same lookup that refused it.
+    let check = repo.run(&["check"]);
+    assert_eq!(check.status.code(), Some(1));
+    assert!(stdout(&check).contains("SEND-4"), "{}", stdout(&check));
+
+    // An id nobody wrote anywhere is still free, so this is a reservation and
+    // not a wall.
+    assert!(
+        repo.run(&["SEND-5", "the real one"]).status.success(),
+        "SEND-5 was never written"
+    );
+}
+
+#[test]
+fn a_feature_list_i_deleted_stays_deleted() {
+    // Refreshing the list hi generated is what INDEX-2 permits. Putting a
+    // `## Features` heading back into somebody's file on every capture is
+    // writing prose they removed, with no way to say no (hi: INDEX-4.c).
+    let repo = Repo::with_chat("deleted-list");
+    let mine = "# Product\n\nI keep this file by hand, thanks.\n";
+    repo.write("INTENT.md", mine);
+
+    let out = repo.run(&["SEND-2", "it reaches them"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(repo.read("INTENT.md"), mine, "my file, unchanged");
+    assert!(
+        !stderr(&out).contains("not refreshed"),
+        "and nothing to apologize for:\n{}",
+        stderr(&out)
+    );
+
+    // Asking for one is how you get one back.
+    assert!(repo.run(&["index"]).status.success());
+    let body = repo.read("INTENT.md");
+    assert!(body.starts_with(mine), "prose is still mine:\n{body}");
+    assert!(body.contains("## Features"), "{body}");
+    assert!(body.contains("(2 criteria)"), "{body}");
+}
+
+#[test]
 fn check_says_the_feature_list_is_behind_without_failing() {
     // FILE-14 lets somebody type a criterion straight into the file, and no
     // verb can see that happen. `hi check` is what notices afterwards.
@@ -1072,6 +1198,15 @@ fn the_first_capture_starts_the_product_intent_file() {
         stdout(&out).contains("INTENT.md"),
         "and hi must say so: {}",
         stdout(&out)
+    );
+    // With its feature list already in it. The refresh that follows rewrites a
+    // block and installs none, so the file has to be born with one
+    // (hi: INDEX-1.a, INDEX-4.c).
+    let intent = repo.read("INTENT.md");
+    assert!(intent.contains("## Features"), "{intent}");
+    assert!(
+        intent.contains("[spend](hi/spend.md): SPEND (1 criterion)"),
+        "and the list is true from the first capture:\n{intent}"
     );
 
     // check mentions it while it is still unwritten, and never fails.

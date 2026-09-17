@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::doc::Section;
 use crate::id::Id;
-use crate::workspace::Workspace;
+use crate::workspace::{Stray, StrayPlace, Workspace};
 
 /// What kind of structural problem this is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -111,46 +111,36 @@ pub fn run(workspace: &Workspace) -> Report {
         }
     }
 
-    // A file hi skips is still a file somebody may have written a criterion
-    // into. Skipping quietly is the FILE-20 failure with a new cause, so look
-    // inside rather than assume (DECISIONS.md §27).
-    for path in &workspace.skipped {
-        let Ok(raw) = std::fs::read_to_string(path) else {
-            continue;
-        };
-        let file = workspace.rel(path);
-        for (line, token) in crate::doc::criterion_tokens(&raw) {
-            problems.push(Problem {
-                kind: Kind::StrayCriterion,
-                file: file.clone(),
-                line: line + 1,
-                id: token.clone(),
-                message: format!(
+    // A criterion nothing reads, wherever it sits: outside every section in a
+    // criteria file, or inside a file hi skips because its name is hi's own.
+    // Both come from `Workspace::strays`, which is the same lookup `capture`
+    // refuses an id by, so what is reported here and what is refused there can
+    // never disagree again (hi: CAPTURE-14, FILE-20, DECISIONS.md §31).
+    for stray in workspace.strays() {
+        let Stray {
+            file, line, token, ..
+        } = &stray;
+        problems.push(Problem {
+            kind: Kind::StrayCriterion,
+            file: file.clone(),
+            line: *line,
+            id: token.clone(),
+            message: match stray.place {
+                StrayPlace::UnreadFile => format!(
                     "{token} sits in {file}, which hi does not read as criteria \
                      because its name is not lowercase. Move it into a lowercase \
                      file under ## Criteria, because nothing reads it where it is"
                 ),
-            });
-        }
+                StrayPlace::OutsideSection => format!(
+                    "{token} sits outside any section. Move it under ## Criteria or ## Retired, \
+                     because nothing reads it where it is"
+                ),
+            },
+        });
     }
 
     for doc in &workspace.docs {
         let file = workspace.rel(&doc.path);
-
-        // A criterion outside `## Criteria` or `## Retired` is read by nothing.
-        // Silence here would let a line vanish because a heading moved above it.
-        for (line, token) in &doc.stray {
-            problems.push(Problem {
-                kind: Kind::StrayCriterion,
-                file: file.clone(),
-                line: line + 1,
-                id: token.clone(),
-                message: format!(
-                    "{token} sits outside any section. Move it under ## Criteria or ## Retired, \
-                     because nothing reads it where it is"
-                ),
-            });
-        }
 
         // Every id the file declares, for the orphan check.
         let present: Vec<String> = doc

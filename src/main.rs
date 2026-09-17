@@ -279,7 +279,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Command::Index => {
-            let path = out::write_index(&workspace)?;
+            let path = out::write_index(&workspace, out::Absent::Install)?;
             println!("{path}  index updated");
             Ok(ExitCode::SUCCESS)
         }

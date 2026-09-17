@@ -7,6 +7,49 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## Unreleased
+
+### Fixed
+
+**An automatic index refresh could erase your whole `INTENT.md`.** `write_index` turned
+every read error into an empty string, and then treated an empty string as "no file
+here, write the starter". An `INTENT.md` holding your prose and one byte that is not
+valid UTF-8 was replaced by the starter prompt and a generated list, and the command
+exited 0 saying nothing. Only a file that is genuinely absent is created now; any other
+read failure leaves every byte where it is and is reported — as a printed note on a
+capture, which still succeeds with your criterion stored, and as the exit code on
+`hi index`, where the failure is the whole answer.
+
+This defect had been there since 0.2.0 and was reachable only by typing `hi index`.
+0.7.0 made capture and `hi retire` refresh the block on every write, which turned it
+into one that fires constantly. DECISIONS.md §31 records that making a call automatic
+is a change to every bug inside it.
+
+**An id in a file hi skips was reported as used and then handed out again.** hi does
+not read an uppercase-named file in `hi/` as criteria, because those are its own
+(`hi/AGENTS.md`, `hi/CLAUDE.md`). `hi check` looked inside them anyway and reported any
+criterion it found, but capture did not, so a retired `SEND-1` parked in `hi/Archive.md`
+was announced as taken and then reissued with different words. There is now one
+reservation lookup covering the files hi loads and the files it skips, and `check` and
+`capture` both answer from it. hi's own files still hold no criteria, are still not
+counted, and still never appear in the feature list.
+
+### Changed
+
+**A feature list you deleted stays deleted.** Capture and `hi retire` refresh the block
+they find and no longer reinstate a `## Features` section you removed; `hi index` is how
+you ask for one. Rewriting the list between hi's markers is what hi promised; adding a
+heading to your file is writing prose, and hi cannot tell a block you deleted from one
+you never had. An `INTENT.md` hi creates on your first capture now carries its feature
+list from birth, so nothing about a fresh repository changes. DECISIONS.md §30 accepted
+the old behaviour as a cost; §31 withdraws it.
+
+§30's claim that drift became "structurally impossible" is softened in the same section.
+The refresh is best effort by design, so a broken marker pair or a file hi cannot read
+leaves the list wrong while your capture succeeds, and `hi index` typed by hand still
+takes no lock. What is true is narrower: the ordinary path no longer depends on anybody
+remembering.
+
 ## [0.7.0] 2026-09-17
 
 ### The feature list in INTENT.md stays true by itself

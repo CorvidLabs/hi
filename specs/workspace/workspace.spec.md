@@ -53,7 +53,10 @@ file), `out` (rewriting `INTENT.md`) and `view` (writing the HTML page) (hi: FIL
 | `find_id` | Look up one criterion by exact id, active or retired, returning its doc index with it. |
 | `acquire` | Take the one-writer lock for a repository's `hi/` directory, waiting for another writer and returning a guard that releases on drop. |
 | `Guard` | The held lock. Releasing on drop means a refusal never leaves the lock behind. |
-| `find_stray` | The file and 1-based line of a criterion-shaped line hi could not read but which spoke for this id, matched after stripping emphasis. Capture refuses such an id: a line hi cannot parse has still used it, and handing it out again puts two identical ids with different sentences in one file (hi: CAPTURE-14, FILE-20). |
+| `strays` | Every criterion-shaped line hi does not read as structure, across the loaded docs and the skipped files alike, as a `Vec<Stray>`. The one reservation lookup: `check` reports from it and `capture` refuses from it, so what is reported as used and what is refused can never disagree (hi: CAPTURE-14, FILE-20). |
+| `find_stray` | The one `Stray` speaking for this id, matched after stripping emphasis, or `None`. Capture refuses such an id: a line hi cannot parse has still used it, and handing it out again puts two identical ids with different sentences in one file (hi: CAPTURE-14, FILE-20). |
+| `Stray` | One such line, located: workspace-relative `file`, 1-based `line`, the id-shaped `token` as the file has it, and `place`. |
+| `StrayPlace` | Why nothing reads that line: `OutsideSection` or `UnreadFile`. |
 | `next_free` | One past the highest top-level number a family uses; retired numbers count, so they are never reissued. |
 | `families` | Every family in the workspace, deduplicated and sorted. |
 | `rel` | Render a path relative to `root`, joined with forward slashes on every platform, for stable output such as `hi/chat.md`. |
@@ -62,7 +65,9 @@ file), `out` (rewriting `INTENT.md`) and `view` (writing the HTML page) (hi: FIL
 
 | Type | Description |
 |------|-------------|
-| `Workspace` | Every hi file in one repository plus where they live. Public fields: `root: PathBuf` (the directory containing `hi/`, the base for `rel` and `INTENT.md`), `dir: PathBuf` (the `hi/` directory itself, which may not exist yet), and `docs: Vec<Doc>` (one parsed file each, in sorted-path order at load time). Constructed only by `find` and `load`, and by test code that builds the fields directly. |
+| `Workspace` | Every hi file in one repository plus where they live. Public fields: `root: PathBuf` (the directory containing `hi/`, the base for `rel` and `INTENT.md`), `dir: PathBuf` (the `hi/` directory itself, which may not exist yet), `docs: Vec<Doc>` (one parsed file each, in sorted-path order at load time), and `skipped: Vec<PathBuf>` (the uppercase-named files in `hi/`, kept rather than dropped so `strays` can read inside them). Constructed only by `find` and `load`, and by test code that builds the fields directly. |
+| `Stray` | One criterion-shaped line hi cannot read as structure, located. Public fields: `file: String` (workspace-relative, forward slashes), `line: usize` (1-based), `token: String` (the id-shaped token exactly as the file has it, emphasis included for a line out of a `Doc`, already stripped for one out of `criterion_tokens`), and `place: StrayPlace`. Derives `Debug, Clone`. |
+| `StrayPlace` | `enum` with two variants. `OutsideSection`: in a criteria file, but outside `## Criteria` and `## Retired`. `UnreadFile`: in a file `load` skipped because its name is not lowercase and is therefore hi's own (DECISIONS.md §27). Derives `Debug, Clone, Copy, PartialEq, Eq`. |
 
 ### Traits
 
@@ -82,7 +87,9 @@ Every exported function is an inherent method on `Workspace`. One private free f
 | `intent_path` | `fn intent_path(&self) -> PathBuf` | `<root>/INTENT.md`. Returns the path whether or not the file exists; the caller decides what a missing file means. |
 | `criteria_count` | `fn criteria_count(&self) -> usize` | Total active criteria across every doc. Retired criteria are not counted. |
 | `doc_for_family` | `fn doc_for_family(&self, family: &str) -> Option<usize>` | Index into `docs` of the file that owns `family`. Prefers the first doc whose frontmatter `families:` list names it; falls back to the first doc where some criterion, active or retired, actually uses it. `None` means no file owns the family yet, which is capture's signal to create one. |
+| `strays` | `fn strays(&self) -> Vec<Stray>` | Reads each path in `skipped` and runs `doc::criterion_tokens` over it (`UnreadFile`), then walks each doc's `Doc::stray` (`OutsideSection`). A skipped file that cannot be read is passed over rather than raised: this is a lookup, not a verb. The two sources were two separate scans in two modules until `check` and `capture` were found to disagree about them (DECISIONS.md §31). |
 | `find_id` | `fn find_id(&self, id: &Id) -> Option<(usize, &crate::doc::Criterion)>` | Looks up one criterion by exact id across every doc, searching active and retired criteria alike. Returns the doc's index alongside the criterion. Criteria whose id failed to parse can never match. |
+| `find_stray` | `fn find_stray(&self, id: &Id) -> Option<Stray>` | The first entry of `strays()` whose token, with markdown emphasis stripped, uppercases to this id. Skipped files are searched before docs, so a line in `hi/Archive.md` is found whether or not the same id is also stranded in a criteria file. |
 | `next_free` | `fn next_free(&self, family: &str) -> u32` | The highest top-level number used by `family` anywhere in the workspace, plus one; `1` when the family is unused. Retired criteria count, so a retired number is never handed back out. |
 | `families` | `fn families(&self) -> Vec<String>` | Every family in the workspace, deduplicated and sorted: the union of each doc's declared `families:` and the families its criteria actually use. |
 | `rel` | `fn rel(&self, path: &Path) -> String` | Renders `path` relative to `root` for stable, machine-comparable output such as `hi/chat.md`. The remaining components are joined with `/` rather than the host separator, so a Windows run prints `hi/chat.md` too and the string is safe in exported JSON, an issue body and a markdown link (hi: FILE-12). A path that is not under `root` is rendered from its own components rather than failing. |

@@ -61,7 +61,7 @@ Acceptance Criteria
 - The message carries a second line of the form `hint:  next free is SEND-2`, taken from `Workspace::next_free` for that family.
 - The hint is always a single-level top-level id, even when the rejected id was a case or a step.
 - `Workspace::find_id` walks active and retired criteria alike, so a retired id counts as existing and a retired number is never handed back out.
-- Only parsed criteria count. `Doc::all()` chains `criteria` and `retired` and nothing else, so an id written inside a fenced code block (prose to the parser, hi: FILE-9) or on a criterion-shaped line outside every section (`Doc::stray`, reported by `check` as `stray-criterion`, hi: CHECK-2.e) does not make the id taken and does not raise `next_free`.
+- Only parsed criteria count *here*. `Doc::all()` chains `criteria` and `retired` and nothing else, so an id written inside a fenced code block (prose to the parser, hi: FILE-9), on a criterion-shaped line outside every section, or in a file `load` skipped, is not what this refusal sees and does not raise `next_free`. It is still refused, by the separate reservation check REQ-capture-017 describes, with a different message.
 - The destination file is byte-for-byte unchanged.
 
 ### REQ-capture-004
@@ -215,6 +215,20 @@ Acceptance Criteria
 - This is the same rule `start_product_intent` and `start_agent_files` already follow, and for the same reason: the thought is what mattered and it is already stored (hi: INDEX-3, HABIT-1, CAPTURE-1.a).
 - The refresh runs inside the lock `main::run_capture` already holds and takes none of its own, because `lock::acquire` is not reentrant (hi: FILE-19).
 - The accepted cost is that a bulk capture rewrites `INTENT.md` once per criterion. fledge's adoption was 197 captures. That is 197 atomic replaces of a few hundred bytes, serialized by a lock those captures already contend for.
+- The refresh rewrites the generated block and installs none. `refresh_index` passes `out::Absent::LeaveAlone`, so an `INTENT.md` with no marker pair is left exactly as it is and nothing is reported; installing a `## Features` section is `hi index`'s act, because there it was asked for (hi: INDEX-4.c, DECISIONS.md §31).
+- `start_product_intent` therefore writes `out::starter_intent_file`, which carries the `## Features` heading and the generated block, rather than the prose prompt alone. A first capture still leaves a complete `INTENT.md`; it is written once rather than appended to by the refresh that follows (hi: INDEX-1.a, INDEX-3).
+
+### REQ-capture-017
+
+The capture module SHALL refuse an id written anywhere hi cannot read it as a criterion, wherever that is, and SHALL NOT write anything (hi: CAPTURE-14, FILE-20, CAPTURE-5).
+
+Acceptance Criteria
+
+- After the `find_id` refusal and before any filesystem write, `capture` calls `Workspace::find_stray`, the one reservation lookup, which covers criterion-shaped lines in a criteria file outside every section, inside a fence, and in a file `load` skipped because its name is not lowercase.
+- The message is `<id> is already written at <file>:<line>, where hi cannot read it.`, followed by a `hint:` line. The hint for `StrayPlace::OutsideSection` says to move the line under `## Criteria` or `## Retired`; for `StrayPlace::UnreadFile` it says to move it into a lowercase file, because renaming `hi/AGENTS.md` would turn hi's own instruction file into a criteria file.
+- The refusal and `check`'s `stray-criterion` report come from the same call, so an id `hi check` names as used is always an id `hi` refuses to reissue. They were two scans over two different sets of files, and a retired `SEND-1` in `hi/Archive.md` was reported by one and handed out again by the other (DECISIONS.md §31).
+- An id that no line anywhere speaks for is still free, so this reserves rather than blocks.
+- hi's own files are read for reservation and for nothing else. Neither `hi/AGENTS.md` nor `hi/CLAUDE.md` becomes a doc, a family, a counted criterion or a line in the generated feature list, and the prose hi writes into them contains no criterion-shaped line (DECISIONS.md §27).
 
 ## Constraints
 

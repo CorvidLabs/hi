@@ -51,7 +51,8 @@ The check module SHALL report a criterion-shaped line written into a file it doe
 
 Acceptance Criteria
 
-- Every path in `Workspace::skipped` is read and passed through `doc::criterion_tokens`, and each hit becomes a `stray-criterion` problem naming the file, the line, the token, and the fact that the name is not lowercase.
+- Both kinds of stray come from one call to `Workspace::strays`, which reads every path in `Workspace::skipped` through `doc::criterion_tokens` and every doc's `Doc::stray`, and each entry becomes a `stray-criterion` problem. A `StrayPlace::UnreadFile` entry names the file, the line, the token, and the fact that the name is not lowercase; a `StrayPlace::OutsideSection` entry carries REQ-check-011's message. Neither message changed.
+- `capture` refuses an id from the same call, so an id this reports as used and an id capture refuses are the same set by construction. They were two scans over two different sets of files, and a retired id in `hi/Archive.md` was reported here and handed out again by capture (hi: CAPTURE-14, DECISIONS.md §31).
 - The kind is reused rather than added to. A criterion in a skipped file is the same failure `stray-criterion` already describes — nothing reads it where it is — and the README promises exactly six structural problems.
 - A fenced block in such a file is an example rather than structure, exactly as it is under `## Intent` (hi: FILE-9), so documenting the format in a `hi/README.md` does not report a loss.
 - A file that cannot be read is skipped rather than reported, because an unreadable file is not evidence of a criterion.

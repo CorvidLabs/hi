@@ -114,6 +114,7 @@ run under `cargo test --test cli`.
 | Requirement | Covered by |
 |---|---|
 | REQ-check-011 | `check::tests::catches_a_criterion_stranded_outside_every_section`, `check::tests::prose_outside_a_section_is_not_a_stray_criterion`, `doc::tests::records_a_criterion_stranded_outside_every_section`, `doc::tests::a_level_one_heading_closes_the_criteria_section` |
+| REQ-check-013 (one lookup shared with capture) | `cli::a_criterion_in_a_file_hi_skips_is_reported_rather_than_vanishing` (the report), `cli::a_retired_id_in_a_file_hi_skips_is_never_handed_out_again` (the same id reported here and refused by capture in one test), `workspace::tests::an_id_in_a_file_hi_skips_is_still_taken` |
 | REQ-check-012 | `doc::tests::a_fenced_block_in_intent_is_not_parsed_as_criteria`, `doc::tests::a_tilde_fence_is_honored_too`, `doc::tests::a_hash_comment_in_a_fenced_snippet_does_not_truncate_intent` |
 | REQ-check-005 (`PaddedLevel` reaching `check`) | Not covered here. `cli::a_zero_padded_id_is_refused_rather_than_silently_renamed` and `id::tests` cover the id grammar; nothing asserts the `unparseable-id` finding. |
 | REQ-check-011 (the `## Intent` exception) | Not covered anywhere. Verified by hand against the built binary on 2026-09-16: an unfenced `SEND-9` under `## Intent` produces no problem and no criterion, while the same line under `## Notes` produces `stray-criterion`. |

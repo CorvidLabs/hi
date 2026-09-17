@@ -47,6 +47,11 @@ spec: out.spec.md
   (hi: INDEX-2.a)
 - As someone who edited `INTENT.md` by hand and broke a marker, I want hi to stop and tell me,
   rather than guess where my block ended and take the prose with it (hi: INDEX-2.b)
+- As the author of that file, I want an `INTENT.md` hi cannot read at all to be left exactly as it
+  is, because a file hi could not see the bytes of is not a file it may replace with a starter
+  prompt (hi: INDEX-2.c)
+- As someone who deleted the generated list on purpose, I want it to stay deleted until I ask for
+  one, because refreshing a list I have is not the same as installing one I removed (hi: INDEX-4.c)
 - As the owner of the repository, I want the list at the front of my product to be true after every
   command that changes it, without me remembering to refresh it (hi: INDEX-4)
 - As someone capturing a thought, I want a capture that stored my criterion never to be reported as
@@ -251,23 +256,32 @@ Acceptance Criteria
 ### REQ-out-011
 
 `write_index` SHALL rewrite only the span between the `hi:index` markers, and SHALL create the file
-or the section when they do not exist yet (hi: INDEX-2, INDEX-1.a).
+or the section when they do not exist yet *and* the caller asked for one (hi: INDEX-2, INDEX-1.a,
+INDEX-4.c).
 
 Acceptance Criteria
 
 - When both markers are present on lines of their own and correctly ordered, everything before the
-  opening marker and everything after the closing marker is preserved byte for byte.
+  opening marker and everything after the closing marker is preserved byte for byte. This branch
+  runs whatever `absent` says, because there is a block to refresh.
+- `absent` decides the branches that have no block to replace. With `Absent::LeaveAlone` the
+  function returns the path having written nothing; with `Absent::Install` the two branches below
+  run. `refresh_index` passes `LeaveAlone`, `hi index` passes `Install`, and nothing else calls it.
 - The replaced span ends at the last non-whitespace byte of the closing marker's line, so that
   line's own newline (and the blank line that usually follows the block) survives the rewrite.
-- When `INTENT.md` is absent, empty, or whitespace-only, a starter file is written with a heading
+- When `INTENT.md` is absent, empty, or whitespace-only, `starter_intent_file` is written: a heading
   taken from the workspace root directory name, a comment prompting for the product-level why, a
-  `## Features` heading, and the generated block.
+  `## Features` heading, and the generated block. `capture::start_product_intent` writes the same
+  function's output, so the file hi creates on a first capture and the file `hi index` creates
+  cannot drift apart, and a refresh over either changes nothing.
 - When `INTENT.md` has content and no opening marker line at all, the existing text is kept and a
   `## Features` section carrying the block is appended below it. Only the trailing blank lines of
   the existing text are lost, to `trim_end`.
 - The function returns the written path relative to the workspace root, so the CLI can report it
   without leaking an absolute path.
 - A write failure names the path it was writing, as `writing <path>` wrapping the I/O error.
+- A read failure other than `NotFound` names the path it was reading, as `reading <path>` wrapping
+  the I/O error, and nothing is written. See REQ-out-019.
 - The generated block is written with `\n` line endings whatever endings the file already uses. A
   CRLF `INTENT.md` keeps CRLF in its prose and on the closing marker's own line (that newline sits
   outside the replaced span) and gains LF inside the block. Running `hi index` twice over such a
@@ -401,9 +415,13 @@ and SHALL hand back any reason it could not rather than raising one (hi: INDEX-4
 
 Acceptance Criteria
 
-- It is `write_index` with the `Result` turned into an `Option<String>`. Every rule REQ-out-011,
-  REQ-out-012 and REQ-out-013 state about what is replaced, what is preserved and what is refused
-  holds unchanged; only who carries the failure moves.
+- It is `write_index` with `Absent::LeaveAlone` and the `Result` turned into an `Option<String>`.
+  Every rule REQ-out-011, REQ-out-012 and REQ-out-013 state about what is replaced, what is
+  preserved and what is refused holds unchanged; what moves is who carries the failure, and that
+  the branches with no block to replace do not run.
+- Its whole effect on disk is therefore a span replacement between two markers. That is INDEX-2's
+  promise expressed as a mechanism rather than as behaviour, and it is what makes the automatic
+  path safe to run on every capture.
 - `capture` calls it after the criterion is on disk, and `hi retire` calls it after the criterion
   and its cases have been moved and saved. Nothing else calls it. `hi index` still goes through
   `write_index` directly, because there the failure is the whole answer and belongs in the exit
@@ -417,9 +435,14 @@ Acceptance Criteria
 - The cost is accepted rather than unnoticed: a bulk capture of N criteria rewrites `INTENT.md` N
   times. fledge's adoption was 197 captures. Each rewrite is one atomic replace of a file of a few
   hundred bytes, under a lock that already serializes those captures.
-- A person who deleted the generated block from `INTENT.md` gets one back on the next capture,
-  through `write_index`'s existing append branch. That is the same thing `hi index` has always done
-  and is recorded here because it is now reached without being asked for.
+- A person who deleted the generated block from `INTENT.md` does **not** get one back on the next
+  capture. `Absent::LeaveAlone` leaves the file alone and says nothing, and `hi index` is how one is
+  asked for. Reinstating a section is writing prose into somebody's file, and hi cannot tell a block
+  that was deleted from one that was never there, so it does neither (hi: INDEX-4.c). The earlier
+  behaviour reached `write_index`'s append branch on every capture, which was recorded as an
+  accepted cost in DECISIONS.md §30 and is withdrawn in §31.
+- Nothing is printed when there is no block. A line on every capture would be a nag about a
+  decision the person already made, and a bulk capture would repeat it once per criterion.
 
 ### REQ-out-018
 
@@ -437,10 +460,36 @@ Acceptance Criteria
   refresh its feature list`. That case is otherwise silent now, because REQ-out-017 swallows the
   refusal on the capture path, and a list nothing can refresh is a list left wrong.
 - It returns `None` for a matching block, for an `INTENT.md` that cannot be read, and for one with
-  no marker line at all. A file with no generated list is not a list that is behind, and the next
-  capture adds one.
+  no marker line at all. A file with no generated list is not a list that is behind. It stays
+  without one until somebody runs `hi index`, because the refresh installs nothing, and that
+  silence is the point: hi cannot tell a block somebody deleted from one that was never written,
+  so it neither restores it nor nags about it (hi: INDEX-4.c).
 - It never writes, never opens a `hi/*.md`, and never produces a `check::Kind`. `check` prints it
   as a `note:` and the exit code does not move (hi: CHECK-1).
+
+### REQ-out-019
+
+`write_index` SHALL treat only a missing `INTENT.md` as a file it may create, and SHALL leave every
+other unreadable `INTENT.md` exactly as it is (hi: INDEX-2, INDEX-2.c).
+
+Acceptance Criteria
+
+- The read is matched rather than defaulted: `Ok(text)` is the text, `Err` with
+  `ErrorKind::NotFound` is an empty string, and every other `Err` returns `reading <path>` wrapping
+  the I/O error before anything is written.
+- The bug this replaces was `fs::read_to_string(&path).unwrap_or_default()`. An `INTENT.md` holding
+  prose and one invalid UTF-8 byte read as empty, so the whitespace-only branch wrote the starter
+  scaffold over it and the command reported success. Reproduced against the built binary: a
+  three-line file became the starter prompt and a generated list, and `hi index` printed
+  `INTENT.md  index updated` and exited 0.
+- The blast radius widened without anyone deciding it had. The branch was reachable only by typing
+  `hi index` until 0.7.0 made `capture` and `hi retire` refresh on every write (DECISIONS.md §30,
+  §31).
+- Through `refresh_index` the failure is a printed line and the caller still exits 0 with the
+  criterion stored (hi: INDEX-4.a); through `hi index` it is the exit code, because there the
+  failure is the whole answer.
+- A directory named `INTENT.md`, a file the process may not read, and a file that is not valid
+  UTF-8 are all this case. Only absence is not.
 
 ## Constraints
 

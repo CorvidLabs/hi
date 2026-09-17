@@ -212,6 +212,7 @@ backtrace (hi: CAPTURE-1.c).
 | `hi issue` given an id that does not exist, or a retired one | Error, exit 1 |
 | `hi export` given a scope matching no family or file | `error: nothing matches '<scope>'. Give a family like SEND, a file like chat, or nothing at all for the whole repository`, exit 1. A family, a bare stem (`chat`), a file name (`chat.md`) and the repo-relative path (`hi/chat.md`) all match |
 | `hi index` where `INTENT.md` opens a `hi:index` marker and never closes it | Error from `out::write_index`, exit 1, `INTENT.md` untouched (hi: INDEX-2.b) |
+| `hi index` where `INTENT.md` cannot be read for any reason but absence | Error from `out::write_index`, `reading <path>` wrapping the I/O error, exit 1, `INTENT.md` untouched (hi: INDEX-2.c) |
 | The same broken `INTENT.md` during a capture or a `hi retire` | Not an error. `out::refresh_index` hands the message back, `main` prints `note: the feature list in INTENT.md was not refreshed: <text>` on stderr, and the exit code is 0 because the criterion is already on disk (hi: INDEX-4.a) |
 | `gh` missing or failing during `hi issue --create` | Error with context about the GitHub CLI, exit 1 |
 | Unknown subcommand or bad flag | clap usage error, exit 2 |
@@ -230,7 +231,7 @@ backtrace (hi: CAPTURE-1.c).
 | `crate::workspace` | `Workspace::find`, for every verb |
 | `crate::capture` | `capture` |
 | `crate::check` | `run`, `Report` |
-| `crate::out` | `ls`, `issue`, `export`, `write_index` |
+| `crate::out` | `ls`, `issue`, `export`, `write_index` (with `out::Absent::Install`, because `hi index` was typed to install a section; the refresh after a capture or a retire passes `LeaveAlone`), `refresh_index` |
 | `crate::view` | `write` |
 
 ### Consumed By
