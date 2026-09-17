@@ -592,6 +592,62 @@ fn concurrent_captures_into_a_repository_with_no_hi_directory_all_land() {
 }
 
 #[test]
+fn concurrent_retires_never_bring_a_criterion_back() {
+    // `retire` loaded the workspace before taking the lock and never read it
+    // again, so the second retire wrote the file back from a snapshot taken
+    // before the first one landed. Both printed "retired", both exited 0, and
+    // one of the two criteria was live again with `hi check` reporting nothing
+    // (hi: RETIRE-7, DECISIONS.md §31).
+    let repo = Repo::bare("retire-race");
+    for (id, sentence) in [
+        ("SEND-1", "the first want"),
+        ("SEND-2", "the second want"),
+        ("SEND-3", "the third want"),
+    ] {
+        let out = repo.run(&[id, sentence]);
+        assert!(out.status.success(), "{}", stderr(&out));
+    }
+
+    let handles: Vec<_> = ["SEND-1", "SEND-2"]
+        .iter()
+        .map(|id| {
+            let root = repo.root.clone();
+            let id = id.to_string();
+            std::thread::spawn(move || {
+                std::process::Command::new(BIN)
+                    .args([
+                        "--root",
+                        root.to_str().unwrap(),
+                        "retire",
+                        &id,
+                        "changed my mind",
+                    ])
+                    .output()
+                    .unwrap()
+            })
+        })
+        .collect();
+    for handle in handles {
+        let out = handle.join().unwrap();
+        assert!(out.status.success(), "{}", stderr(&out));
+    }
+
+    // Both said they retired something, so both have to be retired.
+    let body = repo.read("hi/send.md");
+    let retired_at = body.find("## Retired").expect("a retired section");
+    for id in ["SEND-1", "SEND-2"] {
+        let at = body
+            .find(&format!("**{id}**"))
+            .unwrap_or_else(|| panic!("{id} vanished:\n{body}"));
+        assert!(at > retired_at, "{id} is live again:\n{body}");
+    }
+    assert!(
+        body.contains("**SEND-3**"),
+        "the one nobody retired stayed:\n{body}"
+    );
+}
+
+#[test]
 fn view_writes_a_self_contained_page() {
     let repo = Repo::with_chat("view");
     let out = repo.run(&["view"]);

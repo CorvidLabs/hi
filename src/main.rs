@@ -236,8 +236,14 @@ fn run(cli: Cli) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Command::Retire { id, reason } => {
-            let mut workspace = workspace;
             let _writing = lock::acquire(&workspace.root.join("hi"))?;
+            // Read the files again, under the lock. The copy above was loaded
+            // before the lock was granted, so another writer may have finished
+            // in between; retiring from that snapshot writes the file back the
+            // way it was and brings whatever they retired back to life, while
+            // both commands print "retired" and exit 0. Capture reloads for the
+            // same reason (hi: RETIRE-7, FILE-19, DECISIONS.md §31).
+            let mut workspace = Workspace::find(&start)?;
             let parsed =
                 id::Id::parse(&id).map_err(|e| anyhow::anyhow!("'{id}' is not a valid id: {e}"))?;
             let Some((index, found)) = workspace.find_id(&parsed) else {
