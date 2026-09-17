@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Says, once, that this repository has nothing written down yet.
+#
+# Runs as a fledge lifecycle hook at two moments: `work start`, before any code
+# exists, and `pre_push`, the last point anything can be said. It is the answer
+# to HABIT-4, which a file in hi/ cannot be: a file there only reaches somebody
+# already looking in hi/, and a repository that has never seen hi has no hi/ to
+# look in. A user-global fledge plugin reaches every repository instead
+# (DECISIONS.md §28).
+#
+# It never writes anything, and it never fails. A hook that exits non-zero
+# aborts the command that ran it, so a bug here would block your pushes.
+# Every path below ends at exit 0.
+
+moment="${1:-start}"
+
+# fledge runs a hook with its working directory set to the plugin's own
+# directory, so the repository is only knowable from the environment. Older
+# fledge does not set this; say nothing rather than guess at the wrong tree.
+root="${FLEDGE_REPO_ROOT:-}"
+[ -n "$root" ] || exit 0
+[ -d "$root" ] || exit 0
+
+# Something written down already, or somewhere hi does not belong.
+[ -d "$root/hi" ] && exit 0
+[ -d "$root/.git" ] || exit 0
+
+case "$moment" in
+  push)
+    printf '     %s\n' "Still nothing written down in this repo. Worth one sentence before it ships?" >&2
+    printf '     %s\n' "    hi FAMILY-1 \"what somebody actually wants\"" >&2
+    ;;
+  *)
+    printf '     %s\n' "No hi/ here. Want to write down what this should do, before building it?" >&2
+    printf '     %s\n' "    hi FAMILY-1 \"what somebody actually wants\"" >&2
+    ;;
+esac
+
+exit 0

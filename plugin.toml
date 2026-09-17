@@ -15,8 +15,17 @@ binary = "bin/fledge-hi"
 
 [hooks]
 build = "cargo build --release"
+# Says once, in a repository with nothing written down, that it could be.
+# A file in hi/ cannot do this: it only reaches somebody already looking in
+# hi/, and a repository that has never seen hi has no hi/ to look in. A
+# user-global plugin reaches every repository instead (hi: HABIT-4).
+post_work_start = "bin/fledge-hi-nudge start"
+pre_push = "bin/fledge-hi-nudge push"
 
 [capabilities]
-exec = false
+# The lifecycle hooks above run a script, and fledge skips the hooks of any
+# plugin that has not declared this. It is asked for at install time and the
+# honest answer is yes: without it the nudge is silently never delivered.
+exec = true
 store = false
 metadata = true

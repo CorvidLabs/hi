@@ -1189,3 +1189,42 @@ is not decided here.
 **What would change this decision:** a way to reach an agent before `hi/` exists that does not
 involve writing into somebody else's file. If one turns up, the first two subsections stay and the
 last one gets an answer.
+
+---
+
+## 28. First contact, which is not a file hi writes
+
+§27 closed with what it could not solve: `hi/AGENTS.md` only reaches an agent already looking in
+`hi/`, and a repository that has never seen hi has no `hi/` to look in. That is `HABIT-4`, and the
+answer had to come from somewhere other than a file in the repository.
+
+It comes from fledge. **A fledge plugin installs once per user, not once per repository**, so hi's
+plugin is present in every repository that person works in, including ones hi has never touched.
+The plugin takes two lifecycle hooks: `post_work_start`, which fires as a feature branch is created
+and before any code exists, and `pre_push`, the last moment anything can be said. In a repository
+with no `hi/`, each says one line. In a repository that has one, both say nothing (`HABIT-4.b`).
+
+**The hook can never fail.** `run_lifecycle_hook` propagates a non-zero exit, so a hook that errors
+aborts the command that ran it: a bug in the nudge would block `fledge work push`. Every path in
+`bin/fledge-hi-nudge` ends at `exit 0`, and `scripts/nudge-behaves.sh` asserts that first, before it
+asserts anything about the words (`HABIT-4.a`).
+
+**It writes to stderr and never to stdout.** `fledge work start --json` puts a JSON envelope on
+stdout, and a hook printing into it would corrupt the envelope of a command that had nothing to do
+with hi.
+
+Two things this cost, both deliberate:
+
+- **The plugin now declares `exec = true`.** fledge skips the hooks of any plugin that has not, so
+  without it the nudge is silently never delivered. It is asked for at install time and the honest
+  answer is yes: the plugin runs a script.
+- **It needed a change to fledge.** A hook runs with its working directory set to the plugin's own
+  directory and was given nothing naming the repository that invoked it, so it could not ask whether
+  that repository had a `hi/`. `FLEDGE_REPO_ROOT` (CorvidLabs/fledge#520) fixes that for every
+  lifecycle hook, not just this one. Where it is absent, on an older fledge, the nudge says nothing
+  rather than guessing at the wrong tree.
+
+**What this still does not reach:** somebody who installed hi with Homebrew or cargo and does not
+use fledge. The mechanism works because the house norm is fledge-first, which makes it a CorvidLabs
+answer rather than a general one. A general answer would have to live in the agent rather than in
+any tool, and that is the option §27's interview declined for the instruction file.

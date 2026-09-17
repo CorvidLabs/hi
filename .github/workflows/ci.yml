@@ -42,6 +42,9 @@ jobs:
         run: |
           command -v google-chrome || command -v chromium-browser || command -v chromium
       - run: sh scripts/view-behaves.sh
+      # The fledge lifecycle hook, driven the way fledge drives it. cargo test
+      # covers the same ground, but this is the script fledge actually execs.
+      - run: sh scripts/nudge-behaves.sh
 
   lint:
     name: Lint

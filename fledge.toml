@@ -18,6 +18,10 @@ index = "sh scripts/index-is-current.sh"
 # in a real browser and asserts on what comes out. Skips with a message if no
 # Chrome or Chromium is installed; CI always has one.
 view-behaves = "sh scripts/view-behaves.sh"
+# The fledge lifecycle hook, driven the way fledge drives it. What matters is
+# not the wording but that every path exits 0: a hook that exits non-zero
+# aborts the command that ran it, so a bug here would block `fledge work push`.
+nudge-behaves = "sh scripts/nudge-behaves.sh"
 plugin-validate = "fledge plugins validate . --strict"
 
 [lanes.verify]
@@ -29,5 +33,6 @@ steps = [
     "intent",
     "index",
     "spec",
+    "nudge-behaves",
     "plugin-validate",
 ]
