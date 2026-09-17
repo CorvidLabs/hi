@@ -7,6 +7,12 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## Unreleased
+
+### The fledge plugin declares what it now does
+
+`plugin.toml` moves to 0.2.0. The plugin gained two lifecycle hooks and `exec = true` in 0.5.0 and its own version never moved, so a `fledge plugins list` could not tell a plugin that runs a script at `work start` and `push` from one that only adds a command. It missed the 0.6.0 tag, so it lands here.
+
 ## [0.6.0] 2026-09-17
 
 ### A ticket reads as paragraphs, not as a narrow column
