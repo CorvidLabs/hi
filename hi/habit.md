@@ -26,3 +26,4 @@ the one place where a question is already the medium.
 - **HABIT-1**  A coding agent working in my repository reaches for hi on its own, without me explaining it first.
 - **HABIT-2**  Intent gets written before the work, every feature and not only the first one.
 - **HABIT-3**  Nothing lands in my files that I did not agree to, however fast the typist was.
+- **HABIT-4**  An agent starts hi in a repository that has none, from the feature I just asked for, instead of waiting for me to set it up.
