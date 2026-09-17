@@ -7,6 +7,29 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## Unreleased
+
+### First contact, in a repository that has never seen hi
+
+`hi/AGENTS.md` only reaches an agent already looking in `hi/`, so it could never
+introduce hi to a repository that has none. hi's fledge plugin now can, because a
+fledge plugin installs once per user rather than once per repository.
+
+Two lifecycle hooks: `post_work_start` says, as a feature branch is created, that
+nothing is written down here yet; `pre_push` says it once more, differently, before
+the branch ships. A repository that already has a `hi/` hears nothing from either.
+
+The nudge never writes anything and never fails. A fledge hook that exits non-zero
+aborts the command that ran it, so every path in it exits 0 and
+`scripts/nudge-behaves.sh` asserts that before it asserts anything about wording. It
+writes to stderr only, so a `fledge work start --json` envelope stays valid.
+
+Needs `FLEDGE_REPO_ROOT` (CorvidLabs/fledge#520) to know which repository it fired
+for. On a fledge without it, the nudge says nothing rather than guessing.
+
+The plugin now declares `exec = true`, because fledge skips the hooks of any plugin
+that has not, and the honest answer is that it does run a script.
+
 ## [0.5.0] 2026-09-16
 
 ### An agent finds hi without being told
