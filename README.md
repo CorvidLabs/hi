@@ -87,6 +87,12 @@ it is not one now.
 The `## Intent` block is the part a spec can never carry, and it is the first thing an agent
 should read.
 
+Files in `hi/` are lowercase, because a family names its own file and hi lowercases it. An
+uppercase name in there is hi's own rather than criteria: your first capture leaves a
+`hi/AGENTS.md`, and a `hi/CLAUDE.md` beside it, describing the habit so an agent working in your
+repository finds it without being told. hi writes them once and never again, and they are yours
+afterwards. If a criterion ever ends up in one, `hi check` says so rather than letting it go quiet.
+
 ## Install
 
 ```bash

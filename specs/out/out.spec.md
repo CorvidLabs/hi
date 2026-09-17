@@ -48,6 +48,7 @@ atomic write goes through. Error Cases below lists all eight.
 | `export` | Build the agent payload as pretty-printed JSON for a family, a file named by its stem, its file name, or any path ending in `hi/<stem>.md`, or the whole repository. |
 | `index_block` | Build the generated feature list: one Markdown bullet per hi file, with its families and active-criterion count. |
 | `starter_intent` | The opening of a product-level `INTENT.md`: a title and a prompt for the holistic why. Shared with `capture`, which creates the file on the first capture so nobody has to discover it (hi: INDEX-3). |
+| `agent_instructions` | The text of `hi/AGENTS.md`: the habit an agent follows before building, and nothing else. Shared with `capture`, which writes it on the first capture so an agent finds it without being told (hi: HABIT-1, HABIT-2, HABIT-3). It carries no id grammar, no file format and no list of existing families, because the file is written once and never rewritten, so anything hi could change underneath it would be wrong later with nothing to notice (DECISIONS.md §27). |
 | `write_index` | Rewrite the generated block inside `INTENT.md`, matching the `hi:index` markers on whole lines only, creating the file or the `## Features` section when they do not exist yet, and refusing when an opening marker has no close; the replacement goes through `doc::write_atomically`, and the path written is returned relative to the workspace root. |
 
 ### Structs & Enums

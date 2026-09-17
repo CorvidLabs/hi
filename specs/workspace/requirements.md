@@ -28,6 +28,18 @@ spec: workspace.spec.md
 - Path rendering is relative to `root`, joined with forward slashes on every platform, total, and never panics on a path outside it (hi: FILE-12)
 - The only failures the module can produce are I/O failures; a structurally broken hi file loads and its problems are left to `hi check`
 
+### REQ-workspace-010
+
+The workspace module SHALL read only lowercase-named markdown files in `hi/` as criteria, and SHALL remember the rest rather than discarding them (hi: FILE-20).
+
+Acceptance Criteria
+
+- `Workspace::load` sends every `*.md` directly inside `hi/` through `is_hi_own_file`, which tests whether the first character of the file name is an ASCII uppercase letter, and pushes those onto `Workspace::skipped` instead of parsing them.
+- The rule is derived, not arbitrary: `capture::start_file` lowercases every family name, so a criteria file hi wrote is always lowercase and an uppercase name is never one (DECISIONS.md §27).
+- `skipped` is kept on the workspace so `check` can look inside those files. Dropping them would make a criterion written into one silently invisible, which is the failure `FILE-20` exists to prevent.
+- `holds_hi_files` is unchanged and still requires frontmatter carrying a `hi:` key, so `hi/AGENTS.md` alone never makes a directory look like a workspace.
+
+
 ## Constraints
 
 - No dependency beyond `std`, `anyhow`, and the sibling `doc` and `id` modules. The `hi/` directory has no manifest format to parse, so nothing else is needed (hi: FILE-1)

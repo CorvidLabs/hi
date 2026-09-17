@@ -313,6 +313,28 @@ pub fn starter_intent(workspace: &Workspace) -> String {
     )
 }
 
+/// What hi writes into `hi/AGENTS.md` on the first capture.
+///
+/// The habit and nothing else. It deliberately carries no id grammar, no file
+/// format and no list of the families already here: this file is written once
+/// and never rewritten, so anything in it that hi could change underneath it
+/// would be wrong later with nothing to notice (DECISIONS.md §27).
+pub fn agent_instructions() -> String {
+    "# Human intent\n\n\
+     This repository writes down what people want before building it. Every\n\
+     sentence in this directory is something somebody wants, and each one has an\n\
+     id that never moves and is never reused.\n\n\
+     Before you build a feature:\n\n\
+     1. Read the files here, so you know what has already been said.\n\
+     2. Draft the criteria for what you are about to build, as plain sentences\n   \
+     about what somebody wants rather than what the code will do.\n\
+     3. Ask the person to confirm them. Nothing lands that they did not agree to.\n\
+     4. Capture what they agreed to, then build it.\n\n\
+     That happens before every feature, not only the first one.\n\n\
+     Run `hi --help` for the commands.\n"
+        .to_string()
+}
+
 /// Byte range of the generated block, matched on whole lines only.
 ///
 /// A substring search would match a marker quoted in prose, and rewriting from
@@ -468,6 +490,7 @@ mod tests {
             root: PathBuf::from("/r"),
             dir: PathBuf::from("/r/hi"),
             docs,
+            skipped: Vec::new(),
         }
     }
 

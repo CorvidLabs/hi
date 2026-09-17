@@ -15,6 +15,9 @@ pub struct Workspace {
     /// The `hi/` directory itself.
     pub dir: PathBuf,
     pub docs: Vec<Doc>,
+    /// Files in `hi/` that are hi's own rather than criteria, kept so `check`
+    /// can look inside them instead of pretending they are not there.
+    pub skipped: Vec<PathBuf>,
 }
 
 impl Workspace {
@@ -47,10 +50,20 @@ impl Workspace {
         )
     }
 
-    /// Load every `*.md` directly inside `<root>/hi`.
+    /// Load every lowercase `*.md` directly inside `<root>/hi`.
+    ///
+    /// A criteria file is lowercase, because `capture::start_file` lowercases
+    /// every family name. An uppercase name is therefore never one hi wrote,
+    /// and is hi's own: `AGENTS.md` and the `CLAUDE.md` beside it carry the
+    /// instruction an agent reads, not criteria (DECISIONS.md §27).
+    ///
+    /// Skipped paths are kept rather than dropped. `check` scans them for
+    /// criterion-shaped lines, because a criterion hi cannot see must be
+    /// reported and never silently ignored (hi: FILE-20).
     pub fn load(root: &Path) -> Result<Workspace> {
         let dir = root.join("hi");
         let mut docs = Vec::new();
+        let mut skipped = Vec::new();
 
         if dir.is_dir() {
             let mut paths: Vec<PathBuf> = fs::read_dir(&dir)
@@ -68,6 +81,10 @@ impl Workspace {
             paths.sort();
 
             for path in paths {
+                if is_hi_own_file(&path) {
+                    skipped.push(path);
+                    continue;
+                }
                 docs.push(Doc::load(&path)?);
             }
         }
@@ -76,6 +93,7 @@ impl Workspace {
             root: root.to_path_buf(),
             dir,
             docs,
+            skipped,
         })
     }
 
@@ -184,6 +202,18 @@ impl Workspace {
     }
 }
 
+/// True when a file in `hi/` belongs to hi rather than to the person.
+///
+/// The test is the first character of the file name. Capture lowercases every
+/// family name when it starts a file, so a criteria file hi wrote is always
+/// lowercase and an uppercase name is always something else (DECISIONS.md §27).
+fn is_hi_own_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.chars().next())
+        .is_some_and(|first| first.is_ascii_uppercase())
+}
+
 /// True when a directory holds at least one file this tool would recognize:
 /// a markdown file whose frontmatter carries a `hi:` key.
 fn holds_hi_files(dir: &Path) -> bool {
@@ -226,11 +256,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_uppercase_file_is_hi_s_own_and_is_never_read_as_criteria() {
+        let root = std::env::temp_dir().join(format!("hi-ws-upper-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("hi")).unwrap();
+        fs::write(root.join("hi/AGENTS.md"), "# Human intent\n").unwrap();
+        fs::write(
+            root.join("hi/chat.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  One.\n",
+        )
+        .unwrap();
+
+        let workspace = Workspace::load(&root).unwrap();
+
+        assert_eq!(workspace.docs.len(), 1, "AGENTS.md is not a criteria file");
+        assert_eq!(workspace.skipped.len(), 1, "but it is not forgotten either");
+        assert!(workspace.skipped[0].ends_with("AGENTS.md"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn relative_paths_always_use_forward_slashes() {
         let workspace = Workspace {
             root: PathBuf::from("/r"),
             dir: PathBuf::from("/r/hi"),
             docs: Vec::new(),
+            skipped: Vec::new(),
         };
         // These strings reach exported JSON, issue bodies and markdown links,
         // so they must not depend on the host's separator.

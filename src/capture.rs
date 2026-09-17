@@ -12,6 +12,12 @@ use crate::doc::{Doc, Section, new_file_text};
 use crate::id::Id;
 use crate::workspace::Workspace;
 
+/// Family names that would want a file hi already keeps in `hi/`.
+///
+/// Short on purpose. It is exactly the files `start_agent_files` writes, and it
+/// grows only if that does (DECISIONS.md §27).
+const RESERVED_FAMILIES: [&str; 2] = ["AGENTS", "CLAUDE"];
+
 /// What capture did, so the caller can print it.
 #[derive(Debug)]
 pub struct Captured {
@@ -20,6 +26,9 @@ pub struct Captured {
     pub created_file: bool,
     /// Set when this capture also started the product-level INTENT.md.
     pub started_intent: Option<String>,
+    /// Files started so an agent finds the habit without being told: usually
+    /// `hi/AGENTS.md` and the `hi/CLAUDE.md` beside it.
+    pub started_agent: Vec<String>,
 }
 
 /// Add one criterion. Returns an error rather than writing when the id is taken
@@ -33,6 +42,22 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
     let sentence = sentence.trim();
     if sentence.is_empty() {
         bail!("a criterion needs a sentence. Say what you actually want");
+    }
+
+    // A family names its own file, lowercased, so a family called AGENTS wants
+    // the file hi keeps its instructions in. That is the same path on a
+    // case-insensitive filesystem and a confusing neighbour on a case-sensitive
+    // one, so refuse on both rather than behave differently by platform
+    // (DECISIONS.md §27).
+    if let Some(reserved) = RESERVED_FAMILIES
+        .iter()
+        .find(|name| id.family.eq_ignore_ascii_case(name))
+    {
+        bail!(
+            "{reserved} cannot be a family: hi keeps its own instructions in \
+             hi/{reserved}.md, which is the file that family would want.\n\
+             hint:  name it something else, and nothing else has to change"
+        );
     }
 
     // An id that already exists is the one case that refuses.
@@ -113,6 +138,7 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
     // no stated why is the common failure, so the file exists from the start
     // rather than waiting to be discovered.
     let started_intent = start_product_intent(workspace);
+    let started_agent = start_agent_files(workspace);
 
     let file = workspace.rel(&workspace.docs[index].path);
     Ok(Captured {
@@ -120,6 +146,7 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
         file,
         created_file,
         started_intent,
+        started_agent,
     })
 }
 
@@ -158,6 +185,52 @@ fn start_product_intent(workspace: &Workspace) -> Option<String> {
     Some(workspace.rel(&path))
 }
 
+/// Write the agent-facing instruction into `hi/`, returning what was started.
+///
+/// Best effort, and for the same reason `INTENT.md` is: the criterion is
+/// already stored, so nothing here may turn a successful capture into a
+/// reported failure. hi writes inside `hi/` and nowhere else; a block in the
+/// repository's own CLAUDE.md was refused (DECISIONS.md §27, §9).
+fn start_agent_files(workspace: &Workspace) -> Vec<String> {
+    let mut started = Vec::new();
+
+    let agents = workspace.dir.join("AGENTS.md");
+    if agents.symlink_metadata().is_err()
+        && fs::write(&agents, crate::out::agent_instructions()).is_ok()
+    {
+        started.push(workspace.rel(&agents));
+    }
+
+    // Written only beside a real AGENTS.md, so the pointer never dangles.
+    let claude = workspace.dir.join("CLAUDE.md");
+    if claude.symlink_metadata().is_err() && agents.is_file() && link_to_agents(&claude).is_ok() {
+        started.push(workspace.rel(&claude));
+    }
+
+    started
+}
+
+/// Point `hi/CLAUDE.md` at `AGENTS.md`, by symlink where the platform allows.
+///
+/// One truth beats two copies that drift. Where a symlink cannot be made, a
+/// one-line pointer says the same thing: Windows needs Developer Mode or admin
+/// to create one, and a committed symlink checks out as a text file holding the
+/// literal target wherever `core.symlinks` is false, which an agent would read
+/// as the whole instruction (DECISIONS.md §27).
+fn link_to_agents(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink("AGENTS.md", path);
+    #[cfg(windows)]
+    let linked = std::os::windows::fs::symlink_file("AGENTS.md", path);
+    #[cfg(not(any(unix, windows)))]
+    let linked: std::io::Result<()> = Err(std::io::Error::other("symlinks unavailable"));
+
+    match linked {
+        Ok(()) => Ok(()),
+        Err(_) => fs::write(path, "See @AGENTS.md\n"),
+    }
+}
+
 /// `SEND` becomes `Send`, `TWO_FACTOR` becomes `Two factor`.
 fn title_for(family: &str) -> String {
     let lower = family.to_ascii_lowercase().replace('_', " ");
@@ -188,6 +261,64 @@ mod tests {
         )
         .unwrap();
         Workspace::load(&root).unwrap()
+    }
+
+    #[test]
+    fn a_first_capture_leaves_the_habit_where_an_agent_will_read_it() {
+        let root = temp_dir("agent-files");
+        let mut workspace = Workspace::load(&root).unwrap();
+        let done = capture(&mut workspace, "SEND-1", "I get a link in my inbox.").unwrap();
+
+        assert_eq!(done.started_agent, vec!["hi/AGENTS.md", "hi/CLAUDE.md"]);
+        let text = fs::read_to_string(root.join("hi/AGENTS.md")).unwrap();
+        assert!(text.contains("Read the files here"));
+        // The habit and nothing hi could change underneath it (DECISIONS.md §27).
+        assert!(
+            !text.contains("FAMILY-1"),
+            "no id grammar in a file never rewritten"
+        );
+        assert!(root.join("hi/CLAUDE.md").symlink_metadata().is_ok());
+    }
+
+    #[test]
+    fn a_later_capture_does_not_rewrite_the_habit() {
+        let root = temp_dir("agent-files-once");
+        let mut workspace = Workspace::load(&root).unwrap();
+        capture(&mut workspace, "SEND-1", "I get a link in my inbox.").unwrap();
+        // Someone edited it. hi wrote it once and has no business touching it.
+        fs::write(root.join("hi/AGENTS.md"), "mine now\n").unwrap();
+
+        let mut workspace = Workspace::load(&root).unwrap();
+        let done = capture(&mut workspace, "SEND-2", "Clicking it signs me in.").unwrap();
+
+        assert!(done.started_agent.is_empty());
+        assert_eq!(
+            fs::read_to_string(root.join("hi/AGENTS.md")).unwrap(),
+            "mine now\n"
+        );
+    }
+
+    #[test]
+    fn a_reserved_family_refuses_before_anything_is_written() {
+        let root = temp_dir("reserved-family");
+        let mut workspace = Workspace::load(&root).unwrap();
+        capture(&mut workspace, "SEND-1", "I get a link in my inbox.").unwrap();
+        let before = fs::read_to_string(root.join("hi/AGENTS.md")).unwrap();
+
+        let mut workspace = Workspace::load(&root).unwrap();
+        let err = capture(&mut workspace, "AGENTS-1", "a criterion").unwrap_err();
+        assert!(err.to_string().contains("cannot be a family"));
+
+        // Refused on every platform, not only where the filesystem folds case,
+        // and the instruction file is untouched (hi: CAPTURE-5).
+        assert!(
+            !root.join("hi/agents.md").is_file()
+                || before == fs::read_to_string(root.join("hi/agents.md")).unwrap()
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("hi/AGENTS.md")).unwrap(),
+            before
+        );
     }
 
     #[test]

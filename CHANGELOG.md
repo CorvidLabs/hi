@@ -7,6 +7,42 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## Unreleased
+
+### An agent finds hi without being told
+
+The first capture in a repository now leaves `hi/AGENTS.md`, and a `hi/CLAUDE.md`
+beside it, describing the habit: read what is already written, draft the criteria,
+ask the person to confirm them, capture what they agree to, then build. hi writes
+them once and never again, and they are yours afterwards. A capture that stored its
+criterion is never reported as a failure because these could not be written.
+
+The file says the habit and nothing else. No id grammar, no file format, no list of
+the families already here: it is written once and never rewritten, so anything hi
+could change underneath it would be wrong later with nothing to notice.
+
+`hi/CLAUDE.md` is a symlink where the platform allows one, and a one-line pointer
+file where it does not. A committed symlink arrives as a text file holding the
+literal target wherever `core.symlinks` is false, which is the Git-for-Windows
+default, and an agent would read that as the whole instruction.
+
+### Files in `hi/` are lowercase
+
+A criteria file is lowercase, because a family names its own file and capture
+lowercases it. An uppercase name in `hi/` is hi's own rather than criteria, which is
+what keeps `AGENTS.md` and `CLAUDE.md` out of the criterion count and out of the
+generated feature list in `INTENT.md`.
+
+Nothing is skipped quietly. `hi check` reads inside the files it does not parse as
+criteria and reports any criterion-shaped line as `stray-criterion`, because a
+criterion hi cannot see must be reported and never ignored. A fenced example is
+still an example.
+
+`AGENTS` and `CLAUDE` cannot be family names. `AGENTS-1` wants `hi/agents.md`, which
+is the same file as `hi/AGENTS.md` on a case-insensitive filesystem; capture refuses
+both names on every platform, before any write, rather than behaving one way on
+macOS and another on Linux.
+
 ## [0.4.0] 2026-09-16
 
 ### hi could break its own only promise, four ways

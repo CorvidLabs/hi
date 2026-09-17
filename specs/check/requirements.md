@@ -42,6 +42,18 @@ spec: check.spec.md
 - Findings are limited to what `doc` parsed: an id-shaped line inside a fenced code block, or
   anywhere inside `## Intent`, is not a criterion, not a stray, and not a problem
 
+### REQ-check-013
+
+The check module SHALL report a criterion-shaped line written into a file it does not read as criteria (hi: FILE-20, CHECK-1).
+
+Acceptance Criteria
+
+- Every path in `Workspace::skipped` is read and passed through `doc::criterion_tokens`, and each hit becomes a `stray-criterion` problem naming the file, the line, the token, and the fact that the name is not lowercase.
+- The kind is reused rather than added to. A criterion in a skipped file is the same failure `stray-criterion` already describes — nothing reads it where it is — and the README promises exactly six structural problems.
+- A fenced block in such a file is an example rather than structure, exactly as it is under `## Intent` (hi: FILE-9), so documenting the format in a `hi/README.md` does not report a loss.
+- A file that cannot be read is skipped rather than reported, because an unreadable file is not evidence of a criterion.
+
+
 ## Constraints
 
 - Structural only. This module must never gain a content check, a prose linter, a readability score,
