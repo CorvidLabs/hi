@@ -9,6 +9,13 @@ only version so far.
 
 ## [0.6.0] 2026-09-17
 
+### The fledge plugin declares what it now does
+
+`plugin.toml` moves to 0.2.0. The plugin gained two lifecycle hooks and
+`exec = true` in 0.5.0 and its own version never moved, so a `fledge plugins
+list` could not tell a plugin that runs a script at `work start` and `push`
+from one that only adds a command.
+
 ### A ticket reads as paragraphs, not as a narrow column
 
 A GitHub issue body is rendered with hard line breaks on, so a single newline in it
