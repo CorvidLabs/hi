@@ -1234,9 +1234,11 @@ mod tests {
         );
         // A BOM and CRLF are storage, not words. Folding them is how we tell
         // hi's unmodified template from a file somebody touched (hi: HABIT-6.a).
+        // Folded first: a checkout with autocrlf hands include_str! CRLF bytes,
+        // and doubling the carriage return would test a file nobody wrote.
         let wrapped = format!(
             "\u{feff}{}",
-            include_str!("seed/agents_0_5.md").replace('\n', "\r\n")
+            fold_agent_text(include_str!("seed/agents_0_5.md")).replace('\n', "\r\n")
         );
         assert_eq!(classify_agent_file(&wrapped), AgentTemplate::Prior);
         assert_eq!(classify_agent_file("mine now\n"), AgentTemplate::Other);
