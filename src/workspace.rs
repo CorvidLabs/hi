@@ -166,7 +166,7 @@ impl Workspace {
     /// in `hi/Archive.md` was reported by `check` and handed out again by
     /// capture with different words. An id reported as used and then reissued
     /// is worse than one nobody noticed (hi: CAPTURE-14, FILE-20,
-    /// DECISIONS.md §27, §31).
+    /// DECISIONS.md §27, §32).
     ///
     /// A skipped file that cannot be read is passed over rather than raised:
     /// this is a lookup, not a verb, and `check` has behaved that way since

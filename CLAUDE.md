@@ -81,20 +81,28 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   hide one, or lose one to a concurrent write. `capture` and `retire` hold `lock::acquire` across
   the whole read-modify-write, and every string hi writes into a file goes through `doc::one_line`
   (DECISIONS.md §26, `hi: FILE-19`, `FILE-20`, `RETIRE-5`, `RETIRE-6`, `CAPTURE-14`).
+- **A write reads itself back, and a fence is not structure to the writer either.** `insert`,
+  `retire` and `set_retired_reason` each parse the buffer they are about to save and refuse it
+  unless the id is readable in the section the verb named and nothing previously readable was lost.
+  That check exists because two verbs decided where a section was by scanning raw lines: `hi retire`
+  found the `## Retired` inside somebody's fenced example and freed a real id, and `insert` appended
+  a `## Criteria` heading inside an unclosed fence and reported the same id saved twice. Anything
+  that needs to know where a section is calls `doc::fence_map`, the same one `parse_body` uses, and
+  then still reads its result back (DECISIONS.md §31, `hi: FILE-22`, `FILE-22.a`, `FILE-22.b`).
 - **`unwrap_or_default` on a read of somebody's file is a bug.** `write_index` had it, so every
   read error read as "no file here" and the starter scaffold was written over an `INTENT.md`
   holding a person's prose and one invalid byte. Only `NotFound` may create; every other read
   error preserves the file and is reported. Since 0.7.0 that path runs on every capture, which is
-  how a latent bug became a constant one (DECISIONS.md §31, `hi: INDEX-2.c`).
+  how a latent bug became a constant one (DECISIONS.md §32, `hi: INDEX-2.c`).
 - **One reservation lookup, not two.** `Workspace::strays` covers the docs hi loads and the
   uppercase files it skips, and `check` reports from it while `capture` refuses from it. They were
   two scans over two different sets of files, so a retired id in `hi/Archive.md` was reported as
-  taken and handed out again (`hi: CAPTURE-14`, DECISIONS.md §31). Reading inside hi's own files
+  taken and handed out again (`hi: CAPTURE-14`, DECISIONS.md §32). Reading inside hi's own files
   reserves ids and nothing else: they are still not docs, not counted, not in the feature list.
 - **The automatic refresh rewrites a block and installs none.** `refresh_index` passes
   `Absent::LeaveAlone` so its whole effect on disk is a span replacement between two markers.
   `hi index` passes `Absent::Install`. A `## Features` heading is prose, and a person who deleted
-  the block gets to keep it deleted (`hi: INDEX-4.c`, DECISIONS.md §31).
+  the block gets to keep it deleted (`hi: INDEX-4.c`, DECISIONS.md §32).
 - **Never write a fixed temp or fixture path.** `write_atomically` and the integration-test
   fixtures both used one, so two processes shared a scratch file. That is why the suite flaked and
   why bulk capture lost writes. Include the pid.

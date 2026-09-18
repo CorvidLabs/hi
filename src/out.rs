@@ -616,7 +616,7 @@ pub enum Absent {
     Install,
     /// Leave the file exactly as it is. The refresh a capture runs rewrites the
     /// list it finds and puts nothing back that somebody removed
-    /// (DECISIONS.md §31).
+    /// (DECISIONS.md §32).
     LeaveAlone,
 }
 
@@ -633,7 +633,7 @@ pub fn write_index(workspace: &Workspace, absent: Absent) -> Result<String> {
     // and treating that as an empty string writes the starter scaffold over
     // it. Losing the whole file is the largest possible way to break INDEX-2's
     // promise that the prose stays the person's, and since 0.7.0 every capture
-    // runs this (hi: INDEX-2, INDEX-2.c, DECISIONS.md §31).
+    // runs this (hi: INDEX-2, INDEX-2.c, DECISIONS.md §32).
     let existing = match fs::read_to_string(&path) {
         Ok(text) => text,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -687,7 +687,7 @@ pub fn write_index(workspace: &Workspace, absent: Absent) -> Result<String> {
 /// writing prose, and a person who deleted the block would get it back on
 /// every capture with no way to say no. `hi index` is where installing one
 /// lives, because there it was asked for (hi: INDEX-2, INDEX-4.c,
-/// DECISIONS.md §31).
+/// DECISIONS.md §32).
 ///
 /// Takes no lock of its own. `capture` and `retire` already hold
 /// `lock::acquire` across their whole read-modify-write and the lock is not
@@ -1049,7 +1049,7 @@ mod tests {
         // Refreshing the list hi generated is what INDEX-2 permits. Adding a
         // `## Features` heading to somebody's file is writing prose, and a
         // person who deleted the block would get it back on every capture
-        // (hi: INDEX-4.c, DECISIONS.md §31).
+        // (hi: INDEX-4.c, DECISIONS.md §32).
         let workspace = on_disk("deleted-block", "# P\n\nJust my prose.\n");
         let before = fs::read_to_string(workspace.intent_path()).unwrap();
         assert_eq!(refresh_index(&workspace), None, "and it is not a failure");

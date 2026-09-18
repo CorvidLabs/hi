@@ -95,7 +95,7 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
     // amount of later checking undoes (hi: CAPTURE-14). The lookup covers the
     // files hi loads and the ones it skips alike: a retired id parked in
     // `hi/Archive.md` was reported by `check` and reissued here for four
-    // releases (DECISIONS.md §31).
+    // releases (DECISIONS.md §32).
     if let Some(stray) = workspace.find_stray(&id) {
         let (file, line) = (&stray.file, stray.line);
         let hint = match stray.place {
@@ -216,7 +216,7 @@ fn start_product_intent(workspace: &Workspace) -> Option<String> {
     }
     // With the feature list already in it. The refresh below rewrites a block
     // it finds and installs none, so a file that is born without one never
-    // gets one (hi: INDEX-1.a, INDEX-4.c, DECISIONS.md §31).
+    // gets one (hi: INDEX-1.a, INDEX-4.c, DECISIONS.md §32).
     let body = crate::out::starter_intent_file(workspace);
     fs::write(&path, body).ok()?;
     Some(workspace.rel(&path))

@@ -440,7 +440,7 @@ Acceptance Criteria
   asked for. Reinstating a section is writing prose into somebody's file, and hi cannot tell a block
   that was deleted from one that was never there, so it does neither (hi: INDEX-4.c). The earlier
   behaviour reached `write_index`'s append branch on every capture, which was recorded as an
-  accepted cost in DECISIONS.md §30 and is withdrawn in §31.
+  accepted cost in DECISIONS.md §30 and is withdrawn in §32.
 - Nothing is printed when there is no block. A line on every capture would be a nag about a
   decision the person already made, and a bulk capture would repeat it once per criterion.
 
@@ -484,7 +484,7 @@ Acceptance Criteria
   `INTENT.md  index updated` and exited 0.
 - The blast radius widened without anyone deciding it had. The branch was reachable only by typing
   `hi index` until 0.7.0 made `capture` and `hi retire` refresh on every write (DECISIONS.md §30,
-  §31).
+  §32).
 - Through `refresh_index` the failure is a printed line and the caller still exits 0 with the
   criterion stored (hi: INDEX-4.a); through `hi index` it is the exit code, because there the
   failure is the whole answer.

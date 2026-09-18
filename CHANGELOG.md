@@ -9,6 +9,38 @@ only version so far.
 
 ## Unreleased
 
+### Two writes that landed where nothing reads them
+
+An external review found two more ways to break hi's one promise, that an id is
+permanent and never reused. Both were the same mistake: a verb that writes decided
+where a section was without asking the code that reads.
+
+**A documented `## Retired` made a real id reusable.** `FILE-9` invites you to show
+an example of the format inside your own `## Intent`, and a fence keeps it prose. But
+`hi retire` looked for `## Retired` by scanning the raw lines, so it found the one in
+your example. The criterion was moved into the intent prose, the command printed
+`retired`, and the file parsed back with no criteria and no retirements at all. The
+id was then free, and capturing it again succeeded. `hi check` exited 0 throughout.
+The file was valid the whole time.
+
+**Capture could "save" the same id over and over into an unfinished fence.** A file
+whose last content line sits inside a fence nobody closed got its missing
+`## Criteria` section appended inside that fence, along with the criterion. Two
+captures of the same id with different sentences both reported success, both lines
+were invisible, and `hi check` reported zero criteria.
+
+**Every write now reads itself back.** `insert`, `retire` and the reason-recording
+path each parse the file they are about to save and refuse it unless the id is
+readable in the section the verb named, every id the file already made readable still
+is, and nothing new has been stranded. A refusal writes nothing and leaves the
+document exactly as it was, and it names the unclosed fence and the line it opens on
+when there is one. Closing the fence makes the same capture succeed.
+
+**A fence is still an example, not structure.** The retired-section lookup now uses
+the same fence tracking the parser uses, so the legitimate retirement lands under a
+real `## Retired` and your example comes back byte-identical, with the id drawn in it
+still free to capture for real.
+
 ### Fixed
 
 **An automatic index refresh could erase your whole `INTENT.md`.** `write_index` turned
@@ -22,7 +54,7 @@ capture, which still succeeds with your criterion stored, and as the exit code o
 
 This defect had been there since 0.2.0 and was reachable only by typing `hi index`.
 0.7.0 made capture and `hi retire` refresh the block on every write, which turned it
-into one that fires constantly. DECISIONS.md §31 records that making a call automatic
+into one that fires constantly. DECISIONS.md §32 records that making a call automatic
 is a change to every bug inside it.
 
 **An id in a file hi skips was reported as used and then handed out again.** hi does
@@ -42,7 +74,7 @@ you ask for one. Rewriting the list between hi's markers is what hi promised; ad
 heading to your file is writing prose, and hi cannot tell a block you deleted from one
 you never had. An `INTENT.md` hi creates on your first capture now carries its feature
 list from birth, so nothing about a fresh repository changes. DECISIONS.md §30 accepted
-the old behaviour as a cost; §31 withdraws it.
+the old behaviour as a cost; §32 withdraws it.
 
 §30's claim that drift became "structurally impossible" is softened in the same section.
 The refresh is best effort by design, so a broken marker pair or a file hi cannot read

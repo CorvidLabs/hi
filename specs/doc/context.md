@@ -29,13 +29,20 @@ spec: doc.spec.md
   `rewrite_families` replaces. A file with two entries would therefore keep the earlier line and
   duplicate its families on the next parse. No file in the repo does this and nothing guards it.
 - **A fenced code block is opaque, and the fence check runs before everything else in the body
-  loop** (hi: FILE-9). `parse_body` tests for a fence marker first, then short-circuits on
-  `fence.is_some()`, and only then looks at `# `, `## `, intent prose and criteria. That order is the
+  loop** (hi: FILE-9). `parse_body` builds a `fence_map` over the body once and short-circuits on
+  `fences.inside[index]` before it looks at `# `, `## `, intent prose or criteria. That order is the
   whole mechanism: moving the heading check above it would make a `## Criteria` inside a
-  ```` ```markdown ```` example real again. The state is `Option<(char, usize)>` (the marker and the
-  opening run's width), so backticks do not close a tilde fence and a short run does not close a long
-  one. Fence state is never reset at a heading, so an unclosed fence deliberately swallows the rest
-  of the body rather than guessing where the author meant it to end.
+  ```` ```markdown ```` example real again. The state is the marker character and the opening run's
+  width, so backticks do not close a tilde fence and a short run does not close a long one. Fence
+  state is never reset at a heading, so an unclosed fence deliberately swallows the rest of the body
+  rather than guessing where the author meant it to end.
+- **The write path asks the same function where the fences are** (hi: FILE-22). `fence_map` is
+  private to this module and has three callers: `parse_body`, `retired_heading` and `retired_end`.
+  That is deliberate. `retired_heading` used to scan the raw lines, so a `## Retired` drawn inside
+  somebody's example was the section `retire` moved into — a heading to the writer and prose to the
+  parser, which cost a criterion and freed its id. If a fourth place ever needs to know where a
+  section is, it calls this; it does not scan lines. And whatever it does after that, it still reads
+  its buffer back (below).
 - **A criterion outside every section is recorded rather than ignored** (hi: CHECK-2.e). The
   `let Some(current) = section else { .. }` arm pushes `(index, token)` onto `stray`. This is the
   companion to the `# `-heading fix: a heading can no longer make a criterion vanish quietly,
@@ -104,6 +111,16 @@ spec: doc.spec.md
   `insertion_point`, so the heading branch of that function has something to find. The order matters:
   computing the insertion point first would fall through to "append at `lines.len()`", which is how
   a criterion used to end up inside the intent prose.
+- **Every write reads itself back, and that is the last line of defence** (hi: FILE-22). The public
+  `insert`, `retire` and `set_retired_reason` are thin wrappers: each clones the document, calls an
+  `_inner` that does the work, and passes the proposed text through `Doc::read_back`, which parses it
+  and checks that the ids the verb named are readable in the section it named, that no previously
+  readable id was lost, and that `stray` did not grow. Any error, from the inner call or from the
+  read-back, restores the clone. Two bugs got past everything above this: one because a heading was
+  found where the parser saw prose, one because a heading was appended where the parser saw an
+  example. Both printed success. The check is cheap (one reparse of a small file per write) and it
+  is the only thing in the module that is stated in terms of what a reader will find rather than in
+  terms of what the writer did. Do not remove it because the specific bugs it caught are fixed.
 - **Reading and writing are deliberately asymmetric.** `read_criterion` still accepts indented
   continuation lines and joins them, so a file someone wrapped by hand is never rejected
   (hi: FILE-1). `render_criterion` never produces one. The same asymmetry covers decoration: the
@@ -134,8 +151,9 @@ spec: doc.spec.md
 
 ## Current Status
 
-- Implemented and covered by 32 unit tests in `src/doc.rs`. Parsing in both frontmatter styles,
-  fenced-block opacity, retired-section handling, malformed-id recording, stray recording, the four
+- Implemented and covered by 35 unit tests in `src/doc.rs`. Parsing in both frontmatter styles,
+  fenced-block opacity in both directions, retired-section handling, malformed-id recording, stray
+  recording, the read-back refusal and the restore that goes with it, the four
   reachable insertion-point branches plus the created-section path, frontmatter family declaration,
   the byte-identical round trip, BOM stripping, CRLF preservation, an atomic save, the one-line rule,
   the nested list-item rule, reading a criterion however it was decorated, and whitespace collapsing

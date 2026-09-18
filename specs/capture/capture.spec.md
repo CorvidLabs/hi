@@ -86,7 +86,7 @@ named back to them (hi: CAPTURE-11).
 4a. That reservation check is one lookup shared with `check`, so an id `hi check` reports as sitting
    where nothing reads it is always an id capture refuses to hand out. A retired `SEND-1` in
    `hi/Archive.md` was reported by `check` and reissued by capture for four releases, because the
-   two walked different sets of files (DECISIONS.md §31).
+   two walked different sets of files (DECISIONS.md §32).
 5. The next-free hint is always a single-level top-level id, `FAMILY-<n>` where `n` is
    `Workspace::next_free(family)`. It is never a case or a step, even when the rejected id was
    nested.
@@ -146,7 +146,9 @@ named back to them (hi: CAPTURE-11).
     placement is delegated to `Doc::insert`, which keeps a family's block contiguous and a parent
     immediately followed by its descendants (hi: CAPTURE-4). When the destination file has no
     `## Criteria` heading at all, `Doc::insert` opens one after the file's last content line and
-    inserts there, rather than appending into whatever the file happened to end with
+    inserts there, rather than appending into whatever the file happened to end with. It then reads
+    the result back and refuses rather than reporting a capture nothing can find, which is what an
+    unfinished document gets (hi: FILE-22, doc's REQ-doc-020)
     (hi: CAPTURE-7). A `# `-level heading below the criteria block closes the section as `## ` does
     and records the append point at the end of that block, so a criterion for a family the file
     declares but has not used yet opens its block at the bottom of `## Criteria`, above the later
@@ -327,7 +329,8 @@ named back to them (hi: CAPTURE-11).
 | Discovery never reaches capture, because there is no qualifying `hi/` and no `.git` above the start directory | `Workspace::find` returns `this is not a repository, and no hi/ directory was found above it. hi anchors to a repository, so run it inside one`; `capture` is never called (hi: CAPTURE-10) |
 | `hi/` cannot be created, or the new family file cannot be written | The underlying `std::io::Error` propagates through `anyhow`; the criterion is not inserted |
 | An existing file with the target stem cannot be read while being adopted | `Doc::load`'s error propagates as `reading <path>`; the criterion is not inserted. Nothing in `Doc::parse` can fail, so a malformed file is adopted rather than rejected |
-| An adopted file has no frontmatter block | `Doc::insert`'s `rewrite_families` refuses with ``<absolute path> has no frontmatter, so add `---\nhi: 1\n---` at the top`` (the `\n` is literal in the message). Nothing is written. The adopted file is not scaffolded over and not saved. Note the in-memory `Doc` has already been mutated (a `## Criteria` section may have been opened and the criterion line spliced in) at that point, but nothing reaches disk because `save` is never reached |
+| An adopted file has no frontmatter block | `Doc::insert`'s `rewrite_families` refuses with ``<absolute path> has no frontmatter, so add `---\nhi: 1\n---` at the top`` (the `\n` is literal in the message). Nothing is written. The adopted file is not scaffolded over and not saved. `Doc::insert` restores the in-memory `Doc` before returning the error, so the splice it had already made is undone |
+| An adopted file ends inside a fence nobody closed | `Doc::insert` reads its own buffer back, finds the criterion is part of the example rather than part of the file, and refuses with `capturing <id> would put it in <path> where hi cannot read it back, so nothing was written` plus a hint naming the line the fence opens on. Nothing is written and the unfinished prose is untouched. This is a refusal, not an I/O failure, so it sits under hi: CAPTURE-5 like every other one (hi: FILE-22.a) |
 | `Doc::save` fails on a full disk, on a quota, or on a rename that cannot complete | `write_atomically` deletes its `.<name>.hi-tmp` sibling and the error propagates as `writing <path>`. The destination file is left byte-for-byte as it was; it is never truncated first (hi: FILE-8) |
 | `Doc::insert` or `Doc::save` fails after a *new* family file was written | The error propagates. The scaffolded family file has already been written by `create_file`'s `fs::write` at that point and remains on disk, empty of criteria |
 | `out::refresh_index` cannot rewrite `INTENT.md`, for any reason including INDEX-2.b's refusal | Not an error. The message is carried out on `Captured.index_error` and `main` prints `note: the feature list in INTENT.md was not refreshed: <text>` on stderr; the exit code stays 0 and the criterion is stored (hi: INDEX-4.a) |

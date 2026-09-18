@@ -115,7 +115,7 @@ pub fn run(workspace: &Workspace) -> Report {
     // criteria file, or inside a file hi skips because its name is hi's own.
     // Both come from `Workspace::strays`, which is the same lookup `capture`
     // refuses an id by, so what is reported here and what is refused there can
-    // never disagree again (hi: CAPTURE-14, FILE-20, DECISIONS.md §31).
+    // never disagree again (hi: CAPTURE-14, FILE-20, DECISIONS.md §32).
     for stray in workspace.strays() {
         let Stray {
             file, line, token, ..

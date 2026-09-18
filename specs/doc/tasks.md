@@ -39,9 +39,12 @@ spec: doc.spec.md
   exercises `Doc::load` and `Doc::save` on the success path only. `tests/cli.rs` covers the refusal
   end to end (`an_existing_id_refuses_with_exit_1_and_writes_nothing` and
   `a_malformed_id_refuses_without_writing` both compare the file byte for byte before and after), but
-  every one of those refusals happens before `insert` is reached. `insert`'s own post-splice "no
-  frontmatter" refusal is untested anywhere; it was confirmed by hand against the built binary, which
-  leaves the file on disk untouched.
+  every one of those refusals happens before `insert` is reached. `insert`'s own read-back refusal is
+  now covered by `a_capture_into_an_unfinished_fence_is_refused_rather_than_lost`, which asserts the
+  in-memory text is byte-identical afterwards, and end to end by `cli::an_id_is_never_handed_out_twice`
+  case 5. Its "no frontmatter" refusal is still untested; it was confirmed by hand against the built
+  binary, which leaves the file on disk untouched. Both restore the document now, so neither can hand
+  a half-spliced buffer to `save`.
 - REQ-doc-017's failure paths are untested: no test makes the temp-file write or the rename fail, so
   only the happy path and the absence of a leftover temp file are verified.
 - No test covers the `to_text()` exception for content that does not end in a newline, nor the empty
@@ -49,8 +52,11 @@ spec: doc.spec.md
 - No test covers the singular `family:` frontmatter key or an unterminated `---` fence; both are
   parse branches with defined behavior. A file carrying two families entries is untested and its
   behavior is a quirk rather than a decision (see Tasks).
-- No test covers an unclosed fenced code block swallowing the rest of the body, which is the one
-  fence branch the three fence tests do not reach.
+- An unclosed fenced code block swallowing the rest of the body is covered from the write side by
+  `a_capture_into_an_unfinished_fence_is_refused_rather_than_lost`, which also asserts that closing
+  the fence makes the same capture succeed. Nothing yet asserts on the *parse* of a file whose
+  criteria sit below an unclosed fence; `check` reports those lines as strays, and that path is
+  covered there rather than here.
 - No test covers `used_families()`, `all()` or `name()` directly; they are exercised only through
   sibling modules.
 - No test covers a criterion line whose continuation is tab-indented, nor `render_criterion` with a
