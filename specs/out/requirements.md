@@ -528,6 +528,19 @@ Acceptance Criteria
 - Both fields are present in every export, whatever the scope, because REQ-out-005 says a scoped
   export is the same payload with less in it.
 
+### REQ-out-021
+
+The out module SHALL classify a `hi/AGENTS.md` body as current, a known older template, or other,
+by byte identity after folding a BOM and CRLF (hi: HABIT-6.a, HABIT-6.b).
+
+Acceptance Criteria
+
+- `classify_agent_file` folds a leading BOM and every CR, then compares to `agent_instructions`
+  (Current) and to each file in `src/seed/` (Prior). Anything else is Other.
+- One added space is Other. Fuzzy matching would rewrite a person's words.
+- `write_with_endings` is the writer `seed_agent_files` uses for a Prior rewrite, so the endings
+  the file had come back (hi: FILE-10).
+
 ## Constraints
 
 - No network access. `export`, `ls`, `index`, and the default `issue` read local files only, and

@@ -2,7 +2,9 @@
 //!
 //! `hi check` never judges a criterion's content. It reports only things that
 //! make a file structurally wrong: a duplicate id, a case with no parent, an id
-//! that collides with a retired one, or a line that cannot be parsed as an id.
+//! that collides with a retired one, a line that cannot be parsed as an id,
+//! a family a file never declared, a criterion stranded outside every section,
+//! or a family two files both claim.
 //! Incomplete intent is the normal state of intent and is never an error.
 
 use std::collections::HashMap;
@@ -41,6 +43,7 @@ pub enum Kind {
     UnparseableId,
     UndeclaredFamily,
     StrayCriterion,
+    DuplicateFamily,
 }
 
 impl Kind {
@@ -52,6 +55,7 @@ impl Kind {
             Kind::UnparseableId => "unparseable-id",
             Kind::UndeclaredFamily => "undeclared-family",
             Kind::StrayCriterion => "stray-criterion",
+            Kind::DuplicateFamily => "duplicate-family",
         }
     }
 }
@@ -61,7 +65,7 @@ serialize_as_code!(Kind);
 /// What a note is about, under a name that outlives its wording.
 ///
 /// A note is not a problem and never will be: none of these moves the exit
-/// code, and none of them is a seventh `Kind`. `hi check` fails on a
+/// code, and none of them is a `Kind`. `hi check` fails on a
 /// structurally broken file and on nothing else (hi: CHECK-1, CHECK-6).
 ///
 /// These are the machine-readable half. The wording beside them is for a
@@ -186,7 +190,7 @@ fn product_intent_note(workspace: &Workspace) -> Option<Note> {
 /// Run every structural check across the workspace.
 ///
 /// The `Result` is operational, never a finding: a file hi cannot read at all
-/// is not one of the six structural problems and never becomes a seventh. It is
+/// is not a structural problem and never becomes one. It is
 /// hi saying it could not do the check, which is the only honest answer when
 /// part of the repository is unreadable (hi: CAPTURE-15, CHECK-1,
 /// DECISIONS.md §36).
@@ -324,6 +328,44 @@ pub fn run(workspace: &Workspace) -> Result<Report> {
         }
     }
 
+    // A family is a function from name to file. Two files both declaring the
+    // same one means capture has no unique home for a new criterion, and
+    // renaming a file would move later captures because `doc_for_family`
+    // used to take the first path-sorted hit and say nothing (hi: CHECK-2.g).
+    // Reported on the later file, naming the first, the same shape as
+    // `duplicate-id`. A family listed twice in *one* file is the same
+    // declaration written twice, not two homes, so it is not this.
+    {
+        let mut declared: HashMap<&str, (String, usize)> = HashMap::new();
+        for doc in &workspace.docs {
+            let file = workspace.rel(&doc.path);
+            let line = doc
+                .front
+                .families_span
+                .map(|(start, _)| start + 1)
+                .unwrap_or(1);
+            let mut seen_here: Vec<&str> = Vec::new();
+            for family in &doc.front.families {
+                if seen_here.contains(&family.as_str()) {
+                    continue;
+                }
+                seen_here.push(family);
+                if let Some((first_file, first_line)) = declared.get(family.as_str()) {
+                    problems.push(Problem {
+                        kind: Kind::DuplicateFamily,
+                        file: file.clone(),
+                        line,
+                        id: family.clone(),
+                        message: format!(
+                            "family {family} is also declared in {first_file}:{first_line}"
+                        ),
+                    });
+                } else {
+                    declared.insert(family, (file.clone(), line));
+                }
+            }
+        }
+    }
     problems.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
 
     let mut notes: Vec<Note> = Vec::new();
@@ -419,8 +461,37 @@ mod tests {
         let a = format!("{}SEND-1  One.\n", head("SEND"));
         let b = format!("{}SEND-1  Again.\n", head("SEND"));
         let report = run(&workspace(&[("a.md", &a), ("b.md", &b)])).unwrap();
-        assert_eq!(report.problems.len(), 1);
-        assert_eq!(report.problems[0].kind, Kind::DuplicateId);
+        let kinds: Vec<Kind> = report.problems.iter().map(|p| p.kind).collect();
+        assert!(kinds.contains(&Kind::DuplicateId), "{kinds:?}");
+        assert!(
+            kinds.contains(&Kind::DuplicateFamily),
+            "the same two files also both declare SEND: {kinds:?}"
+        );
+    }
+
+    #[test]
+    fn catches_a_family_declared_by_two_files() {
+        // Distinct ids, so this is not `duplicate-id`. Capture used to append
+        // a new SEND to whichever file sorted first, and renaming a file
+        // moved later captures (hi: CHECK-2.g, CAPTURE-16).
+        let a = format!("{}SEND-1  One.\n", head("SEND"));
+        let b = format!("{}SEND-2  Two.\n", head("SEND"));
+        let report = run(&workspace(&[("a.md", &a), ("b.md", &b)])).unwrap();
+        assert_eq!(report.problems.len(), 1, "{:?}", report.problems);
+        assert_eq!(report.problems[0].kind, Kind::DuplicateFamily);
+        assert_eq!(report.problems[0].id, "SEND");
+        assert_eq!(report.problems[0].file, "hi/b.md");
+        assert!(
+            report.problems[0].message.contains("hi/a.md"),
+            "{}",
+            report.problems[0].message
+        );
+    }
+
+    #[test]
+    fn a_family_listed_twice_in_one_file_is_not_two_homes() {
+        let raw = format!("{}SEND-1  One.\n", head("SEND, SEND"));
+        assert!(run(&workspace(&[("chat.md", &raw)])).unwrap().ok());
     }
 
     #[test]

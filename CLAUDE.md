@@ -24,7 +24,7 @@ Each module owns one thing, and `main.rs` owns none of them.
 | `src/id.rs` | The id grammar: family charset, strict number/letter alternation, parent and descendant relations |
 | `src/doc.rs` | Parsing and writing `hi/*.md`; surgical insertion that leaves the rest of the file byte-identical; `retire` |
 | `src/workspace.rs` | Finding `hi/`, loading docs, and lookups. Writes nothing |
-| `src/check.rs` | Structural validation only: six problem kinds, and everything that is deliberately not one |
+| `src/check.rs` | Structural validation only: seven problem kinds, and everything that is deliberately not one |
 | `src/capture.rs` | The write path. A new id just works; an existing id refuses. Starts `INTENT.md` when the repo has none |
 | `src/out.rs` | `ls`, `issue`, `export`, `index` |
 | `src/view.rs` | The HTML page, and the only markdown rendering in the crate. `view/style.css`, `view/app.js` and the three `view/theme*`/`view/*.html` files are `include_str!`-ed, never built by `format!` |
@@ -45,7 +45,7 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   and explicit hard breaks. Everything hi *writes* is one line per paragraph — `agent_instructions`,
   `starter_intent`, this repository's own `hi/*.md` intent blocks, the README's example — because
   the file an adopter reads first is the one they copy. `hi view` and `hi export` were checked and
-  deliberately left alone. Do not make capture rewrap prose and do not add a seventh check kind for
+  deliberately left alone. Do not make capture rewrap prose and do not add a check kind for
   wrapping: `FILE-4` and `CHECK-1` both say no (DECISIONS.md §29, `hi: ISSUE-7`, `FILE-21`).
 - **A criterion is a plain sentence, and hi never parses it.** No prefix, no fields, no subject
   read off the front. Every verb (`ls`, `export`, `issue`, `view`) prints the author's words
@@ -104,7 +104,7 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   about an id it had not been able to look for, so `check` and `capture` agreed on the same wrong
   answer and a reserved id was handed out. `let Ok(x) = read(..) else { continue }` is the same
   shape as `unwrap_or_default` on a read: distrust both wherever the answer decides whether
-  something exists. The failure is operational and never a seventh check kind (`hi: CAPTURE-15`,
+  something exists. The failure is operational and never a check kind (`hi: CAPTURE-15`,
   DECISIONS.md §36).
 - **The automatic refresh rewrites a block and installs none.** `refresh_index` passes
   `Absent::LeaveAlone` so its whole effect on disk is a span replacement between two markers.
@@ -139,8 +139,10 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
 - **Capture validates before it mutates.** Every refusal path must return before any filesystem
   write (`hi: CAPTURE-5`). There is a test for this; keep it true.
 - **`hi check` never fails on unfinished intent.** Only on a structurally broken file
-  (`hi: CHECK-1`). Adding a quality gate here would break the whole premise. There are six
-  structural problems, and the README says "exactly six", so adding a seventh means editing both.
+  (`hi: CHECK-1`). Adding a quality gate here would break the whole premise. There are seven
+  structural problems, listed in [HI-1.md](HI-1.md). 1.0 freezes those seven and the policy
+  that they are structural only; an eighth is a 2.0. Do not add a kind for wrapping, for
+  English, or for unfinished intent (DECISIONS.md §39).
 - **The fledge shim never resolves `hi` from `PATH`.** Another project ships a binary called `hi`
   that is a coding agent with shell access (DECISIONS.md section 13), so `bin/fledge-hi` runs this
   plugin's own build or fails. Do not add a PATH fallback.
@@ -160,7 +162,7 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   printed on stderr, and the command still exits 0. Do not let it raise, do not move it above
   `Doc::save`, and do not give it a lock: `capture` and `retire` already hold `lock::acquire` and
   it is not reentrant (DECISIONS.md §30, `hi: INDEX-4`, `INDEX-4.a`).
-- **`hi check`'s note about that list is a note, not a seventh problem.** `out::index_note` is
+- **`hi check`'s note about that list is a note, not a problem.** `out::index_note` is
   pushed onto `Report::note`, which `Report::ok` never reads, so the exit code cannot move. It is
   the first thing `check` nags about that hi itself maintains, and it is only admissible because
   capture and retire keep the list current, leaving one cause: a criterion typed in by hand, which

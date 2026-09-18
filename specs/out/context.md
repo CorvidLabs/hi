@@ -10,9 +10,9 @@ spec: out.spec.md
   nothing made anyone run `hi index`, and hi's own repo only escaped it because
   `scripts/index-is-current.sh` is in its gate, which no adopter has (DECISIONS.md §30,
   hi: INDEX-4). Nothing about what gets rewritten changed; only who carries the failure.
-- `index_note` is the read-only half, for `check`. It is a `note:` and not a seventh `check::Kind`,
-  and it must stay one: the README promises exactly six structural problems and CHECK-1 promises
-  check fails on a structurally broken file and nothing else (hi: INDEX-4.b).
+- `index_note` is the read-only half, for `check`. It is a `note:` and not a `check::Kind`,
+  and it must stay one: `hi check` fails on a structurally broken file and nothing else
+  (hi: INDEX-4.b, CHECK-1, HI-1.md).
 - `out` is the read half of hi. It takes an already-loaded `Workspace` and renders it. It does not
   open, parse, or write any `hi/*.md` file; those belong to `doc`, `workspace`, and `capture`.
   `INTENT.md` is the single file this module writes, through `doc::write_atomically`, which also

@@ -56,7 +56,7 @@ backtrace (hi: CAPTURE-1.c).
 | Type | Description |
 |------|-------------|
 | `Cli` (private) | clap `Parser` for the non-capture surface: a global `--root` and one required subcommand. `arg_required_else_help` makes bare `hi` print help. |
-| `Command` (private) | clap `Subcommand` enum: `Check { json }`, `Ls { family, retired }`, `Issue { id, create, repo }`, `Export { scope }`, `Retire { id, reason }`, `Index`, `View { out }`. |
+| `Command` (private) | clap `Subcommand` enum: `Check { json }`, `Ls { family, retired }`, `Issue { id, create, repo }`, `Export { scope }`, `Retire { id, reason }`, `Index`, `View { out }`, `Seed`. |
 
 ### Traits
 
@@ -264,3 +264,4 @@ backtrace (hi: CAPTURE-1.c).
 | 2026-09-17 | Claude | The `Retire` arm calls `out::refresh_index` after `Doc::save`, so retiring a criterion leaves the generated feature list true the way capturing one now does (hi: INDEX-4, DECISIONS.md §30). The failure is printed on stderr as a note and never changes the exit code (hi: INDEX-4.a). Added invariants 16 and 17 and an error row. This pass also added `Retire { id, reason }` to the `Command` enum row, which the subcommand has had since 0.4.0 and this spec had never listed. |
 | 2026-09-17 | Claude | The `Retire` arm reloads the workspace under the lock instead of writing from the copy `run` read before it. Two concurrent retires used to both report success and leave one criterion live again, because the second wrote a file it had read before the first one landed (hi: RETIRE-7, FILE-19, DECISIONS.md §33). Extended invariant 16. |
 | 2026-09-18 | Claude | The `Index` arm takes the write lock, through a new private `run_index`, and reloads the workspace under it. It was the one read-modify-write outside the lock and the only path that can install a block: unlocked, a capture finishing between its read of `INTENT.md` and its write is undone, with both commands printing success. `hi view` deliberately takes none — it never reads the page it writes, its output is derived and gitignored, and `lock::acquire` creates `hi/`, which a read verb has no business doing. Extended invariant 16 and added REQ-main-009 (hi: INDEX-5, FILE-19, DECISIONS.md §38). |
+| 2026-09-18 | Claude | `Command::Seed` takes the write lock, reloads, and dispatches to `capture::seed_agent_files`. Added REQ-main-010 (hi: HABIT-6, DECISIONS.md §39). |

@@ -55,7 +55,7 @@ Acceptance Criteria
 - A `Stray` carries the workspace-relative `file`, the 1-based `line`, the id-shaped `token` and the `place`. The token is whatever the source recorded: `Doc::stray` keeps markdown emphasis (`**SEND-9**`), `criterion_tokens` has already removed it. `check` quotes it back verbatim, so neither is normalized here.
 - `find_stray` compares each token with `doc::strip_emphasis` applied and ASCII-uppercased, and returns the first match.
 - A skipped file that cannot be read or decoded fails the whole lookup with `reading <file>: <cause>` and a hint saying hi has to read it before it can say whether an id is taken. `strays` returns `Result<Vec<Stray>>`. It used to pass such a file over and carry on, so the lookup answered "this id is free" about a file it had not been able to look in — and because `check` and `capture` share the lookup, the two now agreed on the same wrong answer (hi: CAPTURE-15, DECISIONS.md §36).
-- `check` builds its `StrayCriterion` problems from the same call, so an id reported as used and an id refused by capture are by construction the same set — and a failure of the lookup fails both, rather than making both wrong. The failure is operational and is never a seventh problem kind: `check::run` returns `Result<Report>`, the error exits 1 through `main::fail`, and `hi check` still fails on exactly six structural things (hi: CHECK-1). They were two scans over two different sets of files, and a retired id in `hi/Archive.md` was reported by one and reissued by the other (DECISIONS.md §32).
+- `check` builds its `StrayCriterion` problems from the same call, so an id reported as used and an id refused by capture are by construction the same set — and a failure of the lookup fails both, rather than making both wrong. The failure is operational and is never an eighth problem kind: `check::run` returns `Result<Report>`, the error exits 1 through `main::fail`, and `hi check` still fails on exactly seven structural things (hi: CHECK-1). They were two scans over two different sets of files, and a retired id in `hi/Archive.md` was reported by one and reissued by the other (DECISIONS.md §32).
 - Reading inside hi's own files reserves ids and nothing more: `docs`, `criteria_count`, `families` and the generated feature list are untouched by `strays`, so `hi/AGENTS.md` never becomes a file that holds criteria (DECISIONS.md §27).
 - A fenced block in a skipped file is an example rather than structure, exactly as under `## Intent`, so documenting the format in a `hi/README.md` reserves nothing (hi: FILE-9).
 
@@ -234,10 +234,10 @@ Acceptance Criteria
 - One such file refuses the whole workspace. A neighbouring file at this version does not rescue it:
   hi cannot answer a question about a repository it has only partly read, which is the same sentence
   REQ-workspace-011 makes about a file it could not decode.
-- The refusal is **operational, never a finding**. It is not a seventh `check::Kind` and it does not
-  become one: the six structural problems are things hi found wrong inside a file it read, and this
-  is hi saying it did not read the file. `hi check` still fails on exactly six structural things and
-  still never fails on unfinished intent (hi: CHECK-1, DECISIONS.md §36, §38).
+- The refusal is **operational, never a finding**. It is not a `check::Kind` and it does not
+  become one: the structural problems are things hi found wrong inside a file it read, and this
+  is hi saying it did not read the file. `hi check` still never fails on unfinished intent
+  (hi: CHECK-1, DECISIONS.md §36, §38).
 - Because it is raised in `load`, it covers every verb at once — `check`, `ls`, `issue`, `export`,
   `index`, `view`, `retire` and capture — rather than seven call sites that have to be kept in step.
 - Because `load` runs before `lock::acquire`, a refused capture has written nothing at all: not the
@@ -246,3 +246,18 @@ Acceptance Criteria
   criteria (DECISIONS.md §27).
 - `rel_to` is the free function `Workspace::rel` delegates to, so the refusal can name a file before
   there is a `Workspace` to ask (hi: FILE-12).
+
+### REQ-workspace-014
+
+`family_declarers` SHALL return every doc whose frontmatter lists the family, in load order
+(hi: CHECK-2.g).
+
+Acceptance Criteria
+
+- Load order is path-sorted, so the result is stable for a given tree and unstable across a rename —
+  which is why a length other than one is a problem, not a tie-break.
+- `doc_for_family` still returns the first of those, then the first user. That is a lookup, not a
+  decision. Capture of a new top-level id refuses when this returns more than one (REQ-capture-018);
+  `hi check` reports `duplicate-family` from its own walk of the same declarations (REQ-check-016).
+- A family listed twice in one file appears once in that file's contribution, because the question
+  is how many homes, not how many times the name was typed.

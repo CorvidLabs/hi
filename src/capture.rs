@@ -133,6 +133,26 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
         .parent()
         .and_then(|parent| workspace.find_id(&parent).map(|(index, _)| index));
 
+    // Two files declaring the same family means a new top-level id has no
+    // unique home. First-wins-by-path-order used to pick one, and renaming a
+    // file moved later captures. A case still follows its parent
+    // (hi: CAPTURE-4.a, CAPTURE-16, CHECK-2.g).
+    if parent_file.is_none() {
+        let owners = workspace.family_declarers(&id.family);
+        if owners.len() > 1 {
+            let files = owners
+                .iter()
+                .map(|&index| workspace.rel(&workspace.docs[index].path))
+                .collect::<Vec<_>>()
+                .join(" and ");
+            bail!(
+                "{} is declared in {files}, so a new criterion has nowhere that is uniquely its home.\n\
+                 hint:  leave it in one file's families list, then capture again",
+                id.family
+            );
+        }
+    }
+
     let (index, created_file) = match parent_file.or_else(|| workspace.doc_for_family(&id.family)) {
         Some(index) => (index, false),
         None => start_file(workspace, &id.family)?,
@@ -247,6 +267,59 @@ fn start_agent_files(workspace: &Workspace) -> Vec<String> {
     started
 }
 
+/// What `hi seed` did to `hi/AGENTS.md`.
+#[derive(Debug)]
+pub enum Seeded {
+    /// The file was missing; hi wrote the current text (and the CLAUDE.md
+    /// pointer beside it).
+    Created(Vec<String>),
+    /// The file was still a template hi had shipped; hi replaced it.
+    Updated(String),
+    /// The file already is the current text.
+    Current,
+}
+
+/// Rewrite `hi/AGENTS.md` when it is still a template hi shipped, create it
+/// when it is missing, and refuse when a person has edited it.
+///
+/// Write-once is the property that protects a file somebody touched. It is
+/// not a reason to leave hi's own unmodified bytes frozen at 0.5.0 when 1.0
+/// freezes the convention those bytes describe (hi: HABIT-6, DECISIONS.md §39).
+/// Capture still only writes the file when it is absent, so the path that
+/// runs on every thought never overwrites; this is the verb that migrates.
+pub fn seed_agent_files(workspace: &Workspace) -> Result<Seeded> {
+    if !workspace.dir.exists() {
+        fs::create_dir_all(&workspace.dir)?;
+    }
+    let agents = workspace.dir.join("AGENTS.md");
+    match fs::read_to_string(&agents) {
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            fs::write(&agents, crate::out::agent_instructions())?;
+            let mut started = vec![workspace.rel(&agents)];
+            let claude = workspace.dir.join("CLAUDE.md");
+            if claude.symlink_metadata().is_err() {
+                link_to_agents(&claude)?;
+                started.push(workspace.rel(&claude));
+            }
+            Ok(Seeded::Created(started))
+        }
+        Err(err) => bail!("reading {}: {err}", workspace.rel(&agents)),
+        Ok(raw) => match crate::out::classify_agent_file(&raw) {
+            crate::out::AgentTemplate::Current => Ok(Seeded::Current),
+            crate::out::AgentTemplate::Prior => {
+                crate::out::write_with_endings(&agents, &crate::out::agent_instructions(), &raw)?;
+                Ok(Seeded::Updated(workspace.rel(&agents)))
+            }
+            crate::out::AgentTemplate::Other => bail!(
+                "{} is not a template hi has shipped; it is yours.\n\
+                 hint:  delete it and run `hi seed` if you want the current text, \
+                 and nothing else has to change",
+                workspace.rel(&agents)
+            ),
+        },
+    }
+}
+
 /// Point `hi/CLAUDE.md` at `AGENTS.md`, by symlink where the platform allows.
 ///
 /// One truth beats two copies that drift. Where a symlink cannot be made, a
@@ -352,6 +425,166 @@ mod tests {
             !root.join("hi/agents.md").is_file()
                 || before == fs::read_to_string(root.join("hi/agents.md")).unwrap()
         );
+        assert_eq!(
+            fs::read_to_string(root.join("hi/AGENTS.md")).unwrap(),
+            before
+        );
+    }
+
+    #[test]
+    fn a_family_two_files_both_claim_is_refused_and_writes_nothing() {
+        let root = temp_dir("dup-family");
+        fs::write(
+            root.join("hi/a.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n# A\n\n## Criteria\n\nSEND-1  One.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("hi/b.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n# B\n\n## Criteria\n\nSEND-2  Two.\n",
+        )
+        .unwrap();
+        let before_a = fs::read_to_string(root.join("hi/a.md")).unwrap();
+        let before_b = fs::read_to_string(root.join("hi/b.md")).unwrap();
+        let mut workspace = Workspace::load(&root).unwrap();
+        let err = capture(&mut workspace, "SEND-3", "three").unwrap_err();
+        let said = err.to_string();
+        assert!(
+            said.contains("hi/a.md") && said.contains("hi/b.md"),
+            "{said}"
+        );
+        assert_eq!(fs::read_to_string(root.join("hi/a.md")).unwrap(), before_a);
+        assert_eq!(fs::read_to_string(root.join("hi/b.md")).unwrap(), before_b);
+    }
+
+    #[test]
+    fn a_case_still_lands_with_its_parent_when_the_family_is_split() {
+        let root = temp_dir("dup-family-case");
+        fs::write(
+            root.join("hi/a.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n# A\n\n## Criteria\n\nSEND-1  One.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("hi/b.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n# B\n\n## Criteria\n\nSEND-2  Two.\n",
+        )
+        .unwrap();
+        let mut workspace = Workspace::load(&root).unwrap();
+        let done = capture(&mut workspace, "SEND-1.a", "a case of one").unwrap();
+        assert_eq!(done.file, "hi/a.md");
+        assert!(
+            fs::read_to_string(root.join("hi/a.md"))
+                .unwrap()
+                .contains("SEND-1.a")
+        );
+        assert!(
+            !fs::read_to_string(root.join("hi/b.md"))
+                .unwrap()
+                .contains("SEND-1.a")
+        );
+    }
+
+    #[test]
+    fn seed_rewrites_a_template_hi_has_shipped() {
+        let root = temp_dir("seed-prior");
+        fs::write(
+            root.join("hi/AGENTS.md"),
+            include_str!("seed/agents_0_5.md"),
+        )
+        .unwrap();
+        let workspace = Workspace::load(&root).unwrap();
+        match seed_agent_files(&workspace).unwrap() {
+            Seeded::Updated(file) => assert_eq!(file, "hi/AGENTS.md"),
+            other => panic!("expected Updated, got {other:?}"),
+        }
+        assert_eq!(
+            fs::read_to_string(root.join("hi/AGENTS.md")).unwrap(),
+            crate::out::agent_instructions()
+        );
+    }
+
+    #[test]
+    fn seed_refuses_a_file_somebody_edited() {
+        let root = temp_dir("seed-edited");
+        fs::write(root.join("hi/AGENTS.md"), "mine now\n").unwrap();
+        let workspace = Workspace::load(&root).unwrap();
+        let err = seed_agent_files(&workspace).unwrap_err().to_string();
+        assert!(err.contains("it is yours"), "{err}");
+        assert_eq!(
+            fs::read_to_string(root.join("hi/AGENTS.md")).unwrap(),
+            "mine now\n"
+        );
+    }
+
+    #[test]
+    fn seed_is_quiet_when_the_file_is_already_current() {
+        let root = temp_dir("seed-current");
+        fs::write(root.join("hi/AGENTS.md"), crate::out::agent_instructions()).unwrap();
+        let workspace = Workspace::load(&root).unwrap();
+        assert!(matches!(
+            seed_agent_files(&workspace).unwrap(),
+            Seeded::Current
+        ));
+    }
+
+    #[test]
+    fn seed_writes_the_file_when_it_is_missing() {
+        let root = temp_dir("seed-missing");
+        let workspace = Workspace::load(&root).unwrap();
+        match seed_agent_files(&workspace).unwrap() {
+            Seeded::Created(files) => {
+                assert!(files.contains(&"hi/AGENTS.md".to_string()), "{files:?}");
+                assert!(files.contains(&"hi/CLAUDE.md".to_string()), "{files:?}");
+            }
+            other => panic!("expected Created, got {other:?}"),
+        }
+        assert_eq!(
+            fs::read_to_string(root.join("hi/AGENTS.md")).unwrap(),
+            crate::out::agent_instructions()
+        );
+    }
+
+    #[test]
+    fn seed_recognises_a_prior_template_through_a_bom_and_crlf() {
+        let root = temp_dir("seed-folded");
+        let prior = include_str!("seed/agents_0_6.md").replace('\n', "\r\n");
+        fs::write(root.join("hi/AGENTS.md"), format!("\u{feff}{prior}")).unwrap();
+        let workspace = Workspace::load(&root).unwrap();
+        assert!(matches!(
+            seed_agent_files(&workspace).unwrap(),
+            Seeded::Updated(_)
+        ));
+        let wrote = fs::read_to_string(root.join("hi/AGENTS.md")).unwrap();
+        assert!(wrote.contains("\r\n"), "kept the endings the file had");
+        assert!(!wrote.contains('\u{feff}'));
+        assert_eq!(
+            wrote.replace("\r\n", "\n"),
+            crate::out::agent_instructions()
+        );
+    }
+
+    #[test]
+    fn capture_does_not_rewrite_a_known_old_template() {
+        // Write-once on the capture path is what keeps a surprise rewrite off
+        // the command that runs on every thought. `hi seed` is the verb
+        // (hi: HABIT-6, DECISIONS.md §39).
+        let root = temp_dir("capture-leaves-old");
+        fs::write(
+            root.join("hi/chat.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\nSEND-1  One.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("hi/AGENTS.md"),
+            include_str!("seed/agents_0_5.md"),
+        )
+        .unwrap();
+        fs::write(root.join("hi/CLAUDE.md"), "See @AGENTS.md\n").unwrap();
+        let before = fs::read_to_string(root.join("hi/AGENTS.md")).unwrap();
+        let mut workspace = Workspace::load(&root).unwrap();
+        let done = capture(&mut workspace, "SEND-2", "two").unwrap();
+        assert!(done.started_agent.is_empty());
         assert_eq!(
             fs::read_to_string(root.join("hi/AGENTS.md")).unwrap(),
             before

@@ -135,6 +135,23 @@ Acceptance Criteria
 - The read verbs `ls`, `issue`, `export` and `check` take no lock and write nothing, so there is
   nothing for one to protect.
 
+### REQ-main-010
+
+`hi seed` SHALL hold the write lock, reload under it, and dispatch to `capture::seed_agent_files`
+(hi: HABIT-6, FILE-19).
+
+Acceptance Criteria
+
+- The `Seed` arm takes `lock::acquire` on `<root>/hi`, reloads with `Workspace::find`, then calls
+  `capture::seed_agent_files`. The lock is the same one capture, retire and `hi index` take, so a
+  seed cannot interleave with a capture rewriting the same file.
+- Missing → print each created path. Prior template → print `updated to the current instruction`.
+  Already current → print `already current`. Edited → the error from `seed_agent_files`, exit 1,
+  nothing written (REQ-capture-019).
+- A file declaring an unknown `hi:` version is refused by `Workspace::find` before the lock, like
+  every other verb (REQ-workspace-013). `tests/cli.rs` includes `seed` in the future-format verb list.
+
+
 ## Constraints
 
 - Capture must stay the default action; requiring a subcommand to write a criterion would cost the reflex that the whole design is built around.

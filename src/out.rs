@@ -509,8 +509,8 @@ pub fn starter_intent_file(workspace: &Workspace) -> String {
 /// this repository, twice in one week (DECISIONS.md §37, §38, hi: HABIT-5).
 /// That is a habit, which is the category §27 said this file carries; what §27
 /// refused was the id grammar and the family list, both of which are facts
-/// about a format that is not frozen. `duplicate-id` is one of the six
-/// structural problems the README promises and `CHECK-2.a` captures, so the
+/// about a format that is not frozen. `duplicate-id` is one of the structural
+/// problems HI-1.md freezes and `CHECK-2.a` captures, so the
 /// one thing this sentence relies on is as close to frozen as hi has.
 ///
 /// The text is itself one line per paragraph, because the file somebody reads
@@ -534,6 +534,60 @@ pub fn agent_instructions() -> String {
      and it was only ever where your editor wrapped.\n\n\
      Run `hi --help` for the commands.\n"
         .to_string()
+}
+
+/// What `hi/AGENTS.md` currently is, relative to the templates hi has shipped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentTemplate {
+    /// Byte-identical to `agent_instructions`, after newline and BOM folding.
+    Current,
+    /// Byte-identical to a template a previous hi wrote, so it is still hi's
+    /// words and not the person's.
+    Prior,
+    /// Anything else: the person edited it, or some other tool wrote it.
+    Other,
+}
+
+/// Templates hi has shipped into `hi/AGENTS.md`, oldest first.
+///
+/// Recognition is byte identity after folding a BOM and CRLF, because that is
+/// the only way to know the file is still hi's words. A file a person touched
+/// is theirs (hi: HABIT-6.a, HABIT-6.b, DECISIONS.md §39).
+const PRIOR_AGENT_INSTRUCTIONS: &[&str] = &[
+    include_str!("seed/agents_0_5.md"),
+    include_str!("seed/agents_0_6.md"),
+];
+
+fn fold_agent_text(raw: &str) -> String {
+    raw.strip_prefix('\u{feff}')
+        .unwrap_or(raw)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+}
+
+/// Classify a `hi/AGENTS.md` body as current, a known older template, or other.
+pub fn classify_agent_file(raw: &str) -> AgentTemplate {
+    let folded = fold_agent_text(raw);
+    if folded == fold_agent_text(&agent_instructions()) {
+        AgentTemplate::Current
+    } else if PRIOR_AGENT_INSTRUCTIONS
+        .iter()
+        .any(|prior| folded == fold_agent_text(prior))
+    {
+        AgentTemplate::Prior
+    } else {
+        AgentTemplate::Other
+    }
+}
+
+/// Write `text` using the line endings `like` was stored with.
+pub fn write_with_endings(path: &std::path::Path, text: &str, like: &str) -> std::io::Result<()> {
+    let body = if like.contains("\r\n") {
+        text.replace('\n', "\r\n")
+    } else {
+        text.to_string()
+    };
+    std::fs::write(path, body)
 }
 
 /// Byte range of the generated block, matched on whole lines only.
@@ -1158,6 +1212,36 @@ mod tests {
             fs::read_to_string(workspace.intent_path()).unwrap(),
             before,
             "and nothing was guessed at"
+        );
+    }
+
+    #[test]
+    fn classify_knows_the_templates_hi_has_shipped() {
+        assert_eq!(
+            classify_agent_file(&agent_instructions()),
+            AgentTemplate::Current
+        );
+        assert_eq!(
+            classify_agent_file(include_str!("seed/agents_0_5.md")),
+            AgentTemplate::Prior
+        );
+        assert_eq!(
+            classify_agent_file(include_str!("seed/agents_0_6.md")),
+            AgentTemplate::Prior
+        );
+        // A BOM and CRLF are storage, not words. Folding them is how we tell
+        // hi's unmodified template from a file somebody touched (hi: HABIT-6.a).
+        let wrapped = format!(
+            "\u{feff}{}",
+            include_str!("seed/agents_0_5.md").replace('\n', "\r\n")
+        );
+        assert_eq!(classify_agent_file(&wrapped), AgentTemplate::Prior);
+        assert_eq!(classify_agent_file("mine now\n"), AgentTemplate::Other);
+        // One added space is an edit. Byte identity after folding is the whole
+        // of the recognition; a fuzzy match would rewrite somebody's words.
+        assert_eq!(
+            classify_agent_file(&format!("{} ", agent_instructions())),
+            AgentTemplate::Other
         );
     }
 }

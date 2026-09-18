@@ -138,6 +138,12 @@ impl Workspace {
     }
 
     /// Find which doc holds a family, by frontmatter declaration or by use.
+    ///
+    /// Returns the first path-sorted file that declares it, then the first
+    /// that uses it. That is a lookup, not a decision: when two files declare
+    /// the same family, `hi check` reports `duplicate-family` and capture
+    /// refuses a new top-level id rather than writing into this result
+    /// (hi: CHECK-2.g, CAPTURE-16).
     pub fn doc_for_family(&self, family: &str) -> Option<usize> {
         self.docs
             .iter()
@@ -148,6 +154,20 @@ impl Workspace {
                         .any(|c| c.id.as_ref().is_some_and(|id| id.family == family))
                 })
             })
+    }
+
+    /// Every doc whose frontmatter lists this family, in load order.
+    ///
+    /// Load order is path-sorted, so this is stable for a given tree and
+    /// unstable across a rename — which is why a length other than one is a
+    /// problem, not a tie-break (hi: CHECK-2.g).
+    pub fn family_declarers(&self, family: &str) -> Vec<usize> {
+        self.docs
+            .iter()
+            .enumerate()
+            .filter(|(_, doc)| doc.front.families.iter().any(|f| f == family))
+            .map(|(index, _)| index)
+            .collect()
     }
 
     /// Look up one criterion by id, active or retired.
@@ -304,8 +324,8 @@ fn rel_to(root: &Path, path: &Path) -> String {
 
 /// What to say to somebody whose file was written for a different hi.
 ///
-/// An operational failure and never one of the six structural problems. The
-/// six are things hi found wrong *in* a file it read; this is hi saying it did
+/// An operational failure and never a structural problem. The
+/// kinds are things hi found wrong *in* a file it read; this is hi saying it did
 /// not read the file at all, which is the same sentence as "unreadable" and
 /// already has a home (hi: CHECK-1, FILE-25, DECISIONS.md §36, §38).
 ///

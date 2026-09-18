@@ -14,7 +14,10 @@ process, and the `src/doc.rs` cases that pin the parser guarantees `check`'s out
 |-----------|------|----------------|
 | `src/check.rs` (`a_clean_workspace_has_no_problems`) | Unit | REQ-check-001, REQ-check-009. A parent and its case, family declared: `report.ok()`, `criteria == 2`, `families == ["SEND"]`. |
 | `src/check.rs` (`unfinished_intent_is_never_a_problem`) | Unit | REQ-check-001. One criterion with no spec, test, evidence or downstream work is clean. The comment in the test states the intent explicitly. |
-| `src/check.rs` (`catches_duplicate_ids_across_files`) | Unit | REQ-check-002. `SEND-1` in `a.md` and `b.md`: exactly one problem, kind `DuplicateId`. |
+| `src/check.rs` (`catches_duplicate_ids_across_files`) | Unit | REQ-check-002, REQ-check-016. `SEND-1` in `a.md` and `b.md`: kinds contain `DuplicateId` and `DuplicateFamily`. |
+| `src/check.rs` (`catches_a_family_declared_by_two_files`) | Unit | REQ-check-016. Distinct ids in two files both declaring SEND: exactly one problem, kind `DuplicateFamily`, reported on the later file. |
+| `src/check.rs` (`a_family_listed_twice_in_one_file_is_not_two_homes`) | Unit | REQ-check-016. `families: [SEND, SEND]` in one file is clean. |
+| `tests/cli.rs` (`check_fails_when_two_files_claim_the_same_family`) | Integration | REQ-check-016. Two files declaring SEND, distinct ids: exit 1, `duplicate-family` in text and in `--json`. |
 | `src/check.rs` (`catches_a_case_with_no_parent`) | Unit | REQ-check-003. `SEND-1.a` with no `SEND-1`: one problem, kind `OrphanCase`, message contains `SEND-1`. |
 | `src/check.rs` (`a_retired_criterion_may_keep_its_case_parent`) | Unit | REQ-check-003, REQ-check-004. Live `SEND-1` with `SEND-1.a` under `## Retired` is clean: the parent set includes retired ids, and a retired criterion is exempt from the retired-collision check. |
 | `src/check.rs` (`catches_reuse_of_a_retired_id`) | Unit | REQ-check-004, REQ-check-002. `SEND-3` live and retired: the kind list contains both `RetiredCollision` and `DuplicateId`. |

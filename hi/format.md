@@ -57,6 +57,8 @@ Ids are the one thing I am strict about, because an id that moves is worse than 
   - **ID-3.a**  A letter is another case of its parent, like SEND-1.a and SEND-1.b under SEND-1.
   - **ID-3.b**  A number is a step or a detail inside its parent, like SEND-1.a.1 inside SEND-1.a.
 - **ID-4**  If I write an id that breaks the alternation, hi tells me instead of quietly accepting it.
+- **ID-5**  Whatever order I capture, retire and edit in, alone or alongside another hi, an id I have seen is never given to a second sentence.
+  - **ID-5.a**  Every criterion keeps its id, its section and its sentence across those steps.
 
 ## Retired
 

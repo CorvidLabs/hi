@@ -1593,6 +1593,7 @@ fn a_file_from_a_later_format_is_refused_by_every_verb() {
         vec!["view"],
         vec!["retire", "SEND-1", "changed my mind"],
         vec!["SEND-2", "a new want"],
+        vec!["seed"],
     ] {
         let out = repo.run(&args);
         let said = stderr(&out);
@@ -1730,4 +1731,89 @@ fn the_agent_file_says_to_check_the_ids_after_a_merge() {
     assert!(text.contains("hi check"), "{text}");
     assert!(text.contains("merge"), "{text}");
     assert!(text.contains("same id"), "{text}");
+}
+
+#[test]
+fn check_fails_when_two_files_claim_the_same_family() {
+    // First-wins-by-path-order used to pick a home, say nothing, and move
+    // later captures when a file was renamed (hi: CHECK-2.g).
+    let repo = Repo::new("dup-family-check");
+    repo.write(
+        "hi/a.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n# A\n\n## Criteria\n\n- **SEND-1**  One.\n",
+    );
+    repo.write(
+        "hi/b.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n# B\n\n## Criteria\n\n- **SEND-2**  Two.\n",
+    );
+    let out = repo.run(&["check"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    let said = format!("{}{}", stdout(&out), stderr(&out));
+    assert!(said.contains("duplicate-family"), "{said}");
+    assert!(said.contains("SEND"), "{said}");
+
+    let json = repo.run(&["check", "--json"]);
+    assert_eq!(json.status.code(), Some(1));
+    let value: serde_json::Value = serde_json::from_str(&stdout(&json)).expect("valid json");
+    let kinds: Vec<&str> = value["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["kind"].as_str().unwrap())
+        .collect();
+    assert!(kinds.contains(&"duplicate-family"), "{value}");
+}
+
+#[test]
+fn capturing_into_a_family_two_files_claim_refuses_and_writes_nothing() {
+    let repo = Repo::new("dup-family-capture");
+    repo.write(
+        "hi/a.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n# A\n\n## Criteria\n\n- **SEND-1**  One.\n",
+    );
+    repo.write(
+        "hi/b.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n# B\n\n## Criteria\n\n- **SEND-2**  Two.\n",
+    );
+    let before_a = repo.read("hi/a.md");
+    let before_b = repo.read("hi/b.md");
+    let out = repo.run(&["SEND-3", "three"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(stderr(&out).contains("hi/a.md"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("hi/b.md"), "{}", stderr(&out));
+    assert!(stdout(&out).is_empty());
+    assert_eq!(repo.read("hi/a.md"), before_a);
+    assert_eq!(repo.read("hi/b.md"), before_b);
+}
+
+#[test]
+fn seed_rewrites_a_template_hi_has_shipped_and_refuses_an_edit() {
+    let repo = Repo::bare("seed-prior");
+    fs::create_dir_all(repo.root.join("hi")).unwrap();
+    repo.write("hi/AGENTS.md", include_str!("../src/seed/agents_0_5.md"));
+    let out = repo.run(&["seed"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("updated"), "{}", stdout(&out));
+    let text = repo.read("hi/AGENTS.md");
+    assert!(text.contains("hi check"), "{text}");
+    assert!(text.contains("one line per paragraph"), "{text}");
+
+    let repo = Repo::bare("seed-edited");
+    fs::create_dir_all(repo.root.join("hi")).unwrap();
+    repo.write("hi/AGENTS.md", "mine now\n");
+    let out = repo.run(&["seed"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(stderr(&out).contains("it is yours"), "{}", stderr(&out));
+    assert_eq!(repo.read("hi/AGENTS.md"), "mine now\n");
+}
+
+#[test]
+fn seed_writes_the_instruction_without_a_dummy_capture() {
+    let repo = Repo::bare("seed-missing");
+    let out = repo.run(&["seed"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("created"), "{}", stdout(&out));
+    assert!(repo.root.join("hi/AGENTS.md").is_file());
+    assert!(repo.root.join("hi/CLAUDE.md").exists());
+    assert!(!repo.root.join("INTENT.md").exists());
 }

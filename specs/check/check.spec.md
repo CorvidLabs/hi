@@ -18,10 +18,11 @@ depends_on:
 ## Purpose
 
 Structural validation of an already-loaded workspace, and nothing else. `check` walks every parsed
-`hi/*.md` and reports the six ways a file can be structurally wrong: a duplicate id, a case whose
+`hi/*.md` and reports the seven ways a file can be structurally wrong: a duplicate id, a case whose
 parent does not exist, an active criterion reusing a retired id, a line that is id-shaped but not a
-valid id, a family used by a criterion that the file's frontmatter does not declare, and a
-criterion-shaped line stranded outside every section, where nothing would read it.
+valid id, a family used by a criterion that the file's frontmatter does not declare, a
+criterion-shaped line stranded outside every section, where nothing would read it, and a family two
+files both claim.
 
 Everything else is deliberately not a problem. `check` has no opinion about a criterion's English,
 its length, whether a spec exists for it, whether a test proves it, or whether anything downstream
@@ -36,7 +37,7 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 
 | Export | Description |
 |--------|-------------|
-| `Kind` | The closed set of six structural problem kinds, serialized as its `code()` for `--json`. |
+| `Kind` | The closed set of seven structural problem kinds, serialized as its `code()` for `--json`. |
 | `code` | Method on `Kind` returning the stable kebab-case string for one kind, used in text output and as the JSON value. |
 | `NoteKind` | The closed set of note kinds, serialized as its `code()` for `--json`. A note is never a problem, so this is never a seventh `Kind` and none of its variants moves the exit code (hi: CHECK-1, CHECK-6). |
 | `Note` | One thing worth saying that is not a failure: a `NoteKind` and the human sentence beside it. |
@@ -50,7 +51,7 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 
 | Type | Description |
 |------|-------------|
-| `Kind` | `enum` with exactly six variants (`DuplicateId`, `OrphanCase`, `RetiredCollision`, `UnparseableId`, `UndeclaredFamily`, `StrayCriterion`). Derives `Debug, Clone, Copy, PartialEq, Eq`, and implements `Serialize` by hand as `self.code()`, so JSON carries `duplicate-id`, `orphan-case`, `retired-collision`, `unparseable-id`, `undeclared-family`, `stray-criterion`. `#[serde(rename_all = "kebab-case")]` would print the same strings and would be a second place deciding them; the codes are what a consumer is invited to match on, so they have one definition (DECISIONS.md §31). |
+| `Kind` | `enum` with exactly seven variants (`DuplicateId`, `OrphanCase`, `RetiredCollision`, `UnparseableId`, `UndeclaredFamily`, `StrayCriterion`, `DuplicateFamily`). Derives `Debug, Clone, Copy, PartialEq, Eq`, and implements `Serialize` by hand as `self.code()`, so JSON carries `duplicate-id`, `orphan-case`, `retired-collision`, `unparseable-id`, `undeclared-family`, `stray-criterion`, `duplicate-family`. `#[serde(rename_all = "kebab-case")]` would print the same strings and would be a second place deciding them; the codes are what a consumer is invited to match on, so they have one definition (DECISIONS.md §31). |
 | `NoteKind` | `enum` with four variants (`NoProductWhy`, `IndexBehind`, `IndexMarkers`, `UnexplainedRetirement`). Derives `Debug, Clone, Copy, PartialEq, Eq` and serializes as `self.code()`: `no-product-why`, `index-behind`, `index-markers`, `unexplained-retirement`. Two conditions share `NoProductWhy` — no `INTENT.md` at all, and one with no human prose — because the remedy is the same sentence; `IndexBehind` and `IndexMarkers` are apart because one is fixed by running `hi index` and the other by repairing the markers by hand. The code names the remedy, not the wording (hi: CHECK-6). |
 | `Note` | `struct` with public fields `kind: NoteKind` and `message: String`. Derives `Debug, Clone, Serialize`. The message carries no indentation, no leading `note:` and no embedded newline: presentation belongs to whoever prints it. |
 | `Problem` | `struct` with public fields `kind: Kind`, `file: String` (path relative to the workspace root, joined with forward slashes), `line: usize` (1-based), `id: String` (for a criterion, `Criterion::raw_id`, which `doc` has already stripped of markdown emphasis; for a stray, `Doc::stray`'s token, which has had a leading bullet marker removed but keeps any `**` or `_` around it), and `message: String` (two sentences for a stray, one for every other kind). Derives `Debug, Clone, Serialize`. |
@@ -66,7 +67,7 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `run` | `pub fn run(workspace: &Workspace) -> Report` | The whole module. Collects every retired id across the workspace in a first pass, reports every entry of `Workspace::strays` (stray lines in criteria files and in the files `load` skipped alike), then walks every criterion in every doc applying the per-criterion checks, sorts the problems by file then line, and returns a `Report` with the workspace's counts and families. Takes `&Workspace` and returns `Result<Report>`: the `Err` is operational — a file in `hi/` hi could not read, or one declaring a format version hi does not understand — and never a finding, because that is hi saying it could not do the check rather than hi reporting what the check found (hi: CAPTURE-15, FILE-25, DECISIONS.md §36, §38). |
+| `run` | `pub fn run(workspace: &Workspace) -> Result<Report>` | The whole module. Collects every retired id across the workspace in a first pass, reports every entry of `Workspace::strays` (stray lines in criteria files and in the files `load` skipped alike), walks every criterion in every doc applying the per-criterion checks, then reports a family two files both declare (`DuplicateFamily`), sorts the problems by file then line, and returns a `Report` with the workspace's counts and families. The `Err` is operational — a file in `hi/` hi could not read, or one declaring a format version hi does not understand — and never a finding, because that is hi saying it could not do the check rather than hi reporting what the check found (hi: CAPTURE-15, FILE-25, CHECK-2.g, DECISIONS.md §36, §38, §39). |
 | `code` | `pub fn code(self) -> &'static str` | Method on `Kind` and, separately, on `NoteKind`. Maps each variant to its stable kebab-case code, which is both what `--json` serializes and — for `Kind` — what `main.rs` prints between the line number and the message. A note's code is not printed in the terminal: the sentence already says what to do, and the code exists for the reader that is not a person. |
 | `ok` | `pub fn ok(&self) -> bool` | Method on `Report`. `true` exactly when `problems` is empty. This is the single source of truth for `hi check`'s exit code; counts never affect it. |
 
@@ -84,8 +85,9 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
    and nothing implementing it is structurally clean, and so is a file that is still being written
    (hi: CHECK-1, CHECK-1.a, CHECK-1.b). Nothing in this module inspects a criterion's prose, length,
    grammar, or testability.
-4. Exactly six things are problems, and `Kind` is the closed list of them (hi: CHECK-2). Adding a
-   seventh kind is a contract change to this spec, not an implementation detail.
+4. Exactly seven things are problems, and `Kind` is the closed list of them (hi: CHECK-2). Adding an
+   eighth kind is a 2.0 of hi, not an implementation detail (HI-1.md, DECISIONS.md §39). The policy
+   those seven serve — structural only, never unfinished intent — is frozen with them.
 5. Every `Problem` names the file and a 1-based line, so a human or an editor can jump straight to
    it (hi: CHECK-3). For a criterion, `line` comes from `Criterion::line_no()`, never from the
    0-based `line` field; for a stray, it is `Stray::line`, which `Workspace::strays` has already
@@ -355,3 +357,4 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 | 2026-09-16 | Leif | Re-verified against the built binary after `looks_like_id` and `render_criterion` changed. `looks_like_id` is now case-insensitive on the family and requires the first level to start with a digit, so `IdError::BadFamily` is reachable from `check` (`send-2`, `Send-3`) while `SE-ND-1` and `SEND-a` are no longer offered at all; the reachable set is now `BadFamily`, `EmptyLevel`, `BadLevel`, `PaddedLevel` and `Alternation`, and only `MissingHyphen` and `NoLevels` are filtered out. Criteria render as nested list items, so `doc` matches trimmed lines and indentation no longer bounds either check: added invariant 18 and a scenario for an indented stray, and dropped "at column 0" everywhere. Recorded in invariant 15 and the `Problem` row that a stray's token keeps its markdown emphasis while a criterion's `raw_id` does not. Added scenarios for a wrongly-cased family and an ordinary hyphenated word, quoted the stray and unparseable messages exactly, cited CHECK-5 on invariant 2 and FILE-12 on invariant 5, and re-anchored the undeclared-family finding to CHECK-2.f, which now exists. |
 | 2026-09-17 | Claude | `run` gains a third note, `out::index_note`, for a generated feature list that no longer matches what is captured (hi: INDEX-4.b, DECISIONS.md §30). It is a note and not a seventh `Kind`: `Report::ok` does not read `note`, the exit code does not move, and the README's "exactly six" still holds. Added invariants 19 and 20, a scenario and REQ-check-014. This pass also documented `Report::note` itself, which the module has carried since 0.5.0 and this spec had never listed. |
 | 2026-09-18 | Claude | The report's notes are a list, not one joined string, at 9 exports with `NoteKind`, `Note` and `Note::new`. `Report.note` was every note joined with `\n      ` — six spaces of terminal indentation inside the data — so `--json` could not carry the notes apart and a reader had to split on whitespace. Each note now has a stable code: `no-product-why`, `index-behind`, `index-markers`, `unexplained-retirement`. `Kind` and `NoteKind` serialize through `code()` rather than a serde rename, so the strings a consumer matches on have one definition (DECISIONS.md §31). Nothing about the exit code moved and no kind was added: `Report::ok` does not read the notes and the six structural problems stay six. Added REQ-check-015 and amended REQ-check-010 (hi: CHECK-6, CHECK-1, DECISIONS.md §38). |
+| 2026-09-18 | Claude | `DuplicateFamily` is the seventh kind, code `duplicate-family`. Two files both listing a family in frontmatter used to check clean, and capture used to append a new top-level id to whichever file sorted first, so renaming a file moved later captures. Reported on the later file, naming the first. A family listed twice in one file is not this. 1.0 freezes these seven and the policy that they are structural only; an eighth is a 2.0. Added REQ-check-016 (hi: CHECK-2.g, CAPTURE-16, DECISIONS.md §39, HI-1.md). |

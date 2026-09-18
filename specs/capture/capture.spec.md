@@ -45,12 +45,15 @@ named back to them (hi: CAPTURE-11).
 |--------|-------------|
 | `Captured` | Report of one successful capture: the parsed id, the repository-relative file it landed in, whether that file had to be started, which product-level and agent-facing files this capture started alongside it, and why the generated feature list could not be refreshed when it could not. |
 | `capture` | Add one criterion to the workspace, or return an error without writing anything. |
+| `Seeded` | What `hi seed` did: created the file, updated a known template, or found it already current. |
+| `seed_agent_files` | Write `hi/AGENTS.md` when missing, rewrite it when it is still a template hi shipped, refuse it when a person has edited it. |
 
 ### Structs & Enums
 
 | Type | Description |
 |------|-------------|
 | `Captured` | `#[derive(Debug)]` struct with six public fields: `id: Id` (the parsed id as written), `file: String` (the destination path relative to the workspace root, e.g. `hi/chat.md`), `created_file: bool` (true when the family was not already held by any loaded doc, so capture had to start or adopt a file for it), `started_intent: Option<String>` (the path of an `INTENT.md` this capture created, hi: INDEX-3), `started_agent: Vec<String>` (the `hi/AGENTS.md` and `hi/CLAUDE.md` this capture wrote, hi: HABIT-1), and `index_error: Option<String>` (why the generated feature list could not be refreshed, hi: INDEX-4.a). The last three are all best effort: each is a line for the caller to print and none of them can turn a successful capture into an error. Returned only on success; the caller prints it. |
+| `Seeded` | `#[derive(Debug)]` enum: `Created(Vec<String>)` (the file was missing), `Updated(String)` (a known old template), `Current` (already the current text). |
 
 ### Traits
 
@@ -62,7 +65,8 @@ named back to them (hi: CAPTURE-11).
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `capture` | `capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Result<Captured>` | Validate `raw_id` against the id grammar, reject an empty sentence, refuse an id that already exists anywhere in the workspace (active or retired) with a next-free hint, refuse a sub-id whose parent is absent, then resolve the destination file (the file holding the parent first, the file that declares or uses the family second, and `hi/<family>.md` created or adopted when neither exists), insert the criterion through `Doc::insert`, save the file atomically through `Doc::save`, reload the saved file so what is in memory matches what is on disk, then do three best-effort things in order: start `INTENT.md` from `out::starter_intent_file` if the repository has none, write `hi/AGENTS.md` and `hi/CLAUDE.md` if they are not there, and refresh the generated feature list through `out::refresh_index`, which rewrites a block that is there and installs none. Reports what happened. Returns `anyhow::Error` on every refusal. |
+| `capture` | `capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Result<Captured>` | Validate `raw_id` against the id grammar, reject an empty sentence, refuse an id that already exists anywhere in the workspace (active or retired) with a next-free hint, refuse a sub-id whose parent is absent, refuse a new top-level id whose family is declared by more than one file, then resolve the destination file (the file holding the parent first, the file that declares or uses the family second, and `hi/<family>.md` created or adopted when neither exists), insert the criterion through `Doc::insert`, save the file atomically through `Doc::save`, reload the saved file so what is in memory matches what is on disk, then do three best-effort things in order: start `INTENT.md` from `out::starter_intent_file` if the repository has none, write `hi/AGENTS.md` and `hi/CLAUDE.md` if they are not there, and refresh the generated feature list through `out::refresh_index`, which rewrites a block that is there and installs none. Reports what happened. Returns `anyhow::Error` on every refusal. |
+| `seed_agent_files` | `seed_agent_files(workspace: &Workspace) -> Result<Seeded>` | Write `hi/AGENTS.md` when missing, rewrite it when `out::classify_agent_file` says Prior, return `Current` when it is already the current text, refuse when it is Other. Capture still only writes this file when it is absent (hi: HABIT-6, DECISIONS.md §39). |
 
 ## Invariants
 
@@ -332,6 +336,7 @@ named back to them (hi: CAPTURE-11).
 | Sentence is empty or whitespace-only | Returns `a criterion needs a sentence. Say what you actually want`; nothing is written |
 | The id already exists, active or retired, in any file | Returns `<id> already exists in <file>:<line>` plus a second line `hint:  next free is <FAMILY-n>`; nothing is written (hi: CAPTURE-3) |
 | The id is a sub-id and its parent does not exist | Returns `<id> needs a parent <parent>, which does not exist yet`, naming the missing parent; nothing is written (hi: CAPTURE-2.b) |
+| A new top-level id whose family is declared by more than one file | Returns `<family> is declared in <file> and <file>, so a new criterion has nowhere that is uniquely its home.` plus a hint; nothing is written (hi: CAPTURE-16, CAPTURE-5) |
 | Discovery never reaches capture, because there is no qualifying `hi/` and no `.git` above the start directory | `Workspace::find` returns `this is not a repository, and no hi/ directory was found above it. hi anchors to a repository, so run it inside one`; `capture` is never called (hi: CAPTURE-10) |
 | `hi/` cannot be created, or the new family file cannot be written | The underlying `std::io::Error` propagates through `anyhow`; the criterion is not inserted |
 | An existing file with the target stem cannot be read while being adopted | `Doc::load`'s error propagates as `reading <path>`; the criterion is not inserted. Nothing in `Doc::parse` can fail, so a malformed file is adopted rather than rejected |

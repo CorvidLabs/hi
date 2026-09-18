@@ -187,6 +187,7 @@ Rust, `clap 4` derive.
 | `hi export [FAMILY \| file]` | JSON payload for an agent. Takes a family, a file, or nothing (the whole repo, including `INTENT.md`). |
 | `hi index` | Regenerate the feature index in `INTENT.md`. |
 | `hi view [--out FILE]` | Write one self-contained HTML page of the intent, for people who do not read markdown. Search, filter, sort and a link for every id. |
+| `hi seed` | Write `hi/AGENTS.md` when it is missing, or replace it when it is still a template hi has shipped. Refuses if the person has edited the file. Capture still only writes that file when it is absent (§39). |
 
 ### Capture
 
@@ -235,10 +236,10 @@ naming them, so it is `hi ls` that shows you the typo.
 
 ### Check
 
-**Structural errors** (exit 1), which are exactly the six variants of `check::Kind`: a duplicate
+**Structural errors** (exit 1), which are exactly the seven variants of `check::Kind`: a duplicate
 ID; a case whose parent does not exist; an ID that collides with a retired one; a line shaped like
-an ID that is not a valid one; a family a file never declared; and a criterion stranded outside
-every section, where nothing would read it.
+an ID that is not a valid one; a family a file never declared; a criterion stranded outside
+every section, where nothing would read it; and a family two files both claim.
 
 **Never an error**: a criterion with no downstream work, no spec, no test, no anything. Incomplete
 intent is the normal state of intent.
@@ -2165,3 +2166,132 @@ writing down before this sentence was worth adding at all.
 ignored, which would mean length is the problem and the answer is to cut rather than to add. Or a
 sentence that fails the rule above getting in anyway, which would mean the rule is not load-bearing
 and the file needs a hard cap instead.
+
+## 39. The seventh kind, the migration verb, and what a 1.0 actually freezes
+
+Three 1.0 readings of 0.7.0 left the same three things open: two files can both declare a family
+and capture will pick one by path order; `hi/AGENTS.md` is write-once, so every adopter of 0.5.0
+keeps a hard-wrapped file that does not mention the merge; and there is no document a consumer can
+hold a 1.0 to. This section is the argument for what was done about each, and for the property test
+that is the only change to how the next defect gets found.
+
+### A family is a function from name to file, and first-wins is not a function
+
+Two files can both list `families: [SEND]`. `hi check` exited 0. A new `SEND-3` landed in whichever
+file sorted first, because `doc_for_family` uses `.position()` over path-sorted docs. Rename a file
+and later captures move. That is not a hypothetical: it is what the binary did, and it is the same
+shape as handing an id out twice, one directory up — the *home* of a family is not stable, so the
+id that is about to be written is not either.
+
+Three options, and the first two are the ones that look like decisions.
+
+**Define it: the first declaration owns the family.** Path order is already how load works, so
+freezing it is free in the code and a sentence in the README. It is also freezing a bug. The owner
+of a family would be a function of the names of the *other* files in `hi/`, which a person does not
+control by writing the file they are looking at. A rename, a squash, a `git mv` to match a title
+change, would move later captures without touching a word of the family. A 1.0 that froze that
+would be a 1.0 that froze "whatever `Path::cmp` does to the names you happened to pick."
+
+**Leave it outside the contract.** Honest about 0.7.0, and it makes 1.0 a freeze of a tool that
+will silently put `SEND-4` in a different file from `SEND-3` because somebody renamed `chat.md` to
+`messaging.md`. The whole point of a family declaration is that capture can resolve an id to a
+file without scanning. Two declarations means it cannot. Calling that out-of-scope is calling the
+resolver out-of-scope.
+
+**Refuse it.** A family two files both claim is a structural problem: the file is well-formed on
+its own and the *workspace* is not. That is the same category as `duplicate-id`, which is also a
+fact about two files rather than about one. It is not operational-at-load. Load refusing the
+workspace would block `hi ls` of a salvageable tree, and the salvage is one frontmatter line. It
+is not a note: a note would leave capture writing into the first-wins result, which is the defect.
+
+So: `duplicate-family` is the seventh `Kind`. `hi check` reports it on the later file, naming the
+first, the same shape as `duplicate-id`. Capture of a new top-level id in that family refuses,
+writes nothing, and names both files (`CAPTURE-5`, `CAPTURE-16`). A case still follows its parent
+(`CAPTURE-4.a`), because the parent has a unique home even when the family does not. Reads still
+work. A family listed twice in *one* file is the same declaration written twice, not two homes.
+
+The README promised exactly six kinds. The argument against adding a seventh, made in this file
+more than once (§29, §30, §36, §38), was never "six is the number." It was: `hi check` fails on a
+structurally broken file and on nothing else, and a quality gate, a wrapped paragraph, an unknown
+version, or an unreadable file is not that. Duplicate-family *is* that. What 1.0 freezes is the
+policy (structural only) *and* these seven members. An eighth is a 2.0, because `Kind` is a closed
+set a consumer matches on. The cardinality was the thing not to freeze in 0.x so that this seventh
+could still arrive; freezing 1.0 without it would have frozen the first-wins bug instead.
+
+### Write-once is still the property; `hi seed` is the verb that is allowed to touch the file
+
+§38 refused a `--rewrite-agents` flag because write-once is what makes the file unable to go stale
+in the dangerous direction: hi's words go in once, and after that the file is the person's. That
+half is still right, and capture still only writes `hi/AGENTS.md` when it is absent. The path that
+runs on every thought never overwrites.
+
+The other half was not right, and a third 1.0 reading said so. 1.0 freezes the convention that
+file describes. An adopter who captured on 0.5.0 has a hard-wrapped template with no merge
+sentence, and "delete the file and capture a dummy criterion" is a migration that (a) requires a
+thought they do not have, which is the death `HABIT-1` is about, and (b) destroys a file they may
+have edited, which is the thing write-once was protecting. Both of those are true at once. A
+migration that is "delete and recapture" is a migration that no longer works the moment 1.0
+commits to the convention, because the file an agent actually reads is the old one, forever, in
+every repository that adopted before the freeze.
+
+So there is a verb, `hi seed`, and it is narrow on purpose.
+
+| The file is | `hi seed` does |
+|---|---|
+| Missing | Writes the current text, and `hi/CLAUDE.md` beside it. |
+| Byte-identical to a template hi has shipped, after folding a BOM and CRLF | Rewrites it to the current text, keeping the endings the file had. |
+| Already current | Says so. |
+| Anything else | Refuses, exit 1, writes nothing. |
+
+Recognition is byte identity after folding storage. A BOM and CRLF are how an editor saved the
+file, not how a person edited it. A single added space is an edit. Fuzzy matching would be hi
+deciding the person's words were close enough to its own, which is the rewrite §38 refused, in a
+softer voice.
+
+The known templates are files in `src/seed/`, the bytes 0.5.0 and 0.6.0 actually wrote. Current
+is `out::agent_instructions()`. Adding a template to the known set is how a later 1.x ships a
+new sentence; the rule — identity against a list hi shipped — does not move.
+
+An adopter with a hard-wrapped 0.5.0 file runs `hi seed`. That is written in the README, in
+`hi seed --help`, in HI-1.md, and here, which is every place they will look before they look in
+DECISIONS.
+
+### The contract is a file, and permanence is over shared history
+
+Three reviews called a compatibility document blocking and none of them wrote it. [HI-1.md](HI-1.md)
+is that file. It ships with the crate (`docs/` does not). It names what is frozen, what is not, the
+normative format, the exit codes, the export envelope, the seven kinds, and the promise.
+
+The README sentence, reconciled from two wordings that were each half of it:
+
+> Permanence of an id is a convention over shared history: the merged tree, not an unmerged branch.
+> hi's own verbs refuse to be the one that breaks it; `hi check` on the merged tree is the thing
+> that proves it.
+
+"Shared history" is §37, stated as a scope rather than as an anecdote. "hi's own verbs" is §26,
+stated as the width of the promise. Together they are a sentence a 1.0 can keep. The wider wording
+— "an id is permanent" as a property of the world — is one it cannot, because the files are
+markdown and two branches are two workspaces.
+
+### The suite now generates the case nobody wrote
+
+Zero of the twelve confirmed defects were found by hi's own tests generating a case. Each was found
+by a person writing a fixture that looked like the bug, which is why the thirteenth would have the
+same shape. `src/promise.rs` starts from files hi did not write — bare lines, a fenced example, CRLF,
+a stray, two families in one file — and runs random capture, retire, and hand-edit sequences.
+`tests/promise.rs` does the concurrent half through the real binary, including against a file hi
+did not write. After every step: every id a verb reported as saved is readable by `Workspace::load`
+in the section the verb named; the shape of every criterion the step did not name is unchanged; no
+id is assigned twice; and `hi check` exiting 0 implies all three (`ID-5`, `ID-5.a`).
+
+That is the item that changes the finding method. It does not change the promise.
+
+**What would change this decision:** evidence that `duplicate-family` is firing on a workspace
+people meant to split across files, which would mean the kind is right and the refusal is too
+sharp — then capture of a new top-level id could ask, and asking is `CAPTURE-1.b`, so the answer
+is still refuse, with a better hint. Evidence that `hi seed` rewrote a file somebody had edited
+because a template drifted into their words by chance, which would mean byte identity is not
+enough and the answer is to also require that the file is still only the paragraphs hi writes,
+not to fuzzy-match. Evidence that the property test is not finding things because it cannot
+reach them, which is a gap in the generator, not a reason to go back to only-authored fixtures.
+

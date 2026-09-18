@@ -10,6 +10,53 @@ refused rather than read as this one.
 
 ## Unreleased
 
+### Two files claiming one family is a structural problem, not a tie-break
+
+Two files can both declare `families: [SEND]`. `hi check` exited 0 and said nothing, and
+a new capture landed in whichever file sorted first, because `doc_for_family` used
+`.position()` over path-sorted docs. Rename a file and later captures moved.
+
+**`duplicate-family` is the seventh `hi check` kind.** It reports the later file, naming
+the first, the same shape as `duplicate-id`. Capture of a new top-level id in that family
+refuses and writes nothing. A case still follows its parent. A family listed twice in
+*one* file is the same declaration written twice, not two homes.
+
+1.0 freezes these seven kinds *and* the policy that they are structural only. An eighth
+is a 2.0. The README had promised exactly six; the thing not to freeze in 0.x was the
+cardinality, so this seventh could still arrive (DECISIONS.md §39, `CHECK-2.g`,
+`CAPTURE-16`).
+
+### `hi seed` migrates a template hi shipped, and refuses a file you edited
+
+Capture still writes `hi/AGENTS.md` only when it is absent. That write-once is what
+stops a surprise rewrite of a file somebody touched, and it is unchanged.
+
+A 1.0 that freezes the convention that file describes cannot leave every 0.5.0 adopter
+with a hard-wrapped template and no merge sentence. `hi seed` is the verb:
+
+- missing → write the current text, and `hi/CLAUDE.md` beside it
+- byte-identical to a template this hi has shipped (BOM and CRLF folded) → rewrite,
+  keeping the endings the file had
+- already current → say so
+- anything else → refuse, exit 1, write nothing
+
+Delete it and run `hi seed` if the current text is what you want. Capture never
+overwrites, even when the file is an old template (DECISIONS.md §39, `HABIT-6`).
+
+### The HI/1 contract, and a suite that generates the case nobody wrote
+
+[HI-1.md](HI-1.md) is the compatibility document three 1.0 reviews called blocking.
+What is frozen, what is not, the format, the exit codes, the export envelope, the seven
+kinds, and the promise. Permanence is a convention over **shared history**: the merged
+tree, not an unmerged branch.
+
+`src/promise.rs` and `tests/promise.rs` generate files hi did not write and run random
+capture / retire / hand-edit sequences, serially and concurrently. After every step:
+every id a verb reported as saved is readable in the section it named; unnamed criteria
+keep their shape; no id is assigned twice; `hi check` exiting 0 implies all three.
+Zero of the twelve confirmed defects were found this way. That is the item that
+changes the finding method (`ID-5`, DECISIONS.md §39).
+
 ### The format version is a promise now, not a decoration
 
 `hi: 1` sits in every file's frontmatter and **nothing read it**. `parse_front` stored
@@ -28,10 +75,9 @@ all — not the criterion, not `hi/`, not `INTENT.md`, not `hi/AGENTS.md`, not e
 lock file — because it happens before the write lock is taken. A file with no `hi:`
 line is still HI/1, so files written before the key existed keep working.
 
-It is **not** a seventh structural problem. `hi check` still fails on exactly six, and
-still never fails on unfinished intent. An unknown version is hi saying it did not read
-the file, which is the same category as a file it could not decode (DECISIONS.md §36),
-not something it found wrong inside one.
+It is **not** a structural problem. `hi check` still never fails on unfinished intent. An unknown
+version is hi saying it did not read the file, which is the same category as a file it could not
+decode (DECISIONS.md §36), not something it found wrong inside one.
 
 ### `hi index` takes the write lock
 
@@ -75,11 +121,11 @@ This changes the shape of `hi check --json`. It is the only breaking change here
 `hi check`'s text output is unchanged apart from each note printing on its own `note:`
 line.
 
-**Documented: how to get the current `hi/AGENTS.md`.** hi writes that file once and
-never again, which is what stops it overwriting something you edited — so an older
-repository keeps its older text. Delete the file and capture; the next capture writes
-it again. That has always worked and was never written down. There is deliberately no
-verb for it (DECISIONS.md §38).
+**Documented: how to get the current `hi/AGENTS.md`.** Capture writes that file once and
+never again, which is what stops it overwriting something you edited. `hi seed` is the
+verb that migrates a template hi has actually shipped; it refuses a file you have
+edited. DECISIONS.md §39 is the argument; §38's delete-and-recapture remains true of
+capture itself.
 
 **A feature list you deleted stays deleted.** Capture and `hi retire` refresh the block
 they find and no longer reinstate a `## Features` section you removed; `hi index` is how
@@ -293,9 +339,7 @@ The read failure is now the answer. `hi check` exits 1 naming the file it could 
 capture refuses before it writes anything at all — not the criterion, not `hi/`, not `INTENT.md`
 and not `hi/AGENTS.md`.
 
-**This is not a seventh thing `hi check` fails on.** It still fails on exactly six structural
-problems, and still never on unfinished intent. A file hi cannot read is hi saying it could not do
-the check, which is not a finding.
+**This is not another `hi check` kind.** It still never fails on unfinished intent. A file hi cannot read is hi saying it could not do the check, which is not a finding.
 
 0.7.0 made `check` and `capture` answer from one lookup so they could not disagree. They could
 still both be wrong, and here they were. Recorded in DECISIONS.md §36.

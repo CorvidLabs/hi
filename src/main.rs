@@ -13,6 +13,9 @@ mod out;
 mod view;
 mod workspace;
 
+#[cfg(test)]
+mod promise;
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -90,6 +93,8 @@ enum Command {
         #[arg(long, value_name = "FILE")]
         out: Option<String>,
     },
+    /// Rewrite hi/AGENTS.md when it is still a template hi has shipped
+    Seed,
 }
 
 fn main() -> ExitCode {
@@ -308,6 +313,24 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Command::View { out } => {
             let path = view::write(&workspace, out.as_deref())?;
             println!("{path}  written");
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Seed => {
+            let _writing = lock::acquire(&workspace.root.join("hi"))?;
+            let workspace = Workspace::find(&start)?;
+            match capture::seed_agent_files(&workspace)? {
+                capture::Seeded::Created(files) => {
+                    for file in files {
+                        println!("{file}  created, so an agent finds this without being told");
+                    }
+                }
+                capture::Seeded::Updated(file) => {
+                    println!("{file}  updated to the current instruction");
+                }
+                capture::Seeded::Current => {
+                    println!("hi/AGENTS.md  already current");
+                }
+            }
             Ok(ExitCode::SUCCESS)
         }
     }
