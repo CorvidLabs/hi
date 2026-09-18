@@ -41,7 +41,9 @@ Ids are the one thing I am strict about, because an id that moves is worse than 
 - **FILE-22**  When hi tells me it wrote something down, I can find it again with hi, or hi refuses instead of telling me it worked.
   - **FILE-22.a**  If my file is half written, with a fence I never closed, hi refuses to save into it and leaves my unfinished words alone.
   - **FILE-22.b**  An example of the format inside my prose is never mistaken for the section it names, by the verbs that write as much as by the ones that read.
+  - **FILE-22.c**  A command that writes one criterion leaves every other criterion in my file exactly as it was, or it refuses.
 - **FILE-23**  If hi is killed while it is holding the write lock, the next capture recovers by itself instead of leaving me a file to delete.
+- **FILE-24**  While another hi is still running, nothing takes the write lock away from it, however long it has been holding it.
 
 - **ID-1**  An id never moves once written, so I can say it out loud a year later and still mean the same line.
   - **ID-1.a**  Inserting a criterion never renumbers anything around it.
