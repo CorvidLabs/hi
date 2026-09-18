@@ -1,0 +1,4 @@
+# The seed templates are compared byte for byte against files older releases
+# wrote with LF, so they must check out as LF on every platform, including
+# the Windows runner that builds the release binary (DECISIONS.md §39).
+src/seed/*.md text eol=lf

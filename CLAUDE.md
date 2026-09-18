@@ -163,7 +163,7 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   `Doc::save`, and do not give it a lock: `capture` and `retire` already hold `lock::acquire` and
   it is not reentrant (DECISIONS.md §30, `hi: INDEX-4`, `INDEX-4.a`).
 - **`hi check`'s note about that list is a note, not a problem.** `out::index_note` is
-  pushed onto `Report::note`, which `Report::ok` never reads, so the exit code cannot move. It is
+  pushed onto `Report::notes`, which `Report::ok` never reads, so the exit code cannot move. It is
   the first thing `check` nags about that hi itself maintains, and it is only admissible because
   capture and retire keep the list current, leaving one cause: a criterion typed in by hand, which
   `FILE-14` allows (DECISIONS.md §30, `hi: INDEX-4.b`, `CHECK-1`).
@@ -208,7 +208,7 @@ gitignored.
 
 ## Releasing
 
-v0.7.0 is out: the repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
+v0.8.0 is out and is the 1.0 release candidate; HI-1.md is the contract 1.0 freezes, and the 1.0 tag is 0.8.x with only the version changed. The repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
 Homebrew tap, and every tagged release carries binaries for Linux and macOS (both architectures
 each) and Windows. The docs are at corvidlabs.xyz/hi, and corvidlabs.github.io/hi publishes this
 repository's own `hi view` output on every push to `main`.
@@ -218,8 +218,8 @@ publish` runs failed on a dirty tree and the failure was not noticed. 0.3.0 clos
 lesson is the rule below: read what `cargo publish` actually printed, and check the registry.
 
 `release.yml` fires on a `v*` tag, so **tagging is the release**. Bump `Cargo.toml`, update
-`CHANGELOG.md`, commit, push, tag, then `cargo publish` separately. The format is not frozen; this
-is 0.x.
+`CHANGELOG.md`, commit, push, tag, then `cargo publish` separately. HI/1 is the format 1.0 freezes; until the
+tag it may still change, but only for a defect in what HI-1.md promises.
 
 **Publish from a clean tree, and verify the registry afterwards.** `cargo publish` refuses a dirty
 working tree, and that refusal is easy to miss in a wall of output. Run `cargo publish --dry-run`

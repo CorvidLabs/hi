@@ -5,10 +5,31 @@ All notable changes to `hi` (Human Intent). Format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
-only version so far, and since the Unreleased entry below a file declaring any other version is
+only version so far, and since 0.8.0 a file declaring any other version is
 refused rather than read as this one.
 
-## Unreleased
+## [0.8.0] 2026-09-18
+
+**The 1.0 release candidate.** Everything three readiness reviews called blocking is in this
+release, and nothing else is planned before 1.0. [HI-1.md](HI-1.md) is the contract it will
+freeze. The tag for 1.0 is this build after a soak, with the version number changed and nothing
+else; if a defect in the promise is found meanwhile, it ships as 0.8.x and the soak restarts.
+
+The one change here that can turn an adopter's green build red is `duplicate-family`, the
+seventh `hi check` kind: two files both declaring one family. Fix it by leaving the family in one
+file's frontmatter. A file declaring a `hi:` version other than `1` is now refused as well.
+
+### After the 1.0 readiness review of #20
+
+- `hi: "1"`, `hi: '1'` and `hi: 1 # comment` are HI/1. They were refused as unknown versions,
+  which locked the whole repository over YAML punctuation that `owner:` already tolerated.
+- `hi seed` rewrites `hi/AGENTS.md` atomically. A truncating write that died halfway would have
+  left a file that is no longer a template hi shipped, which `hi seed` then refuses forever.
+- On Windows, `still_at` now compares the held handle's file identity against the path's, through
+  `GetFileInformationByHandle`, instead of relying on the delete-pending argument DECISIONS.md §34
+  admitted nothing tested.
+- HI-1.md's id grammar names the digits a family may contain, the `a-z` letter levels, and the
+  32-bit bound on a number.
 
 ### Two files claiming one family is a structural problem, not a tie-break
 

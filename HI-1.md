@@ -79,7 +79,7 @@ Normative:
 2. **`## Intent`.** Human prose. A fenced block in it is prose, so an example of the format is not criteria.
 3. **`## Criteria`.** Live criteria. One criterion is one markdown list item, one line, however long the sentence runs. The parser also accepts a bare `ID  sentence` line with no bullet and no bold, so a hand-typed file is still read.
 4. **`## Retired`.** Criteria the author changed their mind about. The id stays spoken for.
-5. **Ids.** `FAMILY-1`, then letters for cases and numbers for steps, alternating strictly: `SEND-1.a.1.b`. Families are uppercase `A-Z` and `_`. A leading zero on a multi-digit level is not an id (`SEND-007` is refused, not normalised to `SEND-7`).
+5. **Ids.** `FAMILY-1`, then letters for cases and numbers for steps, alternating strictly: `SEND-1.a.1.b`. A family starts with `A-Z` and continues with `A-Z`, `0-9` and `_`; a letter level is one or more of `a-z`; a number level is a decimal integer that fits in 32 bits. A leading zero on a multi-digit level is not an id (`SEND-007` is refused, not normalised to `SEND-7`).
 6. **A criteria file is lowercase `*.md` directly inside `hi/`.** An uppercase name in `hi/` is hi's own (`AGENTS.md`, `CLAUDE.md`) and is not read as criteria.
 
 hi itself always writes the list form, LF or the file's existing endings, and the frontmatter style the file already had. It never rewrites, reflows, or reformats prose it did not write.

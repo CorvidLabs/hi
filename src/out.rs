@@ -587,7 +587,10 @@ pub fn write_with_endings(path: &std::path::Path, text: &str, like: &str) -> std
     } else {
         text.to_string()
     };
-    std::fs::write(path, body)
+    // Atomic, because this is the one file `hi seed` exists to rewrite: a
+    // truncating write that dies halfway leaves a file that is no longer a
+    // template hi shipped, which `hi seed` would then refuse forever (hi: FILE-8).
+    crate::doc::write_atomically(path, &body)
 }
 
 /// Byte range of the generated block, matched on whole lines only.
@@ -1231,9 +1234,11 @@ mod tests {
         );
         // A BOM and CRLF are storage, not words. Folding them is how we tell
         // hi's unmodified template from a file somebody touched (hi: HABIT-6.a).
+        // Folded first: a checkout with autocrlf hands include_str! CRLF bytes,
+        // and doubling the carriage return would test a file nobody wrote.
         let wrapped = format!(
             "\u{feff}{}",
-            include_str!("seed/agents_0_5.md").replace('\n', "\r\n")
+            fold_agent_text(include_str!("seed/agents_0_5.md")).replace('\n', "\r\n")
         );
         assert_eq!(classify_agent_file(&wrapped), AgentTemplate::Prior);
         assert_eq!(classify_agent_file("mine now\n"), AgentTemplate::Other);

@@ -498,8 +498,12 @@ mod tests {
             Seeded::Updated(file) => assert_eq!(file, "hi/AGENTS.md"),
             other => panic!("expected Updated, got {other:?}"),
         }
+        // The endings the template on disk had are kept, so compare folded:
+        // a checkout with autocrlf gives include_str! CRLF bytes.
         assert_eq!(
-            fs::read_to_string(root.join("hi/AGENTS.md")).unwrap(),
+            fs::read_to_string(root.join("hi/AGENTS.md"))
+                .unwrap()
+                .replace("\r\n", "\n"),
             crate::out::agent_instructions()
         );
     }
@@ -548,7 +552,9 @@ mod tests {
     #[test]
     fn seed_recognises_a_prior_template_through_a_bom_and_crlf() {
         let root = temp_dir("seed-folded");
-        let prior = include_str!("seed/agents_0_6.md").replace('\n', "\r\n");
+        let prior = include_str!("seed/agents_0_6.md")
+            .replace("\r\n", "\n")
+            .replace('\n', "\r\n");
         fs::write(root.join("hi/AGENTS.md"), format!("\u{feff}{prior}")).unwrap();
         let workspace = Workspace::load(&root).unwrap();
         assert!(matches!(
