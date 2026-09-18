@@ -14,9 +14,26 @@ use crate::doc::Section;
 use crate::id::Id;
 use crate::workspace::{Stray, StrayPlace, Workspace};
 
+/// Serialize an enum as whatever its `code()` says, so the string a script
+/// matches on and the string a person reads in the terminal are one list.
+///
+/// `#[serde(rename_all = "kebab-case")]` would produce the same text today and
+/// is a second place that decides it. Two pieces of code answering the same
+/// question eventually answer it differently, which this repository has already
+/// paid for once (DECISIONS.md §31). These codes are the part of `--json` a
+/// consumer is invited to depend on, so they get one definition.
+macro_rules! serialize_as_code {
+    ($name:ident) => {
+        impl Serialize for $name {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.serialize_str(self.code())
+            }
+        }
+    };
+}
+
 /// What kind of structural problem this is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     DuplicateId,
     OrphanCase,
@@ -39,6 +56,65 @@ impl Kind {
     }
 }
 
+serialize_as_code!(Kind);
+
+/// What a note is about, under a name that outlives its wording.
+///
+/// A note is not a problem and never will be: none of these moves the exit
+/// code, and none of them is a seventh `Kind`. `hi check` fails on a
+/// structurally broken file and on nothing else (hi: CHECK-1, CHECK-6).
+///
+/// These are the machine-readable half. The wording beside them is for a
+/// person and is free to be rewritten; the code is the part a script may hold
+/// on to, so it is chosen for what the note is about rather than for how it
+/// currently reads.
+///
+/// Two conditions share `NoProductWhy` because they ask for the same thing —
+/// write the why — while `IndexBehind` and `IndexMarkers` are separate because
+/// one is fixed by running `hi index` and the other by editing the markers by
+/// hand. The code names the remedy, not the sentence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteKind {
+    /// No `INTENT.md`, or one with no human prose in it yet.
+    NoProductWhy,
+    /// `INTENT.md`'s generated feature list is behind what is captured.
+    IndexBehind,
+    /// `INTENT.md` has an opening index marker with no matching close, so
+    /// nothing can refresh the list.
+    IndexMarkers,
+    /// A retired criterion never said why it was retired.
+    UnexplainedRetirement,
+}
+
+impl NoteKind {
+    pub fn code(self) -> &'static str {
+        match self {
+            NoteKind::NoProductWhy => "no-product-why",
+            NoteKind::IndexBehind => "index-behind",
+            NoteKind::IndexMarkers => "index-markers",
+            NoteKind::UnexplainedRetirement => "unexplained-retirement",
+        }
+    }
+}
+
+serialize_as_code!(NoteKind);
+
+/// One thing worth saying that is not a failure.
+#[derive(Debug, Clone, Serialize)]
+pub struct Note {
+    pub kind: NoteKind,
+    pub message: String,
+}
+
+impl Note {
+    pub fn new(kind: NoteKind, message: impl Into<String>) -> Note {
+        Note {
+            kind,
+            message: message.into(),
+        }
+    }
+}
+
 /// One structural problem, located.
 #[derive(Debug, Clone, Serialize)]
 pub struct Problem {
@@ -52,9 +128,16 @@ pub struct Problem {
 /// Everything `hi check` found.
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
-    /// A note about the product-level intent, when there is something to say.
-    /// Never a problem: hi does not fail on unfinished intent (hi: CHECK-1).
-    pub note: Option<String>,
+    /// Everything worth saying that is not a failure, one item per thing.
+    ///
+    /// A list rather than one string. It used to be the notes joined with a
+    /// newline and six spaces — terminal layout baked into the data, which is
+    /// exactly why the JSON could not carry them apart and a reader had to
+    /// split on whitespace to get them back (hi: CHECK-6).
+    ///
+    /// Never a problem, and never the exit code: hi does not fail on
+    /// unfinished intent (hi: CHECK-1).
+    pub notes: Vec<Note>,
     pub files: usize,
     pub criteria: usize,
     pub retired: usize,
@@ -69,13 +152,16 @@ impl Report {
 }
 
 /// What to say about the product-level intent, if anything.
-fn product_intent_note(workspace: &Workspace) -> Option<String> {
+fn product_intent_note(workspace: &Workspace) -> Option<Note> {
     if workspace.docs.is_empty() {
         return None;
     }
     let path = workspace.intent_path();
     let Ok(raw) = std::fs::read_to_string(&path) else {
-        return Some("no INTENT.md yet. `hi index` starts one for the product-level why".into());
+        return Some(Note::new(
+            NoteKind::NoProductWhy,
+            "no INTENT.md yet. `hi index` starts one for the product-level why",
+        ));
     };
     // Strip the generated index and the starter comment; if nothing human is
     // left, the why has not been written.
@@ -89,9 +175,12 @@ fn product_intent_note(workspace: &Workspace) -> Option<String> {
         .join("")
         .trim()
         .to_string();
-    prose
-        .is_empty()
-        .then(|| format!("{} has no product-level why yet", workspace.rel(&path)))
+    prose.is_empty().then(|| {
+        Note::new(
+            NoteKind::NoProductWhy,
+            format!("{} has no product-level why yet", workspace.rel(&path)),
+        )
+    })
 }
 
 /// Run every structural check across the workspace.
@@ -237,7 +326,7 @@ pub fn run(workspace: &Workspace) -> Result<Report> {
 
     problems.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
 
-    let mut notes: Vec<String> = Vec::new();
+    let mut notes: Vec<Note> = Vec::new();
     if let Some(note) = product_intent_note(workspace) {
         notes.push(note);
     }
@@ -277,13 +366,14 @@ pub fn run(workspace: &Workspace) -> Result<Report> {
         } else {
             format!("{unexplained} retired criteria do")
         };
-        notes.push(format!(
-            "{subject} not say why. Add it with `hi retire <ID> \"...\"`"
+        notes.push(Note::new(
+            NoteKind::UnexplainedRetirement,
+            format!("{subject} not say why. Add it with `hi retire <ID> \"...\"`"),
         ));
     }
 
     Ok(Report {
-        note: (!notes.is_empty()).then(|| notes.join("\n      ")),
+        notes,
         files: workspace.docs.len(),
         criteria: workspace.criteria_count(),
         retired: workspace.docs.iter().map(|d| d.retired.len()).sum(),

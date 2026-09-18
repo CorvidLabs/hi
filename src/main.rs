@@ -285,16 +285,52 @@ fn run(cli: Cli) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Command::Index => {
-            let path = out::write_index(&workspace, out::Absent::Install)?;
+            let path = run_index(&start, &workspace)?;
             println!("{path}  index updated");
             Ok(ExitCode::SUCCESS)
         }
+        // No lock, decided rather than overlooked (hi: INDEX-5).
+        //
+        // `hi index` takes one because it is a read-modify-write: it reads
+        // INTENT.md, replaces the block inside it, and writes the rest back.
+        // `hi view` is not. It never reads the page it is about to write; it
+        // regenerates the whole file from the criteria, so there is no window
+        // in which it could put back a stale version of somebody else's work.
+        // `write_atomically` already rules out a torn file.
+        //
+        // Three further reasons not to take one anyway. The lock is a *write*
+        // lock on `hi/` and `lock::acquire` creates that directory to live in,
+        // so a read verb would start writing into the repository. A page is
+        // derived and gitignored, so the worst a race can do is publish a page
+        // one criterion out of date, which the next run fixes and which no id
+        // depends on. And `hi view` in CI would queue behind a bulk capture
+        // for no gain.
         Command::View { out } => {
             let path = view::write(&workspace, out.as_deref())?;
             println!("{path}  written");
             Ok(ExitCode::SUCCESS)
         }
     }
+}
+
+/// Regenerate the feature list in `INTENT.md`, holding the write lock.
+///
+/// It is a read-modify-write — read the file, splice the generated block into
+/// it, write the rest back — and it was the one left outside the lock that
+/// capture and retire take. Unlocked, a capture that finishes between the read
+/// and the write is undone: `hi index` puts back the INTENT.md it loaded,
+/// without that capture's criterion in the list and without whatever prose the
+/// person saved in between, and both commands print success (hi: INDEX-5,
+/// FILE-19, DECISIONS.md §34).
+///
+/// The workspace is loaded again under the lock, for the reason `capture` and
+/// `retire` reload: the copy the caller has was read before the lock was
+/// granted, so the list built from it can already be out of date by the time
+/// hi is allowed to write it (hi: RETIRE-7).
+fn run_index(start: &std::path::Path, workspace: &Workspace) -> Result<String> {
+    let _writing = lock::acquire(&workspace.root.join("hi"))?;
+    let workspace = Workspace::find(start)?;
+    out::write_index(&workspace, out::Absent::Install)
 }
 
 fn print_report(report: &check::Report) {
@@ -328,11 +364,77 @@ fn print_report(report: &check::Report) {
     if !report.problems.is_empty() {
         println!("{}", plural(report.problems.len(), "problem", "problems"));
     }
-    if let Some(note) = &report.note {
-        println!("note: {note}");
+    // One line each, rather than one string with the indentation of the second
+    // line and the third baked into it. The code stays out of the terminal:
+    // a problem prints its kind because a person navigates by it, and a note
+    // is a sentence that already says what to do. The code is for the reader
+    // that is not a person, and `--json` is where that reader looks
+    // (hi: CHECK-6).
+    for note in &report.notes {
+        println!("note: {}", note.message);
     }
 }
 
 fn plural(count: usize, one: &str, many: &str) -> String {
     format!("{count} {}", if count == 1 { one } else { many })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::Duration;
+
+    /// `hi index` was the one read-modify-write outside the lock, and it is the
+    /// only path that can install a block, so it writes the whole of somebody's
+    /// `INTENT.md` back from a snapshot it took before it was allowed to.
+    ///
+    /// The assertion is not "it eventually agrees"; two writers racing agree
+    /// often enough that a test on the result would pass while the bug was
+    /// live. It is that while another writer holds the lock, `hi index` has not
+    /// written anything at all. Without the lock it finishes in under a
+    /// millisecond, so the wait below is three hundred times the time it needs
+    /// (hi: INDEX-5, FILE-19).
+    #[test]
+    fn index_will_not_write_while_another_writer_holds_the_lock() {
+        let root = std::env::temp_dir().join(format!("hi-main-index-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("hi")).unwrap();
+        fs::write(
+            root.join("hi/chat.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  One.\n",
+        )
+        .unwrap();
+        let intent = root.join("INTENT.md");
+        let stale = "# P\n\nMine.\n\n## Features\n\n<!-- hi:index -->\n- nothing captured yet\n<!-- /hi:index -->\n";
+        fs::write(&intent, stale).unwrap();
+
+        let workspace = Workspace::find(&root).unwrap();
+        let held = lock::acquire(&workspace.root.join("hi")).unwrap();
+
+        let waiting = std::thread::spawn({
+            let root = root.clone();
+            move || {
+                let workspace = Workspace::find(&root)?;
+                run_index(&root, &workspace)
+            }
+        });
+
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(
+            fs::read_to_string(&intent).unwrap(),
+            stale,
+            "hi index rewrote INTENT.md beside a writer that was holding the lock"
+        );
+
+        drop(held);
+        waiting.join().unwrap().expect("the index write");
+        assert_ne!(
+            fs::read_to_string(&intent).unwrap(),
+            stale,
+            "and once the lock is free it does the work it waited for"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
 }

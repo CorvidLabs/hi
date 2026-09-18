@@ -67,6 +67,8 @@ the intent sentence `It should feel like texting.`
 | REQ-out-017 (`refresh_index`) | `refresh_hands_back_a_refusal_instead_of_raising_it`, `a_capture_refreshes_the_feature_list`, `a_retire_refreshes_the_feature_list`, `a_capture_survives_an_index_it_cannot_refresh`, and `capture::tests::a_capture_leaves_the_generated_list_true` / `an_index_that_cannot_be_refreshed_is_not_a_failed_capture` in `specs/capture` |
 | REQ-out-018 (`index_note`) | `a_list_that_matches_is_worth_no_note`, `a_list_that_disagrees_is_a_note`, `a_list_hi_can_no_longer_refresh_is_a_note_too`, `a_file_with_no_block_at_all_is_not_a_list_that_is_behind`, `check_says_the_feature_list_is_behind_without_failing` |
 | REQ-out-014 (renders only parsed structure) | None here. The parser side is covered in `specs/doc`; nothing asserts that a fenced or stray id is absent from this module's output. See Gaps. |
+| `tests/cli.rs` (`export_says_which_shape_it_is_apart_from_which_format_it_read`) | Integration | REQ-out-020. `hi export` carries `"hi": 1` for the format the files are in and `"export": 1` for the shape of the payload, as two separate fields. |
+| `tests/cli.rs` (`the_agent_file_says_to_check_the_ids_after_a_merge`) | Integration | REQ-out-016. The `hi/AGENTS.md` a first capture writes names `hi check`, a merge, and two branches choosing the same id (hi: HABIT-5). |
 
 ## Manual Testing
 

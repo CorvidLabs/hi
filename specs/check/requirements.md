@@ -23,6 +23,8 @@ spec: check.spec.md
   so that showing what a criterion looks like does not fill my report with findings (hi: FILE-9)
 - As someone who moved a heading, I want a criterion that ended up outside every section to be
   reported rather than silently ignored, because nothing downstream reads it there (hi: CHECK-2.e)
+- As someone reading `hi check --json` from a script, I want each note on its own, under a name that
+  stays the same when somebody rewrites the sentence (hi: CHECK-6)
 
 ## Acceptance Criteria
 
@@ -261,10 +263,11 @@ The report SHALL be serializable so that machine output carries the same finding
 
 Acceptance Criteria
 
-- `Kind`, `Problem`, and `Report` derive `Serialize`.
-- `Kind` serializes in kebab-case, matching `Kind::code()` exactly:
-  `duplicate-id`, `orphan-case`, `retired-collision`, `unparseable-id`, `undeclared-family`,
-  `stray-criterion`.
+- `Problem`, `Note` and `Report` derive `Serialize`. `Kind` and `NoteKind` implement it by hand,
+  writing `self.code()`, so the code is defined once rather than once in `code()` and once in a
+  serde rename that happens to agree with it today (DECISIONS.md §31).
+- `Kind` serializes as `duplicate-id`, `orphan-case`, `retired-collision`, `unparseable-id`,
+  `undeclared-family`, `stray-criterion`.
 - `hi check --json` emits the whole `Report`, including the counts and every problem, not a
   summary.
 - A consumer reading JSON sees neither more nor fewer findings than a human reading the text.
@@ -315,3 +318,31 @@ Acceptance Criteria
   `doc` parsed, and re-scanning the raw lines would reintroduce the bug.
 - A fenced example inside `## Intent` still survives in the intent prose, so `view` and `export`
   keep showing it.
+
+### REQ-check-015
+
+The report SHALL carry its notes as a list, each under a stable code, and no note SHALL carry
+presentation or reach the exit code (hi: CHECK-6, CHECK-1).
+
+Acceptance Criteria
+
+- `Report.notes` is a `Vec<Note>`, one entry per thing worth saying. It replaced a single
+  `Option<String>` holding every note joined with `\n      `: six spaces of terminal indentation
+  inside the data, which is why `--json` could not carry the notes apart and a reader had to split
+  on whitespace to get them back.
+- A `Note` is a `NoteKind` and a `message`. The message carries no leading `note:`, no indentation
+  and no embedded newline. How the notes are laid out belongs to whoever prints them, and `main`
+  prints one `note: <message>` line each.
+- `NoteKind` has four codes: `no-product-why`, `index-behind`, `index-markers`,
+  `unexplained-retirement`. They are chosen for what the note is about, so rewriting a sentence
+  does not move one.
+- A missing `INTENT.md` and an `INTENT.md` with no human prose are both `no-product-why`, because
+  the remedy is the same sentence. A list that is behind and an unpaired marker pair are separate
+  codes, because one is fixed by running `hi index` and the other by repairing the markers by hand.
+- The code is not printed in the terminal. A problem prints its kind because a person navigates by
+  it; a note is already a sentence saying what to do, and the code exists for the reader that is
+  not a person.
+- No `NoteKind` is a `Kind` and none of them may become one. `Report::ok` does not read `notes`, so
+  nothing in them moves the exit code, and the six structural problems stay six (hi: CHECK-1).
+- `out::index_note` returns a `check::Note`, so the two index codes are decided beside the other
+  two rather than in a second place (hi: INDEX-4.b).

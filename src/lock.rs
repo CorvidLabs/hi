@@ -486,6 +486,29 @@ mod tests {
             fs::create_dir_all(&hi).unwrap();
             fs::set_permissions(&hi, fs::Permissions::from_mode(0o555)).unwrap();
 
+            // Root ignores the mode bits, and so does anything holding
+            // CAP_DAC_OVERRIDE, so in a root container this test asserted that
+            // a lock hi *could* take came back as an error and passed because
+            // it never got that far. Four tests in this repository have been
+            // caught passing while the thing they guarded was broken; a test
+            // that cannot fail is the same failure with nobody to blame.
+            //
+            // The precondition is probed rather than inferred from the uid,
+            // because the uid is a proxy for it and this is the thing itself:
+            // if a write into that directory succeeds, the directory is not
+            // unwritable, whoever we are and whatever granted it.
+            let probe = hi.join(".writable-probe");
+            if fs::write(&probe, b"").is_ok() {
+                let _ = fs::remove_file(&probe);
+                fs::set_permissions(&hi, fs::Permissions::from_mode(0o755)).unwrap();
+                let _ = fs::remove_dir_all(&root);
+                eprintln!(
+                    "skipped: this process can write into a directory it has no write bit on, \
+                     which is normal as root, so there is no way to make acquire fail here"
+                );
+                return;
+            }
+
             let refused = acquire(&hi);
 
             fs::set_permissions(&hi, fs::Permissions::from_mode(0o755)).unwrap();

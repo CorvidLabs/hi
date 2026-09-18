@@ -10,9 +10,13 @@ spec: main.spec.md
 | `tests/cli.rs` (concurrency) | Integration, many real processes | The two write verbs under contention: `concurrent_captures_into_a_repository_with_no_hi_directory_all_land` (32 captures into a repository with no `hi/` yet), `concurrent_captures_all_land` (8 into an existing one) and `concurrent_retires_never_bring_a_criterion_back` (two retires at once, neither of which may come back live). The last of these covers the reload inside the lock in the `Retire` arm; reverting that reload fails it on every run (hi: RETIRE-7, FILE-19). |
 | `src/id.rs` (`mod tests`) | Unit | `looks_like_id`, the predicate the capture route depends on. |
 | `src/capture.rs` (`mod tests`) | Unit | The refusal paths that produce exit 1. |
+| `src/main.rs` (`index_will_not_write_while_another_writer_holds_the_lock`) | Unit | REQ-main-009. Takes the repository's write lock, then runs `run_index` on a thread. `INTENT.md` is unchanged three hundred milliseconds later — an unlocked index finishes in under one — and once the lock is dropped the thread completes and the file changes. The assertion is deliberately not "the two eventually agree": two writers racing agree often enough that a test on the result would pass while the bug was live. |
 
-`src/main.rs` has no `#[cfg(test)]` module. Everything it owns (argv routing, `peel_root`, exit
-codes, stream discipline) needs a real process, so it is covered from `tests/cli.rs` only.
+`src/main.rs` has one `#[cfg(test)]` test, and only because the thing it pins cannot be seen from
+outside: proving `hi index` *waits* means holding the lock while it runs, and a second process
+cannot hold the lock and observe the first one at the same time without a helper binary. Everything
+else `main` owns (argv routing, `peel_root`, exit codes, stream discipline) needs a real process and
+is covered from `tests/cli.rs` only.
 
 | Requirement | Covered by | Notes |
 |---|---|---|
@@ -24,6 +28,7 @@ codes, stream discipline) needs a real process, so it is covered from `tests/cli
 | REQ-main-006 | No test | Structural; enforced by review, and visible in that `main.rs` imports only module entry points. |
 | REQ-main-007 | `root_is_honored_by_capture_and_not_swallowed_into_the_sentence`, `a_flag_looking_word_inside_a_sentence_stays_a_word` | The first runs capture from an unrelated directory in both `--root PATH` and `--root=PATH` form, then asserts both sentences landed in the target workspace and that no `--root` reached the file. The second is the other half: it captures `the --root docs option should be documented` after the id and asserts the sentence survives intact, which is what the `break` in `peel_root` buys. |
 | REQ-main-008 | `a_non_utf8_argument_is_reported_not_panicked` | Unix-only (`#[cfg(unix)]`, it builds the argument from raw bytes). Asserts exit 1 rather than 101, no `panicked` in stderr, and the `not valid UTF-8` message. |
+| REQ-main-009 | `main::tests::index_will_not_write_while_another_writer_holds_the_lock` | The `hi index` half. The `hi view` half is a decision not to take a lock, so there is nothing to observe; what pins it is that `view::write` reads no page before writing one. |
 
 ## Manual Testing
 

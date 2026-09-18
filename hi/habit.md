@@ -21,3 +21,4 @@ The question belongs to the agent and never to hi. Capture still asks nothing an
 - **HABIT-4**  An agent starts hi in a repository that has none, from the feature I just asked for, instead of waiting for me to set it up.
   - **HABIT-4.a**  Whatever hi says at the start of my work, it never stops me from working.
   - **HABIT-4.b**  Once something is written down here, hi stops mentioning it.
+- **HABIT-5**  An agent that merged a branch touching my intent files checks the ids afterwards, because two branches can each hand out the same id and git will not say so.

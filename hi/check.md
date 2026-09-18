@@ -27,3 +27,4 @@ The only thing it will fail on is a file that is structurally wrong, because tha
 - **CHECK-3**  Every problem names the file and the line, so I can go straight to it.
 - **CHECK-4**  Checking works offline and reads nothing but my own files.
 - **CHECK-5**  One run tells me every problem in every file, so I fix them all in one pass.
+- **CHECK-6**  I can read each of hi's notes on its own in a script, under a name that stays the same when the wording changes.

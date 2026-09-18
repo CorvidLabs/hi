@@ -61,6 +61,12 @@ spec: out.spec.md
   rather than leave it wrong, because no verb saw me do it (hi: INDEX-4.b)
 - As someone browsing what has been captured, I want a flat listing of every criterion grouped by
   file, so I can see the shape of the intent at a glance
+- As an agent consuming `hi export`, I want to tell the shape of the payload apart from the version
+  of the files it was built from, so that a change to one never reads as a change to the other
+  (hi: EXPORT-6)
+- As an agent that merged a branch touching `hi/`, I want the file hi wrote into the repository to
+  tell me to check the ids, because git merged two branches that chose the same one and said
+  nothing (hi: HABIT-5)
 
 ## Acceptance Criteria
 
@@ -400,10 +406,16 @@ Acceptance Criteria
 - This is a property of the strings, not a runtime check. The first file an adopter reads is the
   one they write the rest of their prose to match, so a hard-wrapped starter file propagates the
   defect REQ-out-015 renders around.
-- `agent_instructions` says the convention in one sentence, which is the single narrowing of
+- `agent_instructions` says the convention in one sentence, which is one of the two narrowings of
   DECISIONS.md §27's rule that the file carries the habit and nothing else. It is admissible there
   because it is how markdown reads a newline rather than anything about hi's format, so it cannot
   go stale with a format that is not frozen (DECISIONS.md §29).
+- The other narrowing is one sentence telling an agent to run `hi check` after a merge that touched
+  `hi/`, because two branches can each choose the same id and git merges both without saying
+  anything (hi: HABIT-5, DECISIONS.md §37, §38). The test for admitting a sentence here is not "is
+  it one more sentence" but "can it ever become false": this one is a habit, which is the category
+  §27 said the file carries, and the only thing it relies on is `duplicate-id`, one of the six
+  structural problems the README promises and `CHECK-2.a` captures.
 - Nothing here validates, rewrites or reports on the wrapping of a file hi did not write. The
   convention travels as documentation and as the example hi sets; FILE-4 forbids the rewrite and
   CHECK-1 forbids the gate.
@@ -454,11 +466,16 @@ Acceptance Criteria
 - It rebuilds the whole generated block and compares it to the bytes `index_span` found, so it
   answers exactly the question `scripts/index-is-current.sh` answers by regenerating: would running
   `hi index` change anything?
-- When they differ it returns `<path>'s feature list is behind what is captured. Run \`hi index\``.
+- It returns a `check::Note`, not a bare string, so the code a script matches on is decided beside
+  check's other note codes rather than in a second place (hi: CHECK-6).
+- When they differ it returns `index-behind` with the message `<path>'s feature list is behind what
+  is captured. Run \`hi index\``.
 - When there is an opening marker line that `index_span` could not close, it returns
-  `<path> has an opening <!-- hi:index --> with no matching <!-- /hi:index -->, so nothing can
-  refresh its feature list`. That case is otherwise silent now, because REQ-out-017 swallows the
-  refusal on the capture path, and a list nothing can refresh is a list left wrong.
+  `index-markers` with the message `<path> has an opening <!-- hi:index --> with no matching
+  <!-- /hi:index -->, so nothing can refresh its feature list`. That case is otherwise silent now,
+  because REQ-out-017 swallows the refusal on the capture path, and a list nothing can refresh is a
+  list left wrong. It is a separate code from `index-behind` because running `hi index` does not fix
+  it (hi: CHECK-6).
 - It returns `None` for a matching block, for an `INTENT.md` that cannot be read, and for one with
   no marker line at all. A file with no generated list is not a list that is behind. It stays
   without one until somebody runs `hi index`, because the refresh installs nothing, and that
@@ -490,6 +507,26 @@ Acceptance Criteria
   failure is the whole answer.
 - A directory named `INTENT.md`, a file the process may not read, and a file that is not valid
   UTF-8 are all this case. Only absence is not.
+
+### REQ-out-020
+
+The export payload SHALL carry the version of its own shape separately from the version of the files
+it was built from (hi: EXPORT-6).
+
+Acceptance Criteria
+
+- `hi` is the file format's version and stays that: it is `doc::FORMAT_VERSION`, the same number
+  `capture` writes into a file's frontmatter and the same one `workspace::load` refuses a file for
+  not declaring (REQ-doc-021, REQ-workspace-013).
+- `export` is the version of this JSON envelope: the shape of the payload, from the private
+  `ENVELOPE_VERSION`. Both are `1` today, and they are free to move apart.
+- They were one field by accident, and the accident is only visible later. The day the payload grows
+  a field or moves one, `hi` cannot be the thing that says so without also claiming the files on disk
+  changed: a consumer pinned to a shape would be told the format moved, and a consumer reading HI/1
+  files would be told it had not. This costs one field now and is impossible once anything depends
+  on the shape.
+- Both fields are present in every export, whatever the scope, because REQ-out-005 says a scoped
+  export is the same payload with less in it.
 
 ## Constraints
 

@@ -130,10 +130,22 @@ fn unlike(before: &[Shape], after: &[Shape]) -> String {
     }
 }
 
+/// The one version of the file format this binary reads and writes.
+///
+/// It is the number `hi:` carries in a file's frontmatter, and the number
+/// `hi export` reports as `hi`. It is deliberately not the crate's version:
+/// releases change, the format does not have to (hi: FILE-25).
+pub const FORMAT_VERSION: u32 = 1;
+
 /// Frontmatter, hand-parsed so a hi file needs no YAML library.
 #[derive(Debug, Clone, Default)]
 pub struct Front {
     pub version: Option<u32>,
+    /// The `hi:` value exactly as the file wrote it, when the key is there at
+    /// all. `version` cannot answer "is this a version hi understands": a
+    /// value that is not a number parses to `None`, which is also what an
+    /// absent key gives, and absent means HI/1 (hi: FILE-25).
+    pub version_text: Option<String>,
     pub families: Vec<String>,
     pub owner: Option<String>,
     /// Line range of the frontmatter block, inclusive of both `---` fences.
@@ -142,6 +154,36 @@ pub struct Front {
     pub families_span: Option<(usize, usize)>,
     /// True when `families` was written as a YAML block list rather than inline.
     pub families_block: bool,
+}
+
+impl Front {
+    /// The declared format version, when it is not one this hi can read.
+    ///
+    /// Returned exactly as the file wrote it, so the refusal can quote it back.
+    ///
+    /// Three values are HI/1, and everything else is a file this binary has no
+    /// grounds to touch:
+    ///
+    /// - an absent `hi:` key, because every file written before the key existed
+    ///   is HI/1 and those have to keep working;
+    /// - a `hi:` key with nothing after it, which declares no more than an
+    ///   absent key does, and refusing a file over an empty value would be
+    ///   refusing it for being untidy rather than for being another format;
+    /// - a value that parses to `FORMAT_VERSION`.
+    ///
+    /// A later number, an earlier one, and something that is not a number at
+    /// all are all the same answer: hi does not know what this file means, and
+    /// reading it as HI/1 would be guessing (hi: FILE-25).
+    pub fn unreadable_version(&self) -> Option<&str> {
+        let declared = self.version_text.as_deref()?;
+        if declared.is_empty() {
+            return None;
+        }
+        match declared.parse::<u32>() {
+            Ok(FORMAT_VERSION) => None,
+            _ => Some(declared),
+        }
+    }
 }
 
 /// One parsed `hi/*.md`.
@@ -229,7 +271,14 @@ impl Doc {
             let key = key.trim();
             let value = value.trim();
             match key {
-                "hi" => self.front.version = value.parse::<u32>().ok(),
+                "hi" => {
+                    // Both, because they answer different questions. `version`
+                    // is what the file says it is; `version_text` is what the
+                    // file actually wrote, which is the only thing that can
+                    // tell an unreadable version from an absent one.
+                    self.front.version = value.parse::<u32>().ok();
+                    self.front.version_text = Some(value.to_string());
+                }
                 "families" | "family" => {
                     let start = index;
                     if value.is_empty() {
@@ -1337,6 +1386,37 @@ mod tests {
         assert_eq!(doc.front.families, vec!["SEND", "RECEIPT"]);
         assert_eq!(doc.front.owner.as_deref(), Some("leif"));
         assert_eq!(doc.title.as_deref(), Some("Chat"));
+    }
+
+    #[test]
+    fn only_an_undeclared_version_and_this_one_are_this_format() {
+        // The `hi:` key was stored and never read, so a file could say it was
+        // written for a format this binary has never seen and be parsed,
+        // checked and written into as though it were HI/1. That makes the
+        // number meaningless in both directions: it cannot be frozen, and a
+        // later HI/2 could never ship, because today's binaries would edit an
+        // HI/2 file without knowing what they were editing (hi: FILE-25).
+        let no_key = doc("---\nfamilies: [SEND]\n---\n\n## Criteria\n");
+        assert_eq!(no_key.front.unreadable_version(), None, "absent is HI/1");
+
+        let empty = doc("---\nhi:\nfamilies: [SEND]\n---\n\n## Criteria\n");
+        assert_eq!(
+            empty.front.unreadable_version(),
+            None,
+            "a key with no value says no more than no key does"
+        );
+
+        let one = doc("---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n");
+        assert_eq!(one.front.unreadable_version(), None);
+
+        for declared in ["2", "0", "10", "1.1", "one", "HI/1"] {
+            let raw = format!("---\nhi: {declared}\nfamilies: [SEND]\n---\n\n## Criteria\n");
+            assert_eq!(
+                doc(&raw).front.unreadable_version(),
+                Some(declared),
+                "`hi: {declared}` is not HI/{FORMAT_VERSION}, and is quoted back as written"
+            );
+        }
     }
 
     #[test]

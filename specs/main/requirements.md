@@ -10,6 +10,7 @@ spec: main.spec.md
 - As an agent, I want `--json` on check and a clean stdout on export, so that I can consume hi's output without parsing prose
 - As someone who types a flag before the id, I want it treated as a flag, so that `--root` works even though capture never reaches clap; and as someone who types one inside a sentence, I want it left alone, so that my words survive (hi: CAPTURE-8)
 - As someone who types something hi cannot handle, I want a plain sentence back rather than a stack trace (hi: CAPTURE-1.c)
+- As someone refreshing the list at the front of my product while an agent is capturing into the same repository, I want neither command to undo the other (hi: INDEX-5)
 
 ## Acceptance Criteria
 
@@ -105,6 +106,34 @@ Acceptance Criteria
 - The exit code is 1, not 101, and stderr carries no panic message or backtrace.
 - A `--root` value that is not valid UTF-8 is still usable in the separated form `--root PATH`, because `peel_root` turns the following argument into a `PathBuf` without going through `str`.
 - The joined form `--root=PATH` is matched with `to_str()`, so a token that is not valid UTF-8 is not peeled and falls through to clap. That leaves it usable for a subcommand, but not for a capture.
+
+### REQ-main-009
+
+`hi index` SHALL hold the write lock across its read-modify-write, and `hi view` SHALL not take one
+(hi: INDEX-5, FILE-19).
+
+Acceptance Criteria
+
+- The `Index` arm calls `run_index`, which takes `lock::acquire` on `<root>/hi`, reloads the
+  workspace under it with `Workspace::find(&start)`, and only then calls
+  `out::write_index(.., Absent::Install)`. The reload is for the reason `run_capture` and the
+  `Retire` arm reload: the workspace the arm started from was read before the lock was granted.
+- `hi index` is a read-modify-write — read `INTENT.md`, splice the generated block into it, write the
+  rest back — and it is the one path that may *install* a block. Unlocked, a capture that finished
+  between the read and the write is undone: the list goes back without that criterion in it, any
+  prose saved in between goes with it, and both commands print success.
+- `hi view` takes no lock, decided rather than overlooked. It never reads the page it is about to
+  write; it regenerates the whole file from the criteria, so there is no window in which it could
+  put back a stale version of somebody else's work, and `fs::write` of a fully rendered page is not
+  a read-modify-write. Three further reasons: `lock::acquire` creates `hi/` to live in, so a read
+  verb would start writing into the repository; the page is derived and gitignored, so the worst a
+  race can do is publish a page one criterion out of date, which the next run fixes and which no id
+  depends on; and `hi view` in CI would queue behind a bulk capture for nothing.
+- The lock is not reentrant, so nothing under `run_index` may take one of its own. `write_index`
+  does not, and `refresh_index` — which the two writing verbs call inside their own lock — must not
+  either (REQ-out-017).
+- The read verbs `ls`, `issue`, `export` and `check` take no lock and write nothing, so there is
+  nothing for one to protect.
 
 ## Constraints
 

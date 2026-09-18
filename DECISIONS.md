@@ -1050,10 +1050,26 @@ roughly double it, which is a trade worth making only if someone asks for it.
 
 ## 26. The one promise, and the four ways hi broke it
 
-**An id is permanent and never reused.** Everything else in hi is a preference. This is the claim
-the format rests on, because the whole point of an id is that it can be quoted somewhere hi will
-never see: a ticket, a spec, a commit, a conversation. An id that can be reassigned is worse than
-no id, because the quotation silently starts pointing at something else.
+**hi never reuses an id, and never lets one of its own verbs reuse one.** Everything else in hi is
+a preference. This is the claim the format rests on, because the whole point of an id is that it
+can be quoted somewhere hi will never see: a ticket, a spec, a commit, a conversation. An id that
+can be reassigned is worse than no id, because the quotation silently starts pointing at something
+else.
+
+*Worded that way deliberately, and it was not always.* This section opened with "an id is permanent
+and never reused", flat, as a property of the world. It is not one. The files are markdown and they
+are yours: nothing stops you renumbering one in an editor, and nothing stops two branches choosing
+the same id and git merging both without a word (§37). README rule 4 has said the honest version
+since it was written — *permanence is a convention the tool supports rather than one it enforces;
+what it can do is refuse to be the one that breaks it* — and §30 was rewritten for exactly this
+reason after claiming more than it could keep. The scope of the promise is hi's own verbs, and that
+scope is what the rest of this section is about. Reviewers of a 1.0 candidate read the absolute
+wording and were right to: a promise stated wider than it can be kept is the same failure as a
+postcondition that compares the wrong thing (§35), one document up.
+
+What the narrower wording costs is nothing at all, because the wider one was never doing any work.
+Every fix below is a fix to something hi's own verbs did. What it buys is that the sentence a 1.0
+would freeze is one hi can actually keep.
 
 A thirteen-agent audit went looking for what a 1.0 would freeze and found that hi's own verbs broke
 that promise four ways. Three were silent: `hi check` reported no problem.
@@ -1093,8 +1109,9 @@ person at a terminal writing one sentence at a time. It is now used by agents ca
 twelve repositories, about 1,700 criteria, most of it generated. Nothing was announced. The usage
 changed and the assumptions did not, which is the ordinary way a tool becomes unsafe.
 
-**What would change this decision:** nothing about the promise. If the locking proves too coarse
-for a real workflow, the lock can narrow from the repository to the file. The promise does not move.
+**What would change this decision:** nothing about the promise, as narrowed above. If the locking
+proves too coarse for a real workflow, the lock can narrow from the repository to the file. What
+hi's own verbs are allowed to do to an id does not move.
 
 ---
 
@@ -1967,3 +1984,184 @@ catches it *before* the merge, and nothing at all catches the spec one. So:
 **What would change this decision:** nothing about how ids are chosen. If parallel capture becomes
 common enough to hurt, the answer is a check that runs over a *merge result* — the one place the
 duplicate is visible — not a reservation protocol between branches.
+
+## 38. What two 1.0 reviews agreed on, and the one they left to be argued
+
+Two independent readings of 0.7.0 asked what a 1.0 would be committing to, and arrived at the same
+answer: not yet. Both landed on a version number that means nothing, a payload whose one version
+field could never mean two things, and one write that never took the lock the other two take. This
+section is what was done about each, and the reasoning for the two that were judgement calls rather
+than defects.
+
+### `hi: 1` was a number nothing read
+
+`parse_front` stored the `hi:` value in `Front::version` and nothing outside `doc.rs` ever read it;
+the only other references were test assertions. So a file saying `hi: 2` loaded, `hi check` exited
+0, `hi ls` printed its criteria, and a capture appended to it as HI/1 and said nothing.
+
+That is worse than a missing feature, and it is worse in both directions at once. Going forward,
+`HI/1` cannot be frozen by a 1.0, because a reader that treats every version as 1 has not committed
+to anything. Going backward, an HI/2 can never ship, because every binary already installed would
+open an HI/2 file, believe it understood it, and write into it. The version field is only worth
+having if the *old* binary refuses; a new one understanding a new format is the easy half.
+
+So: absent is HI/1, an empty value is HI/1, `1` is HI/1, and anything else is refused. An absent key
+is HI/1 because every file written before the key existed has none, and refusing those would be the
+version check breaking the format it exists to protect. An empty value declares no more than an
+absent key does, and refusing a file for being untidy is not what this is for.
+
+**It is not a seventh check kind, and the question is not close.** `hi check` fails on six
+structural things and the README says exactly six (§5, `CHECK-1`). The six are things hi found wrong
+*inside a file it read*. An unknown version is hi saying it did not read the file, which is the same
+sentence as "I could not decode this file" and already has a home: §36 put that one in the
+operational channel for the same reason. Adding a seventh kind would also make the refusal a finding
+of `check` alone, when what is wanted is that no verb touches the file.
+
+**The refusal lives in `Workspace::load`**, which every verb goes through before it does anything
+else. One place rather than eight, and because `load` runs before `lock::acquire`, a refused capture
+has not written the criterion, has not made `hi/`, has not started `INTENT.md` or `hi/AGENTS.md`,
+and has not left a lock file (`FILE-25.a`, `CAPTURE-5`).
+
+One file refuses the whole repository. A neighbour at this version does not rescue it, for the
+reason §36 gives: hi cannot answer a question about a repository it has only partly read, and an id
+it could not look for is not an id that is free.
+
+### `"hi": 1` in the export payload was two things wearing one name
+
+`hi export` emitted `"hi": 1`, and that 1 is the *file format*'s version. It can therefore never
+later mean "this JSON is shape 2". The day the payload grows a field or moves one, `hi` cannot be
+the thing that says so without also claiming the files on disk changed: a consumer pinned to a shape
+would be told the format moved, and a consumer reading HI/1 files would be told it had not.
+
+`export: 1` is now beside it. Both are 1 and both are free to move apart. This costs one field today
+and is impossible once anything depends on the shape, which is the whole argument — there is no
+later moment at which it gets cheaper.
+
+### `hi index` was a read-modify-write outside the lock
+
+Capture and retire hold `lock::acquire` across their whole read-modify-write. `hi index` did not,
+and it is the one path that may *install* a block: it reads `INTENT.md`, splices the generated list
+into it, and writes the rest back. Unlocked, a capture that finishes between that read and that
+write is undone — the list goes back without the new criterion, and any prose saved in between goes
+with it — while both commands print success. That is the §33 shape exactly, in the one verb nobody
+had looked at, in a tool whose last three defect rounds were all about racing writes.
+
+It takes the lock now, and reloads the workspace under it for the reason capture and retire reload.
+
+**`hi view` deliberately does not, and this is the part worth arguing rather than assuming.** It
+looks similar: it writes a file, and the file is derived from the criteria. It is not the same
+thing. `view::write` never reads the page it is about to write; it renders the whole page from the
+workspace and writes it. There is no window between a read and a write in which somebody else's
+work can be put back, because there is no read. Three further reasons, none of them decisive alone:
+
+- `lock::acquire` creates `hi/` to live in. A read verb that takes the write lock starts writing
+  into a repository it was only asked to look at, and in a repository with no `hi/` yet it would
+  create and then remove one.
+- The page is derived and gitignored. The worst a race can do is publish a page one criterion out of
+  date, which the next run fixes, and no id depends on it. That is a different order of consequence
+  from losing a criterion.
+- `hi view` in CI would queue behind a bulk capture for nothing.
+
+The honest summary is that the lock is for read-modify-write and `hi view` is not one. If `hi view`
+ever grows a reason to read its own output — an incremental render, say — it takes the lock that
+day. One thing this section is *not* claiming: `view::write` uses `fs::write` rather than
+`doc::write_atomically`, so a page can still be left half written by a crash. That is a torn derived
+artifact and a different problem from this one; it is noted here so the next reader does not mistake
+silence for a decision.
+
+### The notes have codes, and no layout
+
+`check` built its notes as strings and joined them with `"\n      "` — six spaces of terminal
+indentation, inside the data. That is why `--json` carried one `note` string and a consumer had to
+split on whitespace to get the notes back apart.
+
+Each note now has a `NoteKind` with a stable code and a message with no indentation in it. Four
+codes, chosen for the remedy rather than for the sentence: `no-product-why`, `index-behind`,
+`index-markers`, `unexplained-retirement`. A missing `INTENT.md` and an `INTENT.md` with no prose
+share a code because the answer to both is *write the why*; a stale list and an unpaired marker pair
+do not, because one is fixed by running `hi index` and the other by hand.
+
+None of them moves the exit code, `Report::ok` does not read them, and none of them is a `Kind`. The
+six stay six.
+
+While the codes were being made stable, the second definition of them went: `Kind` used to derive
+`Serialize` with `rename_all = "kebab-case"` *and* have a `code()` method, which agreed with it. §31
+is about two pieces of code answering the same question and eventually answering it differently, and
+a code a consumer is invited to match on is the wrong place to leave that open. Both enums serialize
+through `code()` now.
+
+### A test that could not fail, and what it was really wrong about
+
+`lock::tests::a_lock_that_cannot_be_taken_is_refused_rather_than_pretended` makes a directory
+unwritable and asserts that `acquire` refuses. Root ignores the mode bits, and so does anything with
+`CAP_DAC_OVERRIDE`.
+
+The review that raised this said the test *passes vacuously* as root. It does not: as root the
+directory is writable, `acquire` succeeds, and the assertion fails. So the defect was a test that
+fails for a reason that has nothing to do with the code, in exactly the environment a container CI
+job runs in — which is the noisier failure and the one that gets a test deleted.
+
+Either way the fix is the same, and it is not a uid check. The test probes the precondition it
+actually needs: it writes a file into the directory it has just made unwritable, and if that
+succeeds, the directory is not unwritable — whoever this process is and whatever granted it — so the
+test skips with a message saying so. A uid comparison would be a proxy for that, and would be wrong
+under a capability that grants the same power without uid 0.
+
+### The `hi/AGENTS.md` migration already exists, and is not a mechanism
+
+hi writes `hi/AGENTS.md` and `hi/CLAUDE.md` when they are absent, and never again (§27). The seed
+text just changed, so every repository that has one has an older one.
+
+**The migration is: delete the file and capture. The next capture writes the current text.** That is
+the whole of it, it has always worked, and it was undocumented. It is documented now, in the README
+and here.
+
+A `--rewrite-agents` verb was considered and refused. Write-once is not an accident to be worked
+around; it is the property that makes the file unable to go stale, because there is exactly one
+moment when hi's words are in it and no moment at which hi overwrites something a person edited.
+The file is theirs after it is written — that is what `hi/` being the repository's own directory
+means. A verb that rewrites it has to decide what to do with a file somebody has changed, and every
+answer to that is worse than the one-line remedy above. If enough adopters ever want the newer text
+badly enough to ask for a verb, that is a 1.x conversation and it starts from evidence, not from a
+1.0 obligation.
+
+### The one the reviews left open: does the seed file say more?
+
+A reviewer proposed that `hi/AGENTS.md` should tell an agent to run `hi check` after a merge that
+touched `hi/`, because cross-branch id collision is the one failure mode the promise has left (§37)
+and nothing in the file mentions it.
+
+The tension is real and it is §27's: that file says the habit and **nothing else**, precisely so it
+cannot go stale, and §29 already bent it once by adding a sentence about wrapping. "Just one more
+sentence" is how a file that was supposed to say less ends up saying everything.
+
+**It was added.** The reasoning, stated so the next person can hold it against the same standard:
+
+The test is not *is this one more sentence*. It is *can this sentence ever become false*, because
+the file is written once and nothing will ever come back to correct it. §27 refused two specific
+things — the id grammar and the list of families already in the repository — and both fail that test
+loudly: the grammar describes a format DECISIONS says is not frozen, and the family list is wrong
+immediately after the next capture. §29's wrapping sentence passes it, because it is how markdown
+reads a newline, which is the same at `hi: 1` and at whatever comes after.
+
+This one passes it too, on both halves. It is a *habit* — read, draft, confirm, capture, check after
+a merge — which is the category §27 said this file carries, rather than a fact about the format. And
+the only thing it names is `hi check` finding a duplicate id, which is one of the six structural
+problems the README promises, which `CHECK-2.a` captures, and which is about as close to frozen as
+anything in hi is.
+
+There is a real cost and it should be said plainly rather than argued away: the file is one sentence
+longer, the third narrowing would be easier to justify than this one was, and there is no mechanism
+stopping a fourth. So the rule is written down here rather than left to judgement. **A sentence
+earns a place in `hi/AGENTS.md` only if it is a habit rather than a fact about the format, and only
+if the one thing it names is something hi has committed not to change.** Anything that fails either
+half goes in the README, where it can be corrected.
+
+The other half of the cost is the one §27 already carries: existing repositories keep the old text
+until somebody deletes the file. That is the migration above, and it is why the migration needed
+writing down before this sentence was worth adding at all.
+
+**What would change this decision:** an adopter's `hi/AGENTS.md` turning out to be read and then
+ignored, which would mean length is the problem and the answer is to cut rather than to add. Or a
+sentence that fails the rule above getting in anyway, which would mean the rule is not load-bearing
+and the file needs a hard cap instead.

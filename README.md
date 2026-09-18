@@ -81,6 +81,12 @@ That is the whole format. Five rules:
    into the ticket, and hi never reflows the file it read it from: that one is yours
    ([DECISIONS.md](DECISIONS.md) §29).
 
+`hi: 1` is the one machine-facing line in the file, and it names the version of the format. This
+binary reads `HI/1` and nothing else: a file declaring any other version is refused by name, by
+every verb, rather than read as though it were this one — because a version nobody checks is a
+version that can never be frozen and can never be changed. A file with no `hi:` line at all is
+`HI/1`, so files written before the line existed keep working.
+
 There is no rule about who the sentence speaks for. Notice that `SEND-1` says *I* and
 `SPEND-1` says *an operator*, and that the difference is in the sentence, where anyone can read it.
 On a product with a paying side and a using side, say which one you mean the way you would say it
@@ -97,6 +103,12 @@ uppercase name in there is hi's own rather than criteria: your first capture lea
 `hi/AGENTS.md`, and a `hi/CLAUDE.md` beside it, describing the habit so an agent working in your
 repository finds it without being told. hi writes them once and never again, and they are yours
 afterwards. If a criterion ever ends up in one, `hi check` says so rather than letting it go quiet.
+
+Written once means a newer hi does not update the one you already have, which is deliberate: it is
+what makes the file unable to overwrite something you edited. **If you want the current text,
+delete the file and capture something — the next capture writes it again.** That is the whole
+migration, and there is no verb for it on purpose
+([DECISIONS.md](DECISIONS.md) §38).
 
 That file only reaches an agent already looking in `hi/`, which is no use in a repository that has
 never seen hi. The other half is the fledge plugin: `fledge plugins install CorvidLabs/hi` installs
@@ -317,6 +329,11 @@ written the product-level why yet, that a retired criterion never said why it wa
 `INTENT.md`'s feature list is behind what is captured. The last one has a single cause, since the
 verbs keep that list current themselves: you typed a criterion straight into a file, which hi has
 always let you do. Run `hi index` and it goes away.
+
+`hi check --json` carries those notes as a list, each under a code that stays the same when the
+wording changes — `no-product-why`, `index-behind`, `index-markers`, `unexplained-retirement` — so
+a script can act on one without matching on English. None of them is a seventh structural problem
+and none of them touches the exit code.
 
 ## Dogfooding
 

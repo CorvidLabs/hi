@@ -112,9 +112,15 @@ backtrace (hi: CAPTURE-1.c).
    routes, prints, and maps results onto exit codes. Its only calls into the environment are
    `args_os`, to read argv, and `current_dir`, and the latter only when `--root` was not given.
 
-16. The two verbs that write hold `lock::acquire` over their whole read-modify-write, and
-    everything they do inside it is inside it, `out::refresh_index` included. The lock is not
+16. Every verb that performs a read-modify-write holds `lock::acquire` over the whole of it, and
+    everything it does inside is inside, `out::refresh_index` included. The lock is not
     reentrant, so nothing under it may take one of its own (hi: FILE-19, INDEX-4).
+    There are three: capture, `Retire`, and `Index` through `run_index`. `Index` was the one left
+    out, and it is the only path that may *install* a block: unlocked, it reads `INTENT.md`, and a
+    capture that finishes before it writes is undone, with both commands printing success
+    (hi: INDEX-5). `View` takes no lock, decided rather than overlooked: it never reads the page it
+    writes, it regenerates the whole of it from the criteria, its output is derived and gitignored,
+    and `lock::acquire` creates `hi/` to live in, which a read verb has no business doing.
     **Both reload the workspace under the lock.** The `Workspace` each arm starts from was read
     before the lock was granted, so another writer may have finished in between; writing from that
     snapshot puts the file back the way it was. `run_capture` has always called `Workspace::find`
@@ -257,3 +263,4 @@ backtrace (hi: CAPTURE-1.c).
 | 2026-09-16 | Claude | Reconciled with the routing and discovery changes, every claim re-checked against `./target/release/hi`. `peel_root` now consumes `--root` only while it leads and stops at the id, so the "scans the whole slice" claim and everything built on it was rewritten. `looks_like_id` is case-insensitive on the family and requires a digit after the hyphen, so invariant 1 and the Purpose no longer claim an uppercase-initial family; `SEND-a` is now a clap usage error rather than an id error, and `send-2` routes to capture and is refused with a reason. Replaced the stale not-found, empty-sentence and export-scope messages with the strings the binary prints. Added `crate::doc` to Consumes and `depends_on`, three behavioral scenarios, and three error rows. |
 | 2026-09-17 | Claude | The `Retire` arm calls `out::refresh_index` after `Doc::save`, so retiring a criterion leaves the generated feature list true the way capturing one now does (hi: INDEX-4, DECISIONS.md §30). The failure is printed on stderr as a note and never changes the exit code (hi: INDEX-4.a). Added invariants 16 and 17 and an error row. This pass also added `Retire { id, reason }` to the `Command` enum row, which the subcommand has had since 0.4.0 and this spec had never listed. |
 | 2026-09-17 | Claude | The `Retire` arm reloads the workspace under the lock instead of writing from the copy `run` read before it. Two concurrent retires used to both report success and leave one criterion live again, because the second wrote a file it had read before the first one landed (hi: RETIRE-7, FILE-19, DECISIONS.md §33). Extended invariant 16. |
+| 2026-09-18 | Claude | The `Index` arm takes the write lock, through a new private `run_index`, and reloads the workspace under it. It was the one read-modify-write outside the lock and the only path that can install a block: unlocked, a capture finishing between its read of `INTENT.md` and its write is undone, with both commands printing success. `hi view` deliberately takes none — it never reads the page it writes, its output is derived and gitignored, and `lock::acquire` creates `hi/`, which a read verb has no business doing. Extended invariant 16 and added REQ-main-009 (hi: INDEX-5, FILE-19, DECISIONS.md §38). |

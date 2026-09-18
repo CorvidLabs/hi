@@ -5,9 +5,95 @@ All notable changes to `hi` (Human Intent). Format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
-only version so far.
+only version so far, and since the Unreleased entry below a file declaring any other version is
+refused rather than read as this one.
 
 ## Unreleased
+
+### The format version is a promise now, not a decoration
+
+`hi: 1` sits in every file's frontmatter and **nothing read it**. `parse_front` stored
+the number and no verb ever asked for it, so a file declaring `hi: 2` loaded, `hi check`
+exited 0, `hi ls` printed its criteria, and a capture appended to it as HI/1 without
+mentioning anything.
+
+That is broken in both directions. `HI/1` could not be frozen by a 1.0, because a
+reader that treats every version as 1 has committed to nothing; and an `HI/2` could
+never ship, because every binary already installed would open an HI/2 file believing
+it understood it.
+
+**A file declaring a version this hi does not read is now refused by name, by every
+verb.** The message says which file and which version. A refusal writes nothing at
+all — not the criterion, not `hi/`, not `INTENT.md`, not `hi/AGENTS.md`, not even the
+lock file — because it happens before the write lock is taken. A file with no `hi:`
+line is still HI/1, so files written before the key existed keep working.
+
+It is **not** a seventh structural problem. `hi check` still fails on exactly six, and
+still never fails on unfinished intent. An unknown version is hi saying it did not read
+the file, which is the same category as a file it could not decode (DECISIONS.md §36),
+not something it found wrong inside one.
+
+### `hi index` takes the write lock
+
+Capture and `hi retire` hold the lock across their whole read-modify-write. `hi index`
+did not, and it is the one path that can *install* a generated block: it reads
+`INTENT.md`, splices the list in, and writes the rest back. A capture that finished
+between that read and that write was undone — the list went back without the new
+criterion, and any prose saved in between went with it — while both commands printed
+success. It now takes the lock and reloads the workspace under it, like the other two.
+
+`hi view` deliberately takes no lock. It never reads the page it is about to write, so
+there is no read-modify-write to protect; its output is derived and gitignored; and
+taking the write lock would have a read verb creating `hi/` in a repository it was only
+asked to look at. DECISIONS.md §38 argues it rather than assuming it.
+
+### Added
+
+**`hi export` says which shape it is, separately from which format it read.** The
+payload carries `"export": 1` beside `"hi": 1`. `hi` is the *file format*'s version and
+stays that; `export` is the version of the JSON envelope. One field could never later
+mean both, and splitting them is impossible once anything depends on the shape.
+
+**`hi/AGENTS.md` tells an agent to run `hi check` after a merge that touched `hi/`.**
+Two branches can each choose the same id, and git merges both cleanly and says nothing
+— which happened to this repository (DECISIONS.md §37). One sentence, in the file hi
+writes on a first capture. DECISIONS.md §38 records why a second narrowing of that
+file's "say the habit and nothing else" rule was admitted, and the rule now written
+down for the next one.
+
+### Changed
+
+**`hi check --json` carries its notes as a list, each with a code.** `note` was a single
+string with every note joined by a newline and six spaces of terminal indentation, so a
+script had to split on whitespace to get them apart. It is now `notes`, an array of
+`{ kind, message }`, with the stable codes `no-product-why`, `index-behind`,
+`index-markers` and `unexplained-retirement`. The wording is still for people and is
+free to change; the codes are the part a script can hold on to. None of them is a
+structural problem and none of them moves the exit code.
+
+This changes the shape of `hi check --json`. It is the only breaking change here, and
+`hi check`'s text output is unchanged apart from each note printing on its own `note:`
+line.
+
+**Documented: how to get the current `hi/AGENTS.md`.** hi writes that file once and
+never again, which is what stops it overwriting something you edited — so an older
+repository keeps its older text. Delete the file and capture; the next capture writes
+it again. That has always worked and was never written down. There is deliberately no
+verb for it (DECISIONS.md §38).
+
+**A feature list you deleted stays deleted.** Capture and `hi retire` refresh the block
+they find and no longer reinstate a `## Features` section you removed; `hi index` is how
+you ask for one. Rewriting the list between hi's markers is what hi promised; adding a
+heading to your file is writing prose, and hi cannot tell a block you deleted from one
+you never had. An `INTENT.md` hi creates on your first capture now carries its feature
+list from birth, so nothing about a fresh repository changes. DECISIONS.md §30 accepted
+the old behaviour as a cost; §32 withdraws it.
+
+§30's claim that drift became "structurally impossible" is softened in the same section.
+The refresh is best effort by design, so a broken marker pair or a file hi cannot read
+leaves the list wrong while your capture succeeds. What is true is narrower: the
+ordinary path no longer depends on anybody remembering. (`hi index` typed by hand took
+no lock either, until the entry above gave it one.)
 
 ### Two writes that landed where nothing reads them
 
@@ -43,6 +129,19 @@ still free to capture for real.
 
 ### Fixed
 
+**A lock test could not fail in a root container.** It makes a directory unwritable and
+asserts that taking the lock is refused. Root ignores the mode bits, so the assertion
+was about an environment the test was not in. It now probes whether the directory is
+really unwritable and skips with a stated reason when it is not, rather than asserting
+something it cannot observe.
+
+**DECISIONS.md §26 said more than hi can keep.** It stated the one promise absolutely —
+*an id is permanent and never reused* — when the honest version, which README rule 4 has
+carried all along, is that hi never reuses an id and never lets one of its own verbs
+reuse one. The files are markdown and they are yours; nothing stops a hand edit, and
+nothing stops two branches choosing the same id. §30 was rewritten for the same reason
+once already.
+
 **An automatic index refresh could erase your whole `INTENT.md`.** `write_index` turned
 every read error into an empty string, and then treated an empty string as "no file
 here, write the starter". An `INTENT.md` holding your prose and one byte that is not
@@ -65,22 +164,6 @@ was announced as taken and then reissued with different words. There is now one
 reservation lookup covering the files hi loads and the files it skips, and `check` and
 `capture` both answer from it. hi's own files still hold no criteria, are still not
 counted, and still never appear in the feature list.
-
-### Changed
-
-**A feature list you deleted stays deleted.** Capture and `hi retire` refresh the block
-they find and no longer reinstate a `## Features` section you removed; `hi index` is how
-you ask for one. Rewriting the list between hi's markers is what hi promised; adding a
-heading to your file is writing prose, and hi cannot tell a block you deleted from one
-you never had. An `INTENT.md` hi creates on your first capture now carries its feature
-list from birth, so nothing about a fresh repository changes. DECISIONS.md §30 accepted
-the old behaviour as a cost; §32 withdraws it.
-
-§30's claim that drift became "structurally impossible" is softened in the same section.
-The refresh is best effort by design, so a broken marker pair or a file hi cannot read
-leaves the list wrong while your capture succeeds, and `hi index` typed by hand still
-takes no lock. What is true is narrower: the ordinary path no longer depends on anybody
-remembering.
 
 ### The first capture in a repository is locked like every other one
 

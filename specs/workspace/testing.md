@@ -58,6 +58,10 @@ load-bearing in most of that file. The one exception is
 | The counting and family lookups | `cargo test check::tests` |
 | The id lookup and path rendering | `cargo test out::tests` |
 | The doc iteration and criteria count behind the HTML page | `cargo test view::tests` |
+| `src/workspace.rs` (`a_file_written_for_another_format_version_is_refused_by_every_verb_at_once`) | Unit | REQ-workspace-013. `load` on a `hi/chat.md` declaring `hi: 2` errors, naming the file and the version; adding a neighbouring HI/1 file does not rescue it. |
+| `tests/cli.rs` (`a_file_from_a_later_format_is_refused_by_every_verb`) | Integration | REQ-workspace-013. Ten invocations — `check`, `check --json`, `ls`, `ls --retired`, `export`, `issue`, `index`, `view`, `retire` and a capture — each exit 1, each name `hi/chat.md` and `hi: 2` on stderr, and each print nothing on stdout. |
+| `tests/cli.rs` (`a_refusal_over_the_format_version_writes_nothing_at_all`) | Integration | REQ-workspace-013. A refused capture leaves the file byte-identical and creates no `INTENT.md`, no `hi/AGENTS.md`, no `hi/CLAUDE.md` and no `hi/.hi.lock` (hi: FILE-25.a, CAPTURE-5). |
+| `tests/cli.rs` (`a_file_that_declares_nothing_is_still_this_format`) | Integration | REQ-workspace-013. A criteria file with no `hi:` key at all still loads and still lists, because every file written before the key existed has none. |
 
 ## Manual Testing
 

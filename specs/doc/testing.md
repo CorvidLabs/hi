@@ -53,6 +53,7 @@ byte-identical.
 | REQ-doc-017 (atomic save, hi: FILE-8) | `a_normal_save_leaves_no_temp_file_behind` covers the success path and the absence of a leftover `.chat.md.hi-tmp`. The failure paths (a temp file that cannot be written, a rename that fails) have no test |
 | REQ-doc-018 (insert creates a missing section, hi: CAPTURE-7) | `a_file_with_no_criteria_heading_gets_one`, which also re-parses the result and asserts the intent prose survived; `a_capture_into_an_unfinished_fence_is_refused_rather_than_lost` for the case where there is nowhere to put the section |
 | REQ-doc-019 (the list-item rule, hi: FILE-1.b) | `a_case_is_rendered_as_a_nested_list_item`, which pins all three indents; `a_criterion_is_always_exactly_one_line` and `collapses_pasted_whitespace_into_one_sentence`, which both assert the `- **ID**  ` prefix; `reads_a_criterion_however_it_was_decorated` for the reading half; end to end, `cli::a_hi_file_renders_as_a_list_not_a_wall_of_text` |
+| `src/doc.rs` (`only_an_undeclared_version_and_this_one_are_this_format`) | Unit | REQ-doc-021. No `hi:` key, an empty `hi:` value and `hi: 1` are all HI/1; `2`, `0`, `10`, `1.1`, `one` and `HI/1` all come back as the declared text, quoted exactly as the file wrote it. |
 
 ## Manual Testing
 

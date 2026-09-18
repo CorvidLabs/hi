@@ -48,6 +48,9 @@ run under `cargo test --test cli`.
 | REQ-check-007 (sort order) | `check_fails_on_a_structural_problem` asserts the file and line reach the output, but no test has enough problems to observe the file-then-line sort. No unit test reads `problem.file` or `problem.line` directly. |
 | REQ-check-010 | Nothing asserts the serialized JSON shape, nor that `Kind::code()` and the serde kebab-case rename produce the same six strings. |
 | REQ-check-011 (the `## Intent` exception) | No test anywhere puts an unfenced id-shaped line under `## Intent` and asserts it is neither a criterion nor a stray. `doc::tests::a_fenced_block_in_intent_is_not_parsed_as_criteria` covers only the fenced case, where the fence would have been enough on its own. |
+| `src/out.rs` (`a_list_that_disagrees_is_a_note`) | Unit | REQ-check-015. Asserts the note's `kind` is `NoteKind::IndexBehind` beside its wording, so the code a script matches on is pinned and not only the sentence. |
+| `src/out.rs` (`a_list_hi_can_no_longer_refresh_is_a_note_too`) | Unit | REQ-check-015. Asserts `NoteKind::IndexMarkers`, which is a different code from a list that is merely behind because running `hi index` does not fix it. |
+| `tests/cli.rs` (`check_json_carries_its_notes_as_a_list_with_codes`) | Integration | REQ-check-015, REQ-check-010. A repository with no product-level why and a stale feature list: `--json` carries `notes` as an array of two, the codes `no-product-why` and `index-behind` are both present, no message holds a newline, and the old joined `note` field is gone. Exit 0 throughout, because a note never moves the exit code (hi: CHECK-1). |
 
 ## Manual Testing
 
