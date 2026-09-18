@@ -231,6 +231,28 @@ Acceptance Criteria
 - An id that no line anywhere speaks for is still free, so this reserves rather than blocks. An id hi could not *look* for is not one of those: when a file hi skips cannot be read or decoded, `find_stray` fails, the capture refuses with `reading <file>: <cause>` and a hint, and nothing is written — not the criterion, not `hi/`, not `INTENT.md` and not `hi/AGENTS.md`. Unreadable is not absent, and the read error used to be swallowed, so a retired id parked in an undecodable `hi/Archive.md` was handed out again while `hi check` exited 0 both before and after (hi: CAPTURE-15, CAPTURE-5, DECISIONS.md §36).
 - hi's own files are read for reservation and for nothing else. Neither `hi/AGENTS.md` nor `hi/CLAUDE.md` becomes a doc, a family, a counted criterion or a line in the generated feature list, and the prose hi writes into them contains no criterion-shaped line (DECISIONS.md §27).
 
+### REQ-capture-018
+
+The capture module SHALL refuse a new top-level id whose family is declared by more than one file, and SHALL NOT write anything (hi: CAPTURE-16, CAPTURE-5, CHECK-2.g).
+
+Acceptance Criteria
+
+- After the parent check and before any filesystem write, a top-level id (no parent) asks `Workspace::family_declarers`. A length other than 0 or 1 is a refusal naming both files and a hint to leave the family in one file's list.
+- A case still follows its parent (REQ-capture-004, hi: CAPTURE-4.a). The parent has a unique home even when the family does not.
+- First-wins-by-path-order is not a tie-break. `doc_for_family` still returns the first path-sorted hit, and capture does not write into it when there is more than one declarer. Renaming a file used to move later captures; that is the defect (DECISIONS.md §39).
+- The in-memory docs and every file on disk are unchanged. The test `a_family_two_files_both_claim_is_refused_and_writes_nothing` pins both files.
+
+### REQ-capture-019
+
+The capture module SHALL offer `seed_agent_files`, which writes `hi/AGENTS.md` when it is missing, rewrites it when it is still a template hi has shipped, and refuses it when a person has edited it (hi: HABIT-6, HABIT-6.a, HABIT-6.b).
+
+Acceptance Criteria
+
+- Capture itself still only writes the file when it is absent (`start_agent_files`). The path that runs on every thought never overwrites, including when the file is a known old template. `capture_does_not_rewrite_a_known_old_template` pins that.
+- Recognition is `out::classify_agent_file`: byte identity after folding a BOM and CRLF, against `agent_instructions` (Current) and the templates in `src/seed/` (Prior). Anything else is Other.
+- Missing → `Seeded::Created`, current text plus `hi/CLAUDE.md`. Prior → `Seeded::Updated`, current text written with the endings the file had. Current → `Seeded::Current`, nothing written. Other → `Err` naming the file as theirs, with a hint to delete it and run `hi seed`; nothing written.
+- `main`'s `Seed` arm takes the write lock and reloads under it, like capture and retire (REQ-main-010).
+
 ## Constraints
 
 - hi holds intent and identity only. Capture stores no lifecycle, status, checkbox, timestamp, author, or evidence link alongside the criterion. The line is an id and a sentence and nothing else.

@@ -23,14 +23,16 @@ spec: check.spec.md
   so that showing what a criterion looks like does not fill my report with findings (hi: FILE-9)
 - As someone who moved a heading, I want a criterion that ended up outside every section to be
   reported rather than silently ignored, because nothing downstream reads it there (hi: CHECK-2.e)
+- As someone reading `hi check --json` from a script, I want each note on its own, under a name that
+  stays the same when somebody rewrites the sentence (hi: CHECK-6)
 
 ## Acceptance Criteria
 
 - Notes are not problems. `Report::note` carries the product-level why, the unexplained
   retirements, and the generated feature list being behind; `Report::ok` reads none of them and the
   exit code never moves for any of them (hi: CHECK-1, INDEX-3.a, RETIRE-3, INDEX-4.b)
-- `run` reports exactly six kinds of problem and nothing else: `duplicate-id`, `orphan-case`,
-  `retired-collision`, `unparseable-id`, `undeclared-family`, `stray-criterion`
+- `run` reports exactly seven kinds of problem and nothing else: `duplicate-id`, `orphan-case`,
+  `retired-collision`, `unparseable-id`, `undeclared-family`, `stray-criterion`, `duplicate-family`
 - Absence of downstream work (no spec, no ticket, no test, no evidence) is never reported in any
   form, and neither is the content, length, or phrasing of a criterion
 - Every problem carries the workspace-relative file, a 1-based line number, the id (raw token when
@@ -56,7 +58,7 @@ Acceptance Criteria
 
 - Both kinds of stray come from one call to `Workspace::strays`, which reads every path in `Workspace::skipped` through `doc::criterion_tokens` and every doc's `Doc::stray`, and each entry becomes a `stray-criterion` problem. A `StrayPlace::UnreadFile` entry names the file, the line, the token, and the fact that the name is not lowercase; a `StrayPlace::OutsideSection` entry carries REQ-check-011's message. Neither message changed.
 - `capture` refuses an id from the same call, so an id this reports as used and an id capture refuses are the same set by construction. They were two scans over two different sets of files, and a retired id in `hi/Archive.md` was reported here and handed out again by capture (hi: CAPTURE-14, DECISIONS.md §32).
-- The kind is reused rather than added to. A criterion in a skipped file is the same failure `stray-criterion` already describes — nothing reads it where it is — and the README promises exactly six structural problems.
+- The kind is reused rather than added to. A criterion in a skipped file is the same failure `stray-criterion` already describes — nothing reads it where it is — and adding a kind for it would have been an eighth for a failure the sixth already names.
 - A fenced block in such a file is an example rather than structure, exactly as it is under `## Intent` (hi: FILE-9), so documenting the format in a `hi/README.md` does not report a loss.
 - A file that cannot be read is skipped rather than reported, because an unreadable file is not evidence of a criterion.
 
@@ -68,7 +70,7 @@ The check module SHALL say when the generated feature list in `INTENT.md` no lon
 Acceptance Criteria
 
 - The note comes from `out::index_note`, which rebuilds the block and compares bytes. It is pushed onto the same `notes` vector as the product-level why and the unexplained retirements, and `Report::ok` reads none of them.
-- It is not a seventh `Kind`. `run` still reports exactly six structural problems, `hi check` still exits 1 only on a structurally broken file, and the README's "exactly six" stands.
+- It is not a `Kind`. `run` still reports exactly seven structural problems, `hi check` still exits 1 only on a structurally broken file, and notes never move the exit code.
 - It is the first note about something hi itself maintains; the other two are about words only a person can write. It is admissible because capture and retire keep the list current themselves (REQ-capture-016, REQ-out-017), so the note fires for one cause: a criterion typed straight into a file, which FILE-14 allows and no verb can see.
 - The note names the file and the verb that fixes it, and it goes away once that verb has been run.
 - No `INTENT.md`, no markers in it, or a block that already matches: no note. A missing `INTENT.md` is already covered by `product_intent_note`.
@@ -261,10 +263,11 @@ The report SHALL be serializable so that machine output carries the same finding
 
 Acceptance Criteria
 
-- `Kind`, `Problem`, and `Report` derive `Serialize`.
-- `Kind` serializes in kebab-case, matching `Kind::code()` exactly:
-  `duplicate-id`, `orphan-case`, `retired-collision`, `unparseable-id`, `undeclared-family`,
-  `stray-criterion`.
+- `Problem`, `Note` and `Report` derive `Serialize`. `Kind` and `NoteKind` implement it by hand,
+  writing `self.code()`, so the code is defined once rather than once in `code()` and once in a
+  serde rename that happens to agree with it today (DECISIONS.md §31).
+- `Kind` serializes as `duplicate-id`, `orphan-case`, `retired-collision`, `unparseable-id`,
+  `undeclared-family`, `stray-criterion`.
 - `hi check --json` emits the whole `Report`, including the counts and every problem, not a
   summary.
 - A consumer reading JSON sees neither more nor fewer findings than a human reading the text.
@@ -315,3 +318,52 @@ Acceptance Criteria
   `doc` parsed, and re-scanning the raw lines would reintroduce the bug.
 - A fenced example inside `## Intent` still survives in the intent prose, so `view` and `export`
   keep showing it.
+
+### REQ-check-015
+
+The report SHALL carry its notes as a list, each under a stable code, and no note SHALL carry
+presentation or reach the exit code (hi: CHECK-6, CHECK-1).
+
+Acceptance Criteria
+
+- `Report.notes` is a `Vec<Note>`, one entry per thing worth saying. It replaced a single
+  `Option<String>` holding every note joined with `\n      `: six spaces of terminal indentation
+  inside the data, which is why `--json` could not carry the notes apart and a reader had to split
+  on whitespace to get them back.
+- A `Note` is a `NoteKind` and a `message`. The message carries no leading `note:`, no indentation
+  and no embedded newline. How the notes are laid out belongs to whoever prints them, and `main`
+  prints one `note: <message>` line each.
+- `NoteKind` has four codes: `no-product-why`, `index-behind`, `index-markers`,
+  `unexplained-retirement`. They are chosen for what the note is about, so rewriting a sentence
+  does not move one.
+- A missing `INTENT.md` and an `INTENT.md` with no human prose are both `no-product-why`, because
+  the remedy is the same sentence. A list that is behind and an unpaired marker pair are separate
+  codes, because one is fixed by running `hi index` and the other by repairing the markers by hand.
+- The code is not printed in the terminal. A problem prints its kind because a person navigates by
+  it; a note is already a sentence saying what to do, and the code exists for the reader that is
+  not a person.
+- No `NoteKind` is a `Kind` and none of them may become one. `Report::ok` does not read `notes`, so
+  nothing in them moves the exit code, and the seven structural problems stay seven (hi: CHECK-1).
+- `out::index_note` returns a `check::Note`, so the two index codes are decided beside the other
+  two rather than in a second place (hi: INDEX-4.b).
+
+### REQ-check-016
+
+The check module SHALL report a family declared by two files as `duplicate-family`, on the later
+file, naming the first (hi: CHECK-2.g).
+
+Acceptance Criteria
+
+- After the per-criterion walk, `run` walks every doc's `front.families` in load order. The first
+  file that lists a family is recorded; every later file that lists the same family produces one
+  `DuplicateFamily` problem at that file's `families:` line, with `id` equal to the family name and
+  a message naming the first file and line.
+- A family listed twice in *one* file is the same declaration written twice, not two homes, and is
+  not reported.
+- Distinct ids in the two files do not make this a `duplicate-id`. Both kinds fire when the same
+  id is also written twice.
+- This is a structural problem inside files hi read, so it is a `Kind` and it moves the exit code.
+  It is not operational-at-load: `hi ls` of a salvageable workspace still works. First-wins-by-path
+  order is a lookup, not a decision, and freezing it would freeze a bug (DECISIONS.md §39).
+- Capture of a new top-level id in that family refuses from `Workspace::family_declarers` rather
+  than writing into `doc_for_family`'s first hit (REQ-capture-018, hi: CAPTURE-16, CAPTURE-5).

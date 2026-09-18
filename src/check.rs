@@ -2,7 +2,9 @@
 //!
 //! `hi check` never judges a criterion's content. It reports only things that
 //! make a file structurally wrong: a duplicate id, a case with no parent, an id
-//! that collides with a retired one, or a line that cannot be parsed as an id.
+//! that collides with a retired one, a line that cannot be parsed as an id,
+//! a family a file never declared, a criterion stranded outside every section,
+//! or a family two files both claim.
 //! Incomplete intent is the normal state of intent and is never an error.
 
 use std::collections::HashMap;
@@ -14,9 +16,26 @@ use crate::doc::Section;
 use crate::id::Id;
 use crate::workspace::{Stray, StrayPlace, Workspace};
 
+/// Serialize an enum as whatever its `code()` says, so the string a script
+/// matches on and the string a person reads in the terminal are one list.
+///
+/// `#[serde(rename_all = "kebab-case")]` would produce the same text today and
+/// is a second place that decides it. Two pieces of code answering the same
+/// question eventually answer it differently, which this repository has already
+/// paid for once (DECISIONS.md §31). These codes are the part of `--json` a
+/// consumer is invited to depend on, so they get one definition.
+macro_rules! serialize_as_code {
+    ($name:ident) => {
+        impl Serialize for $name {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.serialize_str(self.code())
+            }
+        }
+    };
+}
+
 /// What kind of structural problem this is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     DuplicateId,
     OrphanCase,
@@ -24,6 +43,7 @@ pub enum Kind {
     UnparseableId,
     UndeclaredFamily,
     StrayCriterion,
+    DuplicateFamily,
 }
 
 impl Kind {
@@ -35,6 +55,66 @@ impl Kind {
             Kind::UnparseableId => "unparseable-id",
             Kind::UndeclaredFamily => "undeclared-family",
             Kind::StrayCriterion => "stray-criterion",
+            Kind::DuplicateFamily => "duplicate-family",
+        }
+    }
+}
+
+serialize_as_code!(Kind);
+
+/// What a note is about, under a name that outlives its wording.
+///
+/// A note is not a problem and never will be: none of these moves the exit
+/// code, and none of them is a `Kind`. `hi check` fails on a
+/// structurally broken file and on nothing else (hi: CHECK-1, CHECK-6).
+///
+/// These are the machine-readable half. The wording beside them is for a
+/// person and is free to be rewritten; the code is the part a script may hold
+/// on to, so it is chosen for what the note is about rather than for how it
+/// currently reads.
+///
+/// Two conditions share `NoProductWhy` because they ask for the same thing —
+/// write the why — while `IndexBehind` and `IndexMarkers` are separate because
+/// one is fixed by running `hi index` and the other by editing the markers by
+/// hand. The code names the remedy, not the sentence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteKind {
+    /// No `INTENT.md`, or one with no human prose in it yet.
+    NoProductWhy,
+    /// `INTENT.md`'s generated feature list is behind what is captured.
+    IndexBehind,
+    /// `INTENT.md` has an opening index marker with no matching close, so
+    /// nothing can refresh the list.
+    IndexMarkers,
+    /// A retired criterion never said why it was retired.
+    UnexplainedRetirement,
+}
+
+impl NoteKind {
+    pub fn code(self) -> &'static str {
+        match self {
+            NoteKind::NoProductWhy => "no-product-why",
+            NoteKind::IndexBehind => "index-behind",
+            NoteKind::IndexMarkers => "index-markers",
+            NoteKind::UnexplainedRetirement => "unexplained-retirement",
+        }
+    }
+}
+
+serialize_as_code!(NoteKind);
+
+/// One thing worth saying that is not a failure.
+#[derive(Debug, Clone, Serialize)]
+pub struct Note {
+    pub kind: NoteKind,
+    pub message: String,
+}
+
+impl Note {
+    pub fn new(kind: NoteKind, message: impl Into<String>) -> Note {
+        Note {
+            kind,
+            message: message.into(),
         }
     }
 }
@@ -52,9 +132,16 @@ pub struct Problem {
 /// Everything `hi check` found.
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
-    /// A note about the product-level intent, when there is something to say.
-    /// Never a problem: hi does not fail on unfinished intent (hi: CHECK-1).
-    pub note: Option<String>,
+    /// Everything worth saying that is not a failure, one item per thing.
+    ///
+    /// A list rather than one string. It used to be the notes joined with a
+    /// newline and six spaces — terminal layout baked into the data, which is
+    /// exactly why the JSON could not carry them apart and a reader had to
+    /// split on whitespace to get them back (hi: CHECK-6).
+    ///
+    /// Never a problem, and never the exit code: hi does not fail on
+    /// unfinished intent (hi: CHECK-1).
+    pub notes: Vec<Note>,
     pub files: usize,
     pub criteria: usize,
     pub retired: usize,
@@ -69,13 +156,16 @@ impl Report {
 }
 
 /// What to say about the product-level intent, if anything.
-fn product_intent_note(workspace: &Workspace) -> Option<String> {
+fn product_intent_note(workspace: &Workspace) -> Option<Note> {
     if workspace.docs.is_empty() {
         return None;
     }
     let path = workspace.intent_path();
     let Ok(raw) = std::fs::read_to_string(&path) else {
-        return Some("no INTENT.md yet. `hi index` starts one for the product-level why".into());
+        return Some(Note::new(
+            NoteKind::NoProductWhy,
+            "no INTENT.md yet. `hi index` starts one for the product-level why",
+        ));
     };
     // Strip the generated index and the starter comment; if nothing human is
     // left, the why has not been written.
@@ -89,15 +179,18 @@ fn product_intent_note(workspace: &Workspace) -> Option<String> {
         .join("")
         .trim()
         .to_string();
-    prose
-        .is_empty()
-        .then(|| format!("{} has no product-level why yet", workspace.rel(&path)))
+    prose.is_empty().then(|| {
+        Note::new(
+            NoteKind::NoProductWhy,
+            format!("{} has no product-level why yet", workspace.rel(&path)),
+        )
+    })
 }
 
 /// Run every structural check across the workspace.
 ///
 /// The `Result` is operational, never a finding: a file hi cannot read at all
-/// is not one of the six structural problems and never becomes a seventh. It is
+/// is not a structural problem and never becomes one. It is
 /// hi saying it could not do the check, which is the only honest answer when
 /// part of the repository is unreadable (hi: CAPTURE-15, CHECK-1,
 /// DECISIONS.md §36).
@@ -235,9 +328,47 @@ pub fn run(workspace: &Workspace) -> Result<Report> {
         }
     }
 
+    // A family is a function from name to file. Two files both declaring the
+    // same one means capture has no unique home for a new criterion, and
+    // renaming a file would move later captures because `doc_for_family`
+    // used to take the first path-sorted hit and say nothing (hi: CHECK-2.g).
+    // Reported on the later file, naming the first, the same shape as
+    // `duplicate-id`. A family listed twice in *one* file is the same
+    // declaration written twice, not two homes, so it is not this.
+    {
+        let mut declared: HashMap<&str, (String, usize)> = HashMap::new();
+        for doc in &workspace.docs {
+            let file = workspace.rel(&doc.path);
+            let line = doc
+                .front
+                .families_span
+                .map(|(start, _)| start + 1)
+                .unwrap_or(1);
+            let mut seen_here: Vec<&str> = Vec::new();
+            for family in &doc.front.families {
+                if seen_here.contains(&family.as_str()) {
+                    continue;
+                }
+                seen_here.push(family);
+                if let Some((first_file, first_line)) = declared.get(family.as_str()) {
+                    problems.push(Problem {
+                        kind: Kind::DuplicateFamily,
+                        file: file.clone(),
+                        line,
+                        id: family.clone(),
+                        message: format!(
+                            "family {family} is also declared in {first_file}:{first_line}"
+                        ),
+                    });
+                } else {
+                    declared.insert(family, (file.clone(), line));
+                }
+            }
+        }
+    }
     problems.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
 
-    let mut notes: Vec<String> = Vec::new();
+    let mut notes: Vec<Note> = Vec::new();
     if let Some(note) = product_intent_note(workspace) {
         notes.push(note);
     }
@@ -277,13 +408,14 @@ pub fn run(workspace: &Workspace) -> Result<Report> {
         } else {
             format!("{unexplained} retired criteria do")
         };
-        notes.push(format!(
-            "{subject} not say why. Add it with `hi retire <ID> \"...\"`"
+        notes.push(Note::new(
+            NoteKind::UnexplainedRetirement,
+            format!("{subject} not say why. Add it with `hi retire <ID> \"...\"`"),
         ));
     }
 
     Ok(Report {
-        note: (!notes.is_empty()).then(|| notes.join("\n      ")),
+        notes,
         files: workspace.docs.len(),
         criteria: workspace.criteria_count(),
         retired: workspace.docs.iter().map(|d| d.retired.len()).sum(),
@@ -329,8 +461,37 @@ mod tests {
         let a = format!("{}SEND-1  One.\n", head("SEND"));
         let b = format!("{}SEND-1  Again.\n", head("SEND"));
         let report = run(&workspace(&[("a.md", &a), ("b.md", &b)])).unwrap();
-        assert_eq!(report.problems.len(), 1);
-        assert_eq!(report.problems[0].kind, Kind::DuplicateId);
+        let kinds: Vec<Kind> = report.problems.iter().map(|p| p.kind).collect();
+        assert!(kinds.contains(&Kind::DuplicateId), "{kinds:?}");
+        assert!(
+            kinds.contains(&Kind::DuplicateFamily),
+            "the same two files also both declare SEND: {kinds:?}"
+        );
+    }
+
+    #[test]
+    fn catches_a_family_declared_by_two_files() {
+        // Distinct ids, so this is not `duplicate-id`. Capture used to append
+        // a new SEND to whichever file sorted first, and renaming a file
+        // moved later captures (hi: CHECK-2.g, CAPTURE-16).
+        let a = format!("{}SEND-1  One.\n", head("SEND"));
+        let b = format!("{}SEND-2  Two.\n", head("SEND"));
+        let report = run(&workspace(&[("a.md", &a), ("b.md", &b)])).unwrap();
+        assert_eq!(report.problems.len(), 1, "{:?}", report.problems);
+        assert_eq!(report.problems[0].kind, Kind::DuplicateFamily);
+        assert_eq!(report.problems[0].id, "SEND");
+        assert_eq!(report.problems[0].file, "hi/b.md");
+        assert!(
+            report.problems[0].message.contains("hi/a.md"),
+            "{}",
+            report.problems[0].message
+        );
+    }
+
+    #[test]
+    fn a_family_listed_twice_in_one_file_is_not_two_homes() {
+        let raw = format!("{}SEND-1  One.\n", head("SEND, SEND"));
+        assert!(run(&workspace(&[("chat.md", &raw)])).unwrap().ok());
     }
 
     #[test]

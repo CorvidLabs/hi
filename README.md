@@ -81,6 +81,12 @@ That is the whole format. Five rules:
    into the ticket, and hi never reflows the file it read it from: that one is yours
    ([DECISIONS.md](DECISIONS.md) §29).
 
+`hi: 1` is the one machine-facing line in the file, and it names the version of the format. This
+binary reads `HI/1` and nothing else: a file declaring any other version is refused by name, by
+every verb, rather than read as though it were this one — because a version nobody checks is a
+version that can never be frozen and can never be changed. A file with no `hi:` line at all is
+`HI/1`, so files written before the line existed keep working.
+
 There is no rule about who the sentence speaks for. Notice that `SEND-1` says *I* and
 `SPEND-1` says *an operator*, and that the difference is in the sentence, where anyone can read it.
 On a product with a paying side and a using side, say which one you mean the way you would say it
@@ -97,6 +103,13 @@ uppercase name in there is hi's own rather than criteria: your first capture lea
 `hi/AGENTS.md`, and a `hi/CLAUDE.md` beside it, describing the habit so an agent working in your
 repository finds it without being told. hi writes them once and never again, and they are yours
 afterwards. If a criterion ever ends up in one, `hi check` says so rather than letting it go quiet.
+
+Written once means a newer hi does not update the one you already have on capture, which is
+deliberate: it is what makes the file unable to overwrite something you edited. **If the file is
+still a template hi has shipped, `hi seed` rewrites it. If you have edited it, `hi seed` leaves
+every byte alone and tells you so.** Delete it and run `hi seed` if the current text is what you
+want. Capture never overwrites, even when the file is an old template
+([DECISIONS.md](DECISIONS.md) §39, [HI-1.md](HI-1.md)).
 
 That file only reaches an agent already looking in `hi/`, which is no use in a repository that has
 never seen hi. The other half is the fledge plugin: `fledge plugins install CorvidLabs/hi` installs
@@ -199,6 +212,7 @@ filter. Your words are passed through untouched in all of them.
 | `hi export [FAMILY \| file]` | JSON for an agent, intent prose included. |
 | `hi index` | Rewrite the feature list inside `INTENT.md`, and nothing else in it, adding the `## Features` section if there is none. Capture and `hi retire` refresh a list that is there; run this by hand after editing a `hi/*.md` yourself, or to ask for a list back after deleting one. |
 | `hi view [--out FILE]` | One self-contained HTML page: a sticky feature rail, search with match highlighting, sort, keyboard navigation, and a copyable link for every id. Named after your `INTENT.md` heading, in CorvidLabs brand colors, light and dark. Works offline, and with scripting off it is still readable. |
+| `hi seed` | Write `hi/AGENTS.md` when it is missing, or replace it when it is still a template hi has shipped. Refuses if you have edited the file. |
 
 Every command takes `--root <PATH>` to work on a repository other than the one you are standing in.
 When you are capturing, put it before the id: everything after the id is your sentence, word for
@@ -308,15 +322,23 @@ quoted somewhere hi will never see. Four ways hi's own verbs could quietly reuse
 closed in 0.4.0, three of which `hi check` had reported as fine; [DECISIONS.md](DECISIONS.md) §26
 records them and what they say about the design.
 
-`hi check` fails on exactly six things, all structural: a duplicate id, a case with no parent, an
+`hi check` fails on seven things, all structural: a duplicate id, a case with no parent, an
 id that collides with a retired one, a line shaped like an id that is not a valid one, a family a
-file never declared, and a criterion stranded outside every section where nothing would read it.
+file never declared, a criterion stranded outside every section where nothing would read it, and a
+family two files both claim. 1.0 freezes those seven and the policy that they are structural only —
+not the cardinality of the list, which is why a seventh was still admissible in 0.x and an eighth
+is a 2.0. [HI-1.md](HI-1.md) is the contract.
 
 It also prints notes, which are never failures and never move the exit code: that you have not
 written the product-level why yet, that a retired criterion never said why it was retired, and that
 `INTENT.md`'s feature list is behind what is captured. The last one has a single cause, since the
 verbs keep that list current themselves: you typed a criterion straight into a file, which hi has
 always let you do. Run `hi index` and it goes away.
+
+`hi check --json` carries those notes as a list, each under a code that stays the same when the
+wording changes — `no-product-why`, `index-behind`, `index-markers`, `unexplained-retirement` — so
+a script can act on one without matching on English. None of them is a structural problem
+and none of them touches the exit code.
 
 ## Dogfooding
 
@@ -338,9 +360,14 @@ on their own product to find it, and the first fix we shipped for it was the wro
 
 **v0.7.0** on [crates.io](https://crates.io/crates/human-intent), with binaries for Linux (x86_64
 and arm64), macOS (Intel and Apple silicon) and Windows on the
-[release page](https://github.com/CorvidLabs/hi/releases). The format is
-deliberately not frozen: this is 0.x, and `HI/1` may still change before a 1.0 that commits to it,
-as §24 just demonstrated by removing a rule that four releases had required.
+[release page](https://github.com/CorvidLabs/hi/releases). The Unreleased work on this branch
+writes the contract a 1.0 will freeze — [HI-1.md](HI-1.md) — without tagging it.
+
+**Permanence of an id is a convention over shared history: the merged tree, not an unmerged
+branch.** Two workstreams can each choose the same hand-chosen id against the tree they captured
+on, and git will merge both without a conflict marker. hi's own verbs refuse to be the one that
+breaks it; `hi check` on the merged tree is the thing that proves it
+([DECISIONS.md](DECISIONS.md) §26, §37, §39).
 
 ```bash
 brew install corvidlabs/tap/hi

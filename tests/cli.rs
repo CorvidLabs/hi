@@ -1561,3 +1561,259 @@ fn listing(root: &std::path::Path) -> Vec<String> {
     found.sort();
     found
 }
+
+/// A repository whose one criteria file declares a format version this hi has
+/// never heard of.
+fn future_format(name: &str) -> Repo {
+    let repo = Repo::new(name);
+    repo.write(
+        "hi/chat.md",
+        "---\nhi: 2\nfamilies: [SEND]\n---\n\n# Chat\n\n## Intent\n\nWhy.\n\n## Criteria\n\n- **SEND-1**  I hit enter and it shows up.\n",
+    );
+    repo
+}
+
+#[test]
+fn a_file_from_a_later_format_is_refused_by_every_verb() {
+    // `hi:` was written by capture, stored by the parser, and read by nothing.
+    // A file saying `hi: 2` was parsed, checked and appended to as HI/1: the
+    // number could never be frozen, and an HI/2 could never ship, because
+    // every binary already released would edit an HI/2 file believing it
+    // understood it (hi: FILE-25).
+    let repo = future_format("version-refused");
+
+    for args in [
+        vec!["check"],
+        vec!["check", "--json"],
+        vec!["ls"],
+        vec!["ls", "--retired"],
+        vec!["export"],
+        vec!["issue", "SEND-1"],
+        vec!["index"],
+        vec!["view"],
+        vec!["retire", "SEND-1", "changed my mind"],
+        vec!["SEND-2", "a new want"],
+        vec!["seed"],
+    ] {
+        let out = repo.run(&args);
+        let said = stderr(&out);
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "`hi {}` should refuse: {said}",
+            args.join(" ")
+        );
+        assert!(
+            said.contains("hi/chat.md") && said.contains("hi: 2"),
+            "`hi {}` must name the file and the version: {said}",
+            args.join(" ")
+        );
+        assert!(
+            stdout(&out).is_empty(),
+            "`hi {}` printed a result it did not have",
+            args.join(" ")
+        );
+    }
+}
+
+#[test]
+fn a_refusal_over_the_format_version_writes_nothing_at_all() {
+    // The refusal is in `Workspace::load`, which runs before `lock::acquire`,
+    // so a refused capture has not even made the lock file. The file it could
+    // not read is untouched, and nothing hi normally starts on a first capture
+    // exists (hi: FILE-25.a, CAPTURE-5).
+    let repo = future_format("version-writes-nothing");
+    let before = repo.read("hi/chat.md");
+
+    let out = repo.run(&["SEND-2", "a new want"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+
+    assert_eq!(
+        repo.read("hi/chat.md"),
+        before,
+        "the file it refused to read"
+    );
+    for path in ["INTENT.md", "hi/AGENTS.md", "hi/CLAUDE.md", "hi/.hi.lock"] {
+        assert!(
+            !repo.root.join(path).exists(),
+            "{path} was created by a command that refused"
+        );
+    }
+    assert_eq!(
+        fs::read_dir(repo.root.join("hi")).unwrap().count(),
+        1,
+        "only the file that was already there"
+    );
+}
+
+#[test]
+fn a_file_that_declares_nothing_is_still_this_format() {
+    // Files written before `hi:` existed have no key at all, and they are
+    // HI/1. Refusing them would be the version check breaking the format it
+    // exists to protect (hi: FILE-25).
+    // Discovery itself looks for the `hi:` key, so this file is found through
+    // the repository boundary rather than through the key it does not have.
+    let repo = Repo::bare("version-absent");
+    fs::create_dir_all(repo.root.join("hi")).unwrap();
+    repo.write(
+        "hi/chat.md",
+        "---\nfamilies: [SEND]\n---\n\n# Chat\n\n## Criteria\n\n- **SEND-1**  One.\n",
+    );
+    let out = repo.run(&["ls"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("SEND-1"), "{}", stdout(&out));
+}
+
+#[test]
+fn check_json_carries_its_notes_as_a_list_with_codes() {
+    // The notes were one string joined with a newline and six spaces of
+    // terminal indentation, so JSON could not carry them apart and a reader
+    // had to split on whitespace to get them back (hi: CHECK-6).
+    let repo = Repo::with_chat("note-codes");
+    // No prose of its own, and a generated list that counts the wrong number:
+    // two notes at once, which is the case the joined string existed for.
+    repo.write(
+        "INTENT.md",
+        "# P\n\n## Features\n\n<!-- hi:index -->\n- [chat](hi/chat.md): SEND (9 criteria)\n<!-- /hi:index -->\n",
+    );
+    let out = repo.run(&["check", "--json"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    let json = stdout(&out);
+    let value: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let notes = value["notes"].as_array().expect("notes is a list");
+    let codes: Vec<&str> = notes
+        .iter()
+        .map(|note| note["kind"].as_str().expect("a code"))
+        .collect();
+    assert!(
+        codes.contains(&"no-product-why") && codes.contains(&"index-behind"),
+        "two separate notes, each under its own code: {json}"
+    );
+    for note in notes {
+        let message = note["message"].as_str().expect("a message");
+        assert!(
+            !message.contains('\n'),
+            "a note carries no layout of its own: {message:?}"
+        );
+    }
+    assert!(
+        value["note"].is_null(),
+        "the joined string is gone, not kept beside the list: {json}"
+    );
+}
+
+#[test]
+fn export_says_which_shape_it_is_apart_from_which_format_it_read() {
+    // `hi` is the version of the files. It cannot also be the version of this
+    // payload's shape, or the day the shape changes every consumer is told the
+    // file format moved (hi: EXPORT-6).
+    let repo = Repo::with_chat("envelope");
+    let out = repo.run(&["export"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    let value: serde_json::Value = serde_json::from_str(&stdout(&out)).expect("valid json");
+    assert_eq!(value["hi"], 1, "the format the files are in");
+    assert_eq!(value["export"], 1, "the shape of this payload");
+}
+
+#[test]
+fn the_agent_file_says_to_check_the_ids_after_a_merge() {
+    // An id is only unique against the tree it was captured on. Two branches
+    // choosing the same id merge cleanly and git says nothing, which is the
+    // one failure mode the promise has left and the one this file never
+    // mentioned (hi: HABIT-5, DECISIONS.md §37, §38).
+    let repo = Repo::bare("agent-merge");
+    let out = repo.run(&["SEND-1", "I hit enter and it shows up"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    let text = repo.read("hi/AGENTS.md");
+    assert!(text.contains("hi check"), "{text}");
+    assert!(text.contains("merge"), "{text}");
+    assert!(text.contains("same id"), "{text}");
+}
+
+#[test]
+fn check_fails_when_two_files_claim_the_same_family() {
+    // First-wins-by-path-order used to pick a home, say nothing, and move
+    // later captures when a file was renamed (hi: CHECK-2.g).
+    let repo = Repo::new("dup-family-check");
+    repo.write(
+        "hi/a.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n# A\n\n## Criteria\n\n- **SEND-1**  One.\n",
+    );
+    repo.write(
+        "hi/b.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n# B\n\n## Criteria\n\n- **SEND-2**  Two.\n",
+    );
+    let out = repo.run(&["check"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    let said = format!("{}{}", stdout(&out), stderr(&out));
+    assert!(said.contains("duplicate-family"), "{said}");
+    assert!(said.contains("SEND"), "{said}");
+
+    let json = repo.run(&["check", "--json"]);
+    assert_eq!(json.status.code(), Some(1));
+    let value: serde_json::Value = serde_json::from_str(&stdout(&json)).expect("valid json");
+    let kinds: Vec<&str> = value["problems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["kind"].as_str().unwrap())
+        .collect();
+    assert!(kinds.contains(&"duplicate-family"), "{value}");
+}
+
+#[test]
+fn capturing_into_a_family_two_files_claim_refuses_and_writes_nothing() {
+    let repo = Repo::new("dup-family-capture");
+    repo.write(
+        "hi/a.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n# A\n\n## Criteria\n\n- **SEND-1**  One.\n",
+    );
+    repo.write(
+        "hi/b.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n# B\n\n## Criteria\n\n- **SEND-2**  Two.\n",
+    );
+    let before_a = repo.read("hi/a.md");
+    let before_b = repo.read("hi/b.md");
+    let out = repo.run(&["SEND-3", "three"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(stderr(&out).contains("hi/a.md"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("hi/b.md"), "{}", stderr(&out));
+    assert!(stdout(&out).is_empty());
+    assert_eq!(repo.read("hi/a.md"), before_a);
+    assert_eq!(repo.read("hi/b.md"), before_b);
+}
+
+#[test]
+fn seed_rewrites_a_template_hi_has_shipped_and_refuses_an_edit() {
+    let repo = Repo::bare("seed-prior");
+    fs::create_dir_all(repo.root.join("hi")).unwrap();
+    repo.write("hi/AGENTS.md", include_str!("../src/seed/agents_0_5.md"));
+    let out = repo.run(&["seed"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("updated"), "{}", stdout(&out));
+    let text = repo.read("hi/AGENTS.md");
+    assert!(text.contains("hi check"), "{text}");
+    assert!(text.contains("one line per paragraph"), "{text}");
+
+    let repo = Repo::bare("seed-edited");
+    fs::create_dir_all(repo.root.join("hi")).unwrap();
+    repo.write("hi/AGENTS.md", "mine now\n");
+    let out = repo.run(&["seed"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(stderr(&out).contains("it is yours"), "{}", stderr(&out));
+    assert_eq!(repo.read("hi/AGENTS.md"), "mine now\n");
+}
+
+#[test]
+fn seed_writes_the_instruction_without_a_dummy_capture() {
+    let repo = Repo::bare("seed-missing");
+    let out = repo.run(&["seed"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stdout(&out).contains("created"), "{}", stdout(&out));
+    assert!(repo.root.join("hi/AGENTS.md").is_file());
+    assert!(repo.root.join("hi/CLAUDE.md").exists());
+    assert!(!repo.root.join("INTENT.md").exists());
+}

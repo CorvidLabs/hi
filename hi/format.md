@@ -44,6 +44,8 @@ Ids are the one thing I am strict about, because an id that moves is worse than 
   - **FILE-22.c**  A command that writes one criterion leaves every other criterion in my file exactly as it was, or it refuses.
 - **FILE-23**  If hi is killed while it is holding the write lock, the next capture recovers by itself instead of leaving me a file to delete.
 - **FILE-24**  While another hi is still running, nothing takes the write lock away from it, however long it has been holding it.
+- **FILE-25**  A file that says it was written for a version of the format this hi does not understand is refused, rather than read as though it were the version I have.
+  - **FILE-25.a**  That refusal leaves every file exactly as it was, because hi stopped before it wrote anything.
 
 - **ID-1**  An id never moves once written, so I can say it out loud a year later and still mean the same line.
   - **ID-1.a**  Inserting a criterion never renumbers anything around it.
@@ -55,6 +57,8 @@ Ids are the one thing I am strict about, because an id that moves is worse than 
   - **ID-3.a**  A letter is another case of its parent, like SEND-1.a and SEND-1.b under SEND-1.
   - **ID-3.b**  A number is a step or a detail inside its parent, like SEND-1.a.1 inside SEND-1.a.
 - **ID-4**  If I write an id that breaks the alternation, hi tells me instead of quietly accepting it.
+- **ID-5**  Whatever order I capture, retire and edit in, alone or alongside another hi, an id I have seen is never given to a second sentence.
+  - **ID-5.a**  Every criterion keeps its id, its section and its sentence across those steps.
 
 ## Retired
 

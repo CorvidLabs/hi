@@ -11,8 +11,6 @@ Before you build a feature:
 
 That happens before every feature, not only the first one.
 
-After a merge that touched this directory, run `hi check`. Two branches can each choose the same id, and git will merge both without saying anything.
-
 Write the prose in these files as one line per paragraph, with a blank line between paragraphs. A newline inside a paragraph is a visible break wherever the file is rendered, and it was only ever where your editor wrapped.
 
 Run `hi --help` for the commands.

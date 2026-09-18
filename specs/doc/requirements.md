@@ -41,6 +41,9 @@ spec: doc.spec.md
   because nothing reads it where it is (hi: CHECK-2.e)
 - As the author of `hi export` and `hi issue`, I want the intent prose, the active criteria and the
   retired criteria available as structured data from one parse (hi: EXPORT-1.a)
+- As someone holding a file written for a version of the format my binary has never seen, I want to
+  be told which file and which version rather than have it read as though it were mine
+  (hi: FILE-25)
 
 ## Constraints
 
@@ -459,3 +462,28 @@ Acceptance Criteria
   so a file written before this rule or edited by hand is never rejected (REQ-doc-003).
 - A bullet may be `-`, `*` or `+` on input; hi always writes `-`. Emphasis may be `*` or `_` on
   input; hi always writes `**`.
+
+### REQ-doc-021
+
+The module SHALL name the one format version it reads and SHALL report a declared version that is
+not that one, exactly as the file wrote it (hi: FILE-25).
+
+Acceptance Criteria
+
+- `FORMAT_VERSION` is the single constant naming the format this binary reads and writes. It is the
+  number `capture` writes as `hi:` into a file it starts, and the number `out::export` reports as
+  the payload's `hi` field. It is not the crate version: a release changes without the format
+  changing.
+- `parse_front` records the `hi:` value twice: `version`, parsed as a `u32` for anything that wants
+  the number, and `version_text`, the trimmed text exactly as the file wrote it. Only the second can
+  tell an unreadable version from an absent one, because a value that is not a number parses to
+  `None`, which is also what no key at all gives.
+- `Front::unreadable_version` returns `None` for a file with no `hi:` key, for a `hi:` key with an
+  empty value, and for a value that parses to `FORMAT_VERSION`. Everything else — a higher number, a
+  lower one, or text that is not a number — is returned as the borrowed declared text.
+- An absent key is HI/1 because every file written before the key existed has none, and refusing
+  those would be the version check breaking the format it exists to protect. An empty value declares
+  no more than an absent key does, and refusing a file for being untidy is not what this is for.
+- This module only reports. It does not refuse, does not print, and does not know which command is
+  running; `workspace::load` is where the refusal happens, because that is the one place every verb
+  goes through (REQ-workspace-013).

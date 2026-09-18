@@ -215,6 +215,23 @@ Acceptance Criteria
 - Capture refuses a padded id and writes nothing, which is the same refusal path as any other
   malformed id (hi: CAPTURE-5).
 
+### REQ-id-012
+
+Whatever order capture, retire and hand-edits run in, alone or alongside another hi, an id that has
+been seen SHALL never be given to a second sentence, and every criterion SHALL keep its id, section
+and sentence across those steps (hi: ID-5, ID-5.a).
+
+Acceptance Criteria
+
+- `src/promise.rs` starts from files hi did not write and runs random capture / retire / hand-edit
+  sequences. After every step: every id a verb reported as saved is readable by `Workspace::load` in
+  the section the verb named; the shape of every criterion the step did not name is unchanged; no id
+  is assigned twice; `hi check` exiting 0 implies all three.
+- `tests/promise.rs` is the concurrent half, through the real binary, including against a file hi
+  did not write.
+- This is the finding method the twelve confirmed defects did not have. Author-written fixtures stay;
+  they are no longer the only way a case gets into the suite (DECISIONS.md §39).
+
 ## Constraints
 
 - The grammar is frozen by ID-1: an id already written down must keep parsing to the same value

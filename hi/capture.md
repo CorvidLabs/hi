@@ -35,3 +35,4 @@ The one thing I want it to be strict about is refusing to quietly clobber someth
 - **CAPTURE-13**  When an id is taken, the next free one I am offered is one I can actually use.
 - **CAPTURE-14**  An id written somewhere hi cannot read it is still taken, and is never handed out twice.
 - **CAPTURE-15**  If hi cannot read one of my files, it says so and refuses, instead of carrying on as though the file were not there.
+- **CAPTURE-16**  If two files both claim a family, a new criterion I write in that family is refused rather than landing in whichever file happens to sort first.

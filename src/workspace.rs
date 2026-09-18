@@ -111,7 +111,11 @@ impl Workspace {
                     skipped.push(path);
                     continue;
                 }
-                docs.push(Doc::load(&path)?);
+                let doc = Doc::load(&path)?;
+                if let Some(declared) = doc.front.unreadable_version() {
+                    bail!("{}", unreadable_version(&rel_to(root, &path), declared));
+                }
+                docs.push(doc);
             }
         }
 
@@ -134,6 +138,12 @@ impl Workspace {
     }
 
     /// Find which doc holds a family, by frontmatter declaration or by use.
+    ///
+    /// Returns the first path-sorted file that declares it, then the first
+    /// that uses it. That is a lookup, not a decision: when two files declare
+    /// the same family, `hi check` reports `duplicate-family` and capture
+    /// refuses a new top-level id rather than writing into this result
+    /// (hi: CHECK-2.g, CAPTURE-16).
     pub fn doc_for_family(&self, family: &str) -> Option<usize> {
         self.docs
             .iter()
@@ -144,6 +154,20 @@ impl Workspace {
                         .any(|c| c.id.as_ref().is_some_and(|id| id.family == family))
                 })
             })
+    }
+
+    /// Every doc whose frontmatter lists this family, in load order.
+    ///
+    /// Load order is path-sorted, so this is stable for a given tree and
+    /// unstable across a rename — which is why a length other than one is a
+    /// problem, not a tie-break (hi: CHECK-2.g).
+    pub fn family_declarers(&self, family: &str) -> Vec<usize> {
+        self.docs
+            .iter()
+            .enumerate()
+            .filter(|(_, doc)| doc.front.families.iter().any(|f| f == family))
+            .map(|(index, _)| index)
+            .collect()
     }
 
     /// Look up one criterion by id, active or retired.
@@ -280,13 +304,43 @@ impl Workspace {
     /// links. A backslash is wrong in all three, so the separator is POSIX on
     /// every platform rather than the host's.
     pub fn rel(&self, path: &Path) -> String {
-        let relative = path.strip_prefix(&self.root).unwrap_or(path);
-        relative
-            .components()
-            .map(|component| component.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/")
+        rel_to(&self.root, path)
     }
+}
+
+/// `Workspace::rel`, before there is a `Workspace` to ask.
+///
+/// `load` refuses a file whose format version hi cannot read, and the refusal
+/// names the file, so it needs this one line of the workspace before the
+/// workspace exists (hi: FILE-25, FILE-12).
+fn rel_to(root: &Path, path: &Path) -> String {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    relative
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// What to say to somebody whose file was written for a different hi.
+///
+/// An operational failure and never a structural problem. The
+/// kinds are things hi found wrong *in* a file it read; this is hi saying it did
+/// not read the file at all, which is the same sentence as "unreadable" and
+/// already has a home (hi: CHECK-1, FILE-25, DECISIONS.md §36, §38).
+///
+/// It is raised in `load`, which every verb goes through before it does
+/// anything else, so the refusal is in front of every read and every write at
+/// once — and in front of `lock::acquire`, so a refused capture has not even
+/// made `hi/` (hi: FILE-25.a, CAPTURE-5).
+fn unreadable_version(file: &str, declared: &str) -> String {
+    format!(
+        "{file} says `hi: {declared}`, and this hi reads HI/{v} only.\n\
+         hint:  a newer hi may understand it, and this one will not guess. Nothing in this \
+         repository is read or written while that file is here, because reading HI/{declared} as \
+         HI/{v} is how a format version stops meaning anything",
+        v = crate::doc::FORMAT_VERSION
+    )
 }
 
 /// True when a file in `hi/` belongs to hi rather than to the person.
@@ -434,6 +488,41 @@ mod tests {
             workspace.find_stray(&Id::parse("SEND-1").unwrap()).is_err(),
             "and the lookup capture refuses by cannot answer either"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_file_written_for_another_format_version_is_refused_by_every_verb_at_once() {
+        // The refusal lives in `load` rather than in each verb, because every
+        // verb goes through `load` before it does anything else. That is what
+        // makes "hi does not touch this repository" true of the read verbs and
+        // the write verbs at the same time, without seven places to keep in
+        // step (hi: FILE-25, FILE-25.a).
+        let root = std::env::temp_dir().join(format!("hi-ws-version-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("hi")).unwrap();
+        fs::write(
+            root.join("hi/chat.md"),
+            "---\nhi: 2\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  One.\n",
+        )
+        .unwrap();
+
+        let err = match Workspace::load(&root) {
+            Err(err) => err.to_string(),
+            Ok(_) => panic!("HI/2 is not HI/1"),
+        };
+        assert!(err.contains("hi/chat.md"), "it names the file: {err}");
+        assert!(err.contains("hi: 2"), "and the version: {err}");
+
+        // A neighbour at this version does not rescue it: one unreadable file
+        // is a repository hi cannot answer questions about.
+        fs::write(
+            root.join("hi/other.md"),
+            "---\nhi: 1\nfamilies: [RECEIPT]\n---\n\n## Criteria\n\n- **RECEIPT-1**  Two.\n",
+        )
+        .unwrap();
+        assert!(Workspace::load(&root).is_err(), "one file is enough");
+
         let _ = fs::remove_dir_all(&root);
     }
 

@@ -311,9 +311,25 @@ struct ExportFile {
     retired: Vec<ExportCriterion>,
 }
 
+/// The version of this JSON envelope: the shape of the payload below, not the
+/// version of the files it was built from.
+///
+/// Those are two different things that moved together by accident. `hi` was the
+/// only version number here, and it is the *file format*'s, so the day this
+/// payload grows a field or moves one, `hi` cannot be the thing that says so
+/// without also claiming the files on disk changed. A consumer pinned to one
+/// shape would then be told the format moved, and a consumer reading HI/1 files
+/// would be told it had not. Splitting them costs one field now and is
+/// impossible once anything depends on the shape (hi: EXPORT-6).
+const ENVELOPE_VERSION: u32 = 1;
+
 #[derive(Serialize)]
 struct Export {
+    /// The version of the *files* this came out of, which is the only version
+    /// hi reads or writes (`doc::FORMAT_VERSION`).
     hi: u32,
+    /// The version of this payload's shape.
+    export: u32,
     scope: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     product: Option<String>,
@@ -413,7 +429,8 @@ pub fn export(workspace: &Workspace, scope: Option<&str>) -> Result<String> {
     };
 
     let export = Export {
-        hi: 1,
+        hi: crate::doc::FORMAT_VERSION,
+        export: ENVELOPE_VERSION,
         scope: scope.unwrap_or("repo").to_string(),
         product,
         files,
@@ -480,11 +497,21 @@ pub fn starter_intent_file(workspace: &Workspace) -> String {
 /// change underneath it would be wrong later with nothing to notice
 /// (DECISIONS.md §27).
 ///
-/// The wrapping sentence is the one thing §27's "say less" rule was narrowed
-/// for, and it is narrowed by exactly one sentence. It is not the format and
-/// cannot go stale with it: it is how markdown reads a newline, which is the
-/// same whatever hi's format version is, and the agent that writes the prose
-/// is the only one who will ever see this file (DECISIONS.md §29, hi: FILE-21).
+/// Two sentences narrow §27's "say less" rule, and both pass the same test:
+/// not "is it one more sentence" but "can it ever become false".
+///
+/// The wrapping sentence is how markdown reads a newline, which is the same
+/// whatever hi's format version is (DECISIONS.md §29, hi: FILE-21).
+///
+/// The merge sentence names `hi check` and nothing else. An id is only unique
+/// against the tree it was captured on, so two branches can hand out the same
+/// id with git merging both cleanly and saying nothing — which happened to
+/// this repository, twice in one week (DECISIONS.md §37, §38, hi: HABIT-5).
+/// That is a habit, which is the category §27 said this file carries; what §27
+/// refused was the id grammar and the family list, both of which are facts
+/// about a format that is not frozen. `duplicate-id` is one of the structural
+/// problems HI-1.md freezes and `CHECK-2.a` captures, so the
+/// one thing this sentence relies on is as close to frozen as hi has.
 ///
 /// The text is itself one line per paragraph, because the file somebody reads
 /// first is the one they write the rest of their prose to match (FILE-21.a).
@@ -500,11 +527,67 @@ pub fn agent_instructions() -> String {
      3. Ask the person to confirm them. Nothing lands that they did not agree to.\n\
      4. Capture what they agreed to, then build it.\n\n\
      That happens before every feature, not only the first one.\n\n\
+     After a merge that touched this directory, run `hi check`. Two branches can each choose the \
+     same id, and git will merge both without saying anything.\n\n\
      Write the prose in these files as one line per paragraph, with a blank line between \
      paragraphs. A newline inside a paragraph is a visible break wherever the file is rendered, \
      and it was only ever where your editor wrapped.\n\n\
      Run `hi --help` for the commands.\n"
         .to_string()
+}
+
+/// What `hi/AGENTS.md` currently is, relative to the templates hi has shipped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentTemplate {
+    /// Byte-identical to `agent_instructions`, after newline and BOM folding.
+    Current,
+    /// Byte-identical to a template a previous hi wrote, so it is still hi's
+    /// words and not the person's.
+    Prior,
+    /// Anything else: the person edited it, or some other tool wrote it.
+    Other,
+}
+
+/// Templates hi has shipped into `hi/AGENTS.md`, oldest first.
+///
+/// Recognition is byte identity after folding a BOM and CRLF, because that is
+/// the only way to know the file is still hi's words. A file a person touched
+/// is theirs (hi: HABIT-6.a, HABIT-6.b, DECISIONS.md §39).
+const PRIOR_AGENT_INSTRUCTIONS: &[&str] = &[
+    include_str!("seed/agents_0_5.md"),
+    include_str!("seed/agents_0_6.md"),
+];
+
+fn fold_agent_text(raw: &str) -> String {
+    raw.strip_prefix('\u{feff}')
+        .unwrap_or(raw)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+}
+
+/// Classify a `hi/AGENTS.md` body as current, a known older template, or other.
+pub fn classify_agent_file(raw: &str) -> AgentTemplate {
+    let folded = fold_agent_text(raw);
+    if folded == fold_agent_text(&agent_instructions()) {
+        AgentTemplate::Current
+    } else if PRIOR_AGENT_INSTRUCTIONS
+        .iter()
+        .any(|prior| folded == fold_agent_text(prior))
+    {
+        AgentTemplate::Prior
+    } else {
+        AgentTemplate::Other
+    }
+}
+
+/// Write `text` using the line endings `like` was stored with.
+pub fn write_with_endings(path: &std::path::Path, text: &str, like: &str) -> std::io::Result<()> {
+    let body = if like.contains("\r\n") {
+        text.replace('\n', "\r\n")
+    } else {
+        text.to_string()
+    };
+    std::fs::write(path, body)
 }
 
 /// Byte range of the generated block, matched on whole lines only.
@@ -707,7 +790,9 @@ pub fn refresh_index(workspace: &Workspace) -> Option<String> {
 /// Every verb that changes the live count refreshes the block itself, so the
 /// remaining way to make it wrong is to type a criterion straight into a file,
 /// which `FILE-14` explicitly allows and no verb can see (hi: INDEX-4.b).
-pub fn index_note(workspace: &Workspace) -> Option<String> {
+pub fn index_note(workspace: &Workspace) -> Option<crate::check::Note> {
+    use crate::check::{Note, NoteKind};
+
     let path = workspace.intent_path();
     let existing = fs::read_to_string(&path).ok()?;
     let file = workspace.rel(&path);
@@ -716,15 +801,25 @@ pub fn index_note(workspace: &Workspace) -> Option<String> {
         Some(span) => {
             let generated = format!("{INDEX_OPEN}\n{}{INDEX_CLOSE}", index_block(workspace));
             (existing[span] != generated).then(|| {
-                format!("{file}'s feature list is behind what is captured. Run `hi index`")
+                Note::new(
+                    NoteKind::IndexBehind,
+                    format!("{file}'s feature list is behind what is captured. Run `hi index`"),
+                )
             })
         }
         // hi refuses to guess where a block ends (INDEX-2.b), and the verbs now
         // swallow that refusal so it cannot fail a capture. Somebody has to say
         // it, or the list stays wrong with nothing left to notice.
-        None if has_marker_line(&existing, INDEX_OPEN) => Some(format!(
-            "{file} has an opening {INDEX_OPEN} with no matching {INDEX_CLOSE}, \
-             so nothing can refresh its feature list"
+        //
+        // Its own code rather than `IndexBehind`, because a list that is behind
+        // is fixed by running `hi index` and this one cannot be: somebody has
+        // to repair the markers first (hi: CHECK-6, INDEX-2.b).
+        None if has_marker_line(&existing, INDEX_OPEN) => Some(Note::new(
+            NoteKind::IndexMarkers,
+            format!(
+                "{file} has an opening {INDEX_OPEN} with no matching {INDEX_CLOSE}, \
+                 so nothing can refresh its feature list"
+            ),
         )),
         // No block at all is not a list that is behind. The next capture adds
         // one, the same way `hi index` would.
@@ -993,15 +1088,19 @@ mod tests {
 
     #[test]
     fn a_list_that_matches_is_worth_no_note() {
-        assert_eq!(index_note(&on_disk("current", CURRENT)), None);
+        assert!(index_note(&on_disk("current", CURRENT)).is_none());
     }
 
     #[test]
     fn a_list_that_disagrees_is_a_note() {
         let stale = CURRENT.replace("(3 criteria)", "(1 criterion)");
         let note = index_note(&on_disk("behind", &stale)).expect("a note");
-        assert!(note.contains("feature list is behind"), "{note}");
-        assert!(note.contains("INTENT.md"), "{note}");
+        // The code is the part a script holds on to, so it is asserted
+        // alongside the wording rather than left to whatever reads right
+        // today (hi: CHECK-6).
+        assert_eq!(note.kind, crate::check::NoteKind::IndexBehind);
+        assert!(note.message.contains("feature list is behind"), "{note:?}");
+        assert!(note.message.contains("INTENT.md"), "{note:?}");
     }
 
     #[test]
@@ -1010,15 +1109,15 @@ mod tests {
         // is the only thing left that can say the list is stuck (hi: INDEX-4.b).
         let note = index_note(&on_disk("unclosed", "# P\n\n<!-- hi:index -->\n- a\n"));
         let note = note.expect("a note");
-        assert!(note.contains("no matching"), "{note}");
+        // A different code from a list that is merely behind: this one cannot
+        // be fixed by running `hi index` (hi: CHECK-6).
+        assert_eq!(note.kind, crate::check::NoteKind::IndexMarkers);
+        assert!(note.message.contains("no matching"), "{note:?}");
     }
 
     #[test]
     fn a_file_with_no_block_at_all_is_not_a_list_that_is_behind() {
-        assert_eq!(
-            index_note(&on_disk("noblock", "# P\n\nJust prose.\n")),
-            None
-        );
+        assert!(index_note(&on_disk("noblock", "# P\n\nJust prose.\n")).is_none());
     }
 
     #[test]
@@ -1113,6 +1212,36 @@ mod tests {
             fs::read_to_string(workspace.intent_path()).unwrap(),
             before,
             "and nothing was guessed at"
+        );
+    }
+
+    #[test]
+    fn classify_knows_the_templates_hi_has_shipped() {
+        assert_eq!(
+            classify_agent_file(&agent_instructions()),
+            AgentTemplate::Current
+        );
+        assert_eq!(
+            classify_agent_file(include_str!("seed/agents_0_5.md")),
+            AgentTemplate::Prior
+        );
+        assert_eq!(
+            classify_agent_file(include_str!("seed/agents_0_6.md")),
+            AgentTemplate::Prior
+        );
+        // A BOM and CRLF are storage, not words. Folding them is how we tell
+        // hi's unmodified template from a file somebody touched (hi: HABIT-6.a).
+        let wrapped = format!(
+            "\u{feff}{}",
+            include_str!("seed/agents_0_5.md").replace('\n', "\r\n")
+        );
+        assert_eq!(classify_agent_file(&wrapped), AgentTemplate::Prior);
+        assert_eq!(classify_agent_file("mine now\n"), AgentTemplate::Other);
+        // One added space is an edit. Byte identity after folding is the whole
+        // of the recognition; a fuzzy match would rewrite somebody's words.
+        assert_eq!(
+            classify_agent_file(&format!("{} ", agent_instructions())),
+            AgentTemplate::Other
         );
     }
 }

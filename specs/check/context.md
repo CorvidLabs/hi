@@ -4,19 +4,21 @@ spec: check.spec.md
 
 ## Key Decisions
 
-- **`check` is the only verb that can fail on content, and it fails on exactly six things.** That
-  list is the contract, not an implementation detail. The design record is explicit that hi never
-  fails a build because a criterion is unproven (DECISIONS.md §5, §6); the `unfinished_intent_is_never_a_problem`
-  test exists to make that absence visible and to break loudly if someone adds a content check.
+- **`check` is the only verb that can fail on content, and it fails on exactly seven things.** That
+  list is the contract, not an implementation detail. 1.0 freezes those seven *and* the policy that
+  they are structural only; an eighth is a 2.0 (HI-1.md, DECISIONS.md §39). The design record is
+  explicit that hi never fails a build because a criterion is unproven (DECISIONS.md §5, §6); the
+  `unfinished_intent_is_never_a_problem` test exists to make that absence visible and to break
+  loudly if someone adds a content check.
 - **`run` returns `Report`, not `Result<Report>`.** A malformed id is data, not an error, so the
   walk always completes and reports everything it found. This is why `hi check` can list several
   problems in one pass instead of stopping at the first, which is now written down as intent
   (hi: CHECK-5).
 - **`UndeclaredFamily` is the fifth kind, and it is recorded in both DECISIONS.md and `hi/`.**
-  DECISIONS.md §6 lists the structural errors as exactly the six variants of `check::Kind`, "a
+  DECISIONS.md §6 lists the structural errors as exactly the seven variants of `check::Kind`, "a
   family a file never declared" among them, and `hi/check.md` carries CHECK-2.f for it. (An earlier
   revision of this file claimed it was an undocumented sixth wheel; that was true of an older
-  DECISIONS.md and is not true now.) It exists because frontmatter is where a family declares its
+  DECISIONS.md and is not true now. Duplicate-family is the seventh, DECISIONS.md §39.) It exists because frontmatter is where a family declares its
   home file: `Doc::insert` adds a family to `families:` whenever capture writes a criterion for one
   the frontmatter lacks, so a
   file that uses a family it does not declare has drifted from the shape capture maintains. Note

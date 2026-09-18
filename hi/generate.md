@@ -34,6 +34,7 @@ Generation must work with no auth, no network, and no integration, because the m
 - **EXPORT-3**  I read a smaller export as the same payload with less in it, so I never need a special case.
 - **EXPORT-4**  I get the retired criteria in the export kept apart from the live ones, so the agent never writes a spec for something we dropped.
 - **EXPORT-5**  The starter prompts hi wrote into a file never reach an agent as if I had written them.
+- **EXPORT-6**  I can tell the shape of the export payload apart from the version of the files it was built from, so a change to one never reads as a change to the other.
 
 - **INDEX-1**  I get a root file that shows what features exist without keeping a list by hand.
   - **INDEX-1.a**  I can run hi with no root file yet, or no list in it, and it starts one with a place for my own prose rather than refusing until I set it up.
@@ -47,3 +48,4 @@ Generation must work with no auth, no network, and no integration, because the m
   - **INDEX-4.a**  A capture that stored my criterion is never reported as a failure because the list could not be refreshed.
   - **INDEX-4.b**  If I write a criterion into the file by hand, hi tells me the list is behind rather than leaving it wrong.
   - **INDEX-4.c**  If I delete the generated list from my root file, it stays deleted until I ask for it back, because refreshing a list is not the same as installing one.
+- **INDEX-5**  Refreshing the list at the front of my product cannot undo a criterion another hi is capturing at the same moment.

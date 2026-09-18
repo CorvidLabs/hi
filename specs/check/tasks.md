@@ -6,8 +6,10 @@ spec: check.spec.md
 
 - [ ] Assert a `Problem`'s `file` and `line` directly, and assert the file-then-line sort order over
       a two-file workspace with problems on several lines (REQ-check-007).
-- [ ] Assert that `Kind::code()` returns the same six strings the serde kebab-case rename produces,
-      so text output and `--json` cannot drift apart (REQ-check-010).
+- [x] Assert that `Kind::code()` returns the same six strings the serde kebab-case rename produces,
+      so text output and `--json` cannot drift apart (REQ-check-010). Done by removing the second
+      definition rather than by testing the two against each other: `Kind` and `NoteKind` now
+      serialize through `code()`, so there is nothing left to drift.
 - [ ] Snapshot the serialized `Report` for a workspace with one problem, covering the counts and the
       problem fields (REQ-check-010).
 - [ ] Assert that `SEND-007` in a file produces one `UnparseableId` carrying the leading-zero
