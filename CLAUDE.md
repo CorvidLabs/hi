@@ -81,6 +81,14 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   hide one, or lose one to a concurrent write. `capture` and `retire` hold `lock::acquire` across
   the whole read-modify-write, and every string hi writes into a file goes through `doc::one_line`
   (DECISIONS.md §26, `hi: FILE-19`, `FILE-20`, `RETIRE-5`, `RETIRE-6`, `CAPTURE-14`).
+- **A write reads itself back, and a fence is not structure to the writer either.** `insert`,
+  `retire` and `set_retired_reason` each parse the buffer they are about to save and refuse it
+  unless the id is readable in the section the verb named and nothing previously readable was lost.
+  That check exists because two verbs decided where a section was by scanning raw lines: `hi retire`
+  found the `## Retired` inside somebody's fenced example and freed a real id, and `insert` appended
+  a `## Criteria` heading inside an unclosed fence and reported the same id saved twice. Anything
+  that needs to know where a section is calls `doc::fence_map`, the same one `parse_body` uses, and
+  then still reads its result back (DECISIONS.md §31, `hi: FILE-22`, `FILE-22.a`, `FILE-22.b`).
 - **Never write a fixed temp or fixture path.** `write_atomically` and the integration-test
   fixtures both used one, so two processes shared a scratch file. That is why the suite flaked and
   why bulk capture lost writes. Include the pid.

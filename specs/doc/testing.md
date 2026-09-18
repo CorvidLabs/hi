@@ -5,7 +5,7 @@ spec: doc.spec.md
 ## Automated Testing
 
 This module's unit tests live in the `#[cfg(test)] mod tests` block at the bottom of `src/doc.rs` and
-run with `cargo test doc::` (32 of them). A second, repo-level suite in `tests/cli.rs` drives the
+run with `cargo test doc::` (35 of them). A second, repo-level suite in `tests/cli.rs` drives the
 real binary and covers several of this module's requirements end to end; it is not owned by this
 spec, but the rows below name the tests in it that a change to `doc` would break.
 
@@ -16,6 +16,13 @@ The unit tests use a `doc(raw: &str)` helper that calls `Doc::parse` against the
 `RECEIPT-1`), and a `## Retired` block holding `SEND-3` with a `retired:` note. The exception is
 `a_normal_save_leaves_no_temp_file_behind`, which writes into `std::env::temp_dir()/hi-doc-save`
 because it has to exercise `Doc::load` and `Doc::save` against a real directory.
+
+The three read-back tests use a second constant, `DOCUMENTED`: a file hi did not write, hand-typed,
+with a properly closed example of the format inside its own `## Intent` holding `## Criteria`,
+`## Retired` and an id-shaped line. Every write-path test used to assert over files hi itself had
+produced, and that is exactly how the two bugs REQ-doc-020 exists for got through
+(DECISIONS.md §26, §31). `EXAMPLE` is that fenced block, quoted, so a test can assert it came back
+byte-identical.
 
 | Test File | Type | What It Covers |
 |-----------|------|----------------|
@@ -36,14 +43,15 @@ because it has to exercise `Doc::load` and `Doc::save` against a real directory.
 | REQ-doc-008 (one criterion is one line, hi: FILE-6) | `a_criterion_is_always_exactly_one_line`, `collapses_pasted_whitespace_into_one_sentence`; end to end, `cli::a_long_sentence_stays_on_one_line`, which asserts the written line equals `- **SEND-2**  {sentence}` exactly |
 | REQ-doc-009 (declare a new family in frontmatter) | `declares_a_new_family_in_frontmatter_on_insert`, `appends_into_an_empty_criteria_section`, `keeps_block_style_when_adding_a_family`; end to end, `cli::a_new_family_starts_its_own_file`, `cli::block_style_frontmatter_is_understood_and_preserved` |
 | REQ-doc-010 (new-file scaffold) | `new_file_text_parses_as_an_empty_doc`; end to end, `cli::a_new_family_starts_its_own_file` |
-| REQ-doc-011 (nothing on disk without `save`) | `a_normal_save_leaves_no_temp_file_behind` is the only unit test that reaches disk, and it covers the success path rather than a refusal. `cli::an_existing_id_refuses_with_exit_1_and_writes_nothing` and `cli::a_malformed_id_refuses_without_writing` read the file back and assert it is byte-identical after a refusal, and `capture::tests::refuses_a_malformed_id_without_writing` checks the sentence is absent. The other `capture` refusal tests assert on the error message only. Every one of them refuses *before* `insert` is reached, so `insert`'s own post-splice "no frontmatter" refusal is still untested |
+| REQ-doc-011 (nothing on disk without `save`) | `a_capture_into_an_unfinished_fence_is_refused_rather_than_lost` asserts `to_text()` is byte-identical to the input after a refused `insert`, which is the restore-on-refusal half; end to end, `cli::an_id_is_never_handed_out_twice` case 5 reads the file back. `a_normal_save_leaves_no_temp_file_behind` is the only unit test that reaches disk, and it covers the success path rather than a refusal. `cli::an_existing_id_refuses_with_exit_1_and_writes_nothing` and `cli::a_malformed_id_refuses_without_writing` read the file back and assert it is byte-identical after a refusal, and `capture::tests::refuses_a_malformed_id_without_writing` checks the sentence is absent. The other `capture` refusal tests assert on the error message only. Every one of them refuses *before* `insert` is reached, so `insert`'s own post-splice "no frontmatter" refusal is still untested |
 | REQ-doc-012 (both frontmatter styles, hi: FILE-7) | `reads_block_style_families`, `keeps_block_style_when_adding_a_family`, `block_style_insert_keeps_line_positions_correct`; end to end, `cli::block_style_frontmatter_is_understood_and_preserved`, which also asserts the file is never collapsed to `families: [` |
-| REQ-doc-013 (fenced blocks are prose, hi: FILE-9) | `a_fenced_block_in_intent_is_not_parsed_as_criteria`, `a_tilde_fence_is_honored_too`, `a_hash_comment_in_a_fenced_snippet_does_not_truncate_intent` |
+| REQ-doc-013 (fenced blocks are prose, hi: FILE-9) | `a_fenced_block_in_intent_is_not_parsed_as_criteria`, `a_tilde_fence_is_honored_too`, `a_hash_comment_in_a_fenced_snippet_does_not_truncate_intent`; for the write half, `a_fenced_retired_example_is_not_the_retired_section` and `a_documented_example_is_left_completely_alone_by_a_capture`, which also asserts the id drawn in the example is still free to capture |
+| REQ-doc-020 (a write is read back, hi: FILE-22) | `a_fenced_retired_example_is_not_the_retired_section` (retiring past a documented `## Retired` must land under a real one and keep the id reserved), `a_capture_into_an_unfinished_fence_is_refused_rather_than_lost` (the refusal, the hint, the file left byte-identical, and that closing the fence is all it takes), `a_documented_example_is_left_completely_alone_by_a_capture` (the guard against over-correcting into treating a fence as structure); end to end, `cli::an_id_is_never_handed_out_twice` cases 4 and 5 drive both reproductions through the real binary. Each was run against the unfixed code and fails there: with only the `retired_heading` fix reverted the retirement is refused instead of landing, and with the read-back reverted as well the criterion is stranded, `insert` returns `Ok`, and `hi SEND-1` hands the id out again |
 | REQ-doc-014 (stray criteria recorded, hi: CHECK-2.e) | `records_a_criterion_stranded_outside_every_section`; `a_file_with_no_criteria_heading_gets_one` and `a_fenced_block_in_intent_is_not_parsed_as_criteria` both assert `stray` stays empty when it should. Reporting is covered in `check`. Nothing tests an id-shaped line inside `## Intent`, which the code does not record at all |
 | REQ-doc-015 (BOM stripped, hi: FILE-11) | `a_byte_order_mark_does_not_hide_the_frontmatter`; end to end, `cli::a_bom_does_not_make_a_valid_file_look_broken` |
 | REQ-doc-016 (line endings preserved, hi: FILE-10) | `crlf_line_endings_survive_a_write`, which asserts every `\n` in the written text is part of a `\r\n` |
 | REQ-doc-017 (atomic save, hi: FILE-8) | `a_normal_save_leaves_no_temp_file_behind` covers the success path and the absence of a leftover `.chat.md.hi-tmp`. The failure paths (a temp file that cannot be written, a rename that fails) have no test |
-| REQ-doc-018 (insert creates a missing section, hi: CAPTURE-7) | `a_file_with_no_criteria_heading_gets_one`, which also re-parses the result and asserts the intent prose survived |
+| REQ-doc-018 (insert creates a missing section, hi: CAPTURE-7) | `a_file_with_no_criteria_heading_gets_one`, which also re-parses the result and asserts the intent prose survived; `a_capture_into_an_unfinished_fence_is_refused_rather_than_lost` for the case where there is nowhere to put the section |
 | REQ-doc-019 (the list-item rule, hi: FILE-1.b) | `a_case_is_rendered_as_a_nested_list_item`, which pins all three indents; `a_criterion_is_always_exactly_one_line` and `collapses_pasted_whitespace_into_one_sentence`, which both assert the `- **ID**  ` prefix; `reads_a_criterion_however_it_was_decorated` for the reading half; end to end, `cli::a_hi_file_renders_as_a_list_not_a_wall_of_text` |
 
 ## Manual Testing
@@ -100,7 +108,8 @@ because it has to exercise `Doc::load` and `Doc::save` against a real directory.
 | Second `# ` heading in a file | The title is not replaced: the first one wins, but the heading closes the open section and records the append point, so a criterion below it is recorded on `stray` rather than parsed, until the next `## Criteria` or `## Retired` heading |
 | New family inserted into a file whose `## Criteria` is closed by a `# ` heading | The `# ` branch records `criteria_end`, so the new family appends below the existing block, after one blank line, and still above the `# ` heading |
 | Fenced block containing a heading or an id-shaped line | Opaque: no title, no section change, no criterion, no stray. A ```` ``` ```` fence closes only on backticks and a `~~~` fence only on tildes, and the closing run must be at least as long as the opening one |
-| Fenced block opened and never closed | The rest of the body is opaque; nothing after it is parsed as structure |
+| Fenced block opened and never closed | The rest of the body is opaque; nothing after it is parsed as structure, and a capture into such a file is refused rather than written (REQ-doc-020) |
+| `## Retired` written only inside a fenced example | Not a section: `retired_heading` skips fenced lines, so `retire` creates a real one at the end of the file and the example is untouched |
 | Fenced block inside `## Intent` | The fence lines and everything between them stay in `intent`, and prose after the close is still intent |
 | Id-shaped line outside every section | Recorded on `stray` with its 0-based line index; it is in neither `criteria` nor `retired` |
 | Indented id-shaped line outside every section | Also a stray. Indentation does not disqualify a line, because a case is written indented under its parent |
@@ -113,7 +122,7 @@ because it has to exercise `Doc::load` and `Doc::save` against a real directory.
 | `## Criteria` / `## Retired` in any letter case | Matched; comparison is lower-cased |
 | Insert into a file with no `## Criteria` heading at all | A blank line, `## Criteria` and a blank line are spliced in after the last content line, and the criterion lands under them |
 | Insert of a case whose parent is not in the file | Falls through to the family rule, landing after the family's last criterion; refusing this is `capture`'s job |
-| Insert into a file with no frontmatter, new family | `insert` returns the "has no frontmatter" error after the splice; the caller must discard the `Doc` and does not save |
+| Insert into a file with no frontmatter, new family | `insert` returns the "has no frontmatter" error and restores the document, so the splice is undone and nothing is saved |
 | Two inserts on one in-memory `Doc` | The second does not see the first, because `insert` does not update `self.criteria`. Re-parse between captures |
 | Whitespace-only sentence to `render_criterion` | One line: the indent, the bullet, the bold id and its two separating spaces, with nothing after them |
 | Sentence of any length | One line. `render_criterion` never returns more than one element |

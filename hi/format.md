@@ -38,6 +38,9 @@ Ids are the one thing I am strict about, because an id that moves is worse than 
 - **FILE-20**  A criterion hi cannot see is never silently invisible; it is reported rather than ignored.
 - **FILE-21**  One paragraph of my prose is one line, however long it runs, so a break only ever appears where I left a blank line.
   - **FILE-21.a**  The files hi writes for me start out that way, so the first thing I read is the convention rather than an exception to it.
+- **FILE-22**  When hi tells me it wrote something down, I can find it again with hi, or hi refuses instead of telling me it worked.
+  - **FILE-22.a**  If my file is half written, with a fence I never closed, hi refuses to save into it and leaves my unfinished words alone.
+  - **FILE-22.b**  An example of the format inside my prose is never mistaken for the section it names, by the verbs that write as much as by the ones that read.
 
 - **ID-1**  An id never moves once written, so I can say it out loud a year later and still mean the same line.
   - **ID-1.a**  Inserting a criterion never renumbers anything around it.

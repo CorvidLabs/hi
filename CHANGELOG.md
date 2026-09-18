@@ -7,6 +7,40 @@ All notable changes to `hi` (Human Intent). Format follows
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
 only version so far.
 
+## Unreleased
+
+### Two writes that landed where nothing reads them
+
+An external review found two more ways to break hi's one promise, that an id is
+permanent and never reused. Both were the same mistake: a verb that writes decided
+where a section was without asking the code that reads.
+
+**A documented `## Retired` made a real id reusable.** `FILE-9` invites you to show
+an example of the format inside your own `## Intent`, and a fence keeps it prose. But
+`hi retire` looked for `## Retired` by scanning the raw lines, so it found the one in
+your example. The criterion was moved into the intent prose, the command printed
+`retired`, and the file parsed back with no criteria and no retirements at all. The
+id was then free, and capturing it again succeeded. `hi check` exited 0 throughout.
+The file was valid the whole time.
+
+**Capture could "save" the same id over and over into an unfinished fence.** A file
+whose last content line sits inside a fence nobody closed got its missing
+`## Criteria` section appended inside that fence, along with the criterion. Two
+captures of the same id with different sentences both reported success, both lines
+were invisible, and `hi check` reported zero criteria.
+
+**Every write now reads itself back.** `insert`, `retire` and the reason-recording
+path each parse the file they are about to save and refuse it unless the id is
+readable in the section the verb named, every id the file already made readable still
+is, and nothing new has been stranded. A refusal writes nothing and leaves the
+document exactly as it was, and it names the unclosed fence and the line it opens on
+when there is one. Closing the fence makes the same capture succeed.
+
+**A fence is still an example, not structure.** The retired-section lookup now uses
+the same fence tracking the parser uses, so the legitimate retirement lands under a
+real `## Retired` and your example comes back byte-identical, with the id drawn in it
+still free to capture for real.
+
 ## [0.7.0] 2026-09-17
 
 ### The feature list in INTENT.md stays true by itself

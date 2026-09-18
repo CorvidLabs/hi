@@ -45,6 +45,37 @@ impl Criterion {
     }
 }
 
+/// What a write said it was about to do, so the reparse can hold it to that.
+struct Promise<'a> {
+    /// The verb, for the first words of a refusal.
+    verb: &'a str,
+    /// The ids the write is about, as they are written in the file.
+    ids: Vec<String>,
+    /// Where every one of them has to be readable once the buffer is parsed.
+    section: Section,
+    /// True when those ids are newly written, false when they only moved.
+    added: bool,
+}
+
+/// The first of `expected` that `found` does not account for, as a list.
+///
+/// A multiset difference rather than a set one: a file may legitimately hold
+/// the same id twice, and `check` is what reports that, so losing one of the
+/// two is still a loss.
+fn missing(expected: &[String], found: &[String]) -> Option<String> {
+    let mut rest: Vec<&String> = found.iter().collect();
+    let mut lost: Vec<&str> = Vec::new();
+    for id in expected {
+        match rest.iter().position(|other| *other == id) {
+            Some(at) => {
+                rest.remove(at);
+            }
+            None => lost.push(id),
+        }
+    }
+    (!lost.is_empty()).then(|| lost.join(", "))
+}
+
 /// Frontmatter, hand-parsed so a hi file needs no YAML library.
 #[derive(Debug, Clone, Default)]
 pub struct Front {
@@ -205,29 +236,16 @@ impl Doc {
 
         // A fenced code block is opaque. Without this, documenting the format
         // inside your own `## Intent` turns the example into real criteria.
-        let mut fence: Option<(char, usize)> = None;
+        // The map is built once, by the same function every write path asks
+        // where the sections are, so the two can no longer disagree
+        // (hi: FILE-22, DECISIONS.md §31).
+        let fences = fence_map(&self.lines, start);
 
         while index < self.lines.len() {
             let line = self.lines[index].clone();
             let trimmed = line.trim();
 
-            if let Some(marker) = trimmed.chars().next().filter(|c| *c == '`' || *c == '~') {
-                let run = trimmed.chars().take_while(|c| *c == marker).count();
-                if run >= 3 {
-                    match fence {
-                        None => fence = Some((marker, run)),
-                        Some((open, width)) if open == marker && run >= width => fence = None,
-                        Some(_) => {}
-                    }
-                    if in_intent {
-                        intent_lines.push(line);
-                    }
-                    index += 1;
-                    continue;
-                }
-            }
-
-            if fence.is_some() {
+            if fences.inside[index] {
                 // A fence inside `## Intent` is somebody documenting the format
                 // in their own prose, and stays opaque (hi: FILE-9). A fence
                 // inside `## Criteria` or `## Retired` hides a criterion from
@@ -236,16 +254,15 @@ impl Doc {
                 // sentences, `hi check` clean. Record it as stray, which is
                 // exactly what it is: a criterion nothing reads where it sits
                 // (hi: FILE-20).
-                if !in_intent && !trimmed.is_empty() && is_criterion_line(trimmed) {
+                if in_intent {
+                    intent_lines.push(line);
+                } else if !trimmed.is_empty() && is_criterion_line(trimmed) {
                     let first = strip_bullet(trimmed)
                         .split_whitespace()
                         .next()
                         .unwrap_or("")
                         .to_string();
                     self.stray.push((index, first));
-                }
-                if in_intent {
-                    intent_lines.push(line);
                 }
                 index += 1;
                 continue;
@@ -405,9 +422,126 @@ impl Doc {
         seen
     }
 
+    /// Every id this file makes findable again, as written, sorted.
+    ///
+    /// Readable is the whole of it: an id under `## Criteria` or `## Retired`
+    /// is one hi can find again; an id anywhere else is one it cannot, however
+    /// plainly it sits there on the page.
+    fn readable(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.all().map(|c| c.raw_id.clone()).collect();
+        ids.sort();
+        ids
+    }
+
+    /// Read a buffer back before hi makes it its own, and refuse it unless the
+    /// edit really happened where the verb said it did.
+    ///
+    /// hi's one promise is that an id is permanent (DECISIONS.md §26), and the
+    /// two remaining ways to break it were the same mistake twice: a write
+    /// deciding where a section is without asking the parser. So no write site
+    /// is trusted to know where it landed. Each one parses what it is about to
+    /// save and holds it to three things: the ids the verb named are readable
+    /// in the section it named, every id the file already made readable still
+    /// is, and no line has been stranded that was not stranded before. A write
+    /// that fails any of them is refused with the file untouched, which beats
+    /// reporting success into a place nothing reads (hi: FILE-22, CAPTURE-5).
+    fn read_back(&self, proposed: &str, promise: Promise<'_>) -> Result<Doc> {
+        let after = Doc::parse(self.path.clone(), proposed);
+        let file = self.path.display();
+
+        // An unfinished fence is the likeliest reason a write lands nowhere, and
+        // saying so is the difference between a refusal somebody can act on and
+        // one they can only be annoyed by.
+        let hint = match fence_map(&after.lines, after.body_start()).unclosed {
+            Some((marker, line)) => format!(
+                "\nhint:  an unclosed {} fence opens on line {}, so everything below it is an \
+                 example rather than part of the file. Close it, then try again",
+                marker.to_string().repeat(3),
+                line + 1
+            ),
+            None => String::new(),
+        };
+
+        // What the verb said it was doing, first: the id has to be readable in
+        // the section the verb named, not merely somewhere in the file.
+        let landed = match promise.section {
+            Section::Criteria => &after.criteria,
+            Section::Retired => &after.retired,
+        };
+        if let Some(adrift) = promise
+            .ids
+            .iter()
+            .find(|want| !landed.iter().any(|c| &&c.raw_id == want))
+        {
+            bail!(
+                "{} {adrift} would put it in {file} where hi cannot read it back, \
+                 so nothing was written{hint}",
+                promise.verb
+            );
+        }
+
+        // Then the collateral: an edit that lands correctly and takes somebody
+        // else's criterion with it is the same failure one line over.
+        let mut expected = self.readable();
+        if promise.added {
+            expected.extend(promise.ids.iter().cloned());
+            expected.sort();
+        }
+        if let Some(lost) = missing(&expected, &after.readable()) {
+            bail!(
+                "{} {} would leave {lost} unreadable in {file}, and an id is permanent, \
+                 so nothing was written{hint}",
+                promise.verb,
+                promise.ids.join(", ")
+            );
+        }
+
+        if after.stray.len() > self.stray.len() {
+            bail!(
+                "{} {} would strand a criterion in {file} where nothing reads it, \
+                 so nothing was written{hint}",
+                promise.verb,
+                promise.ids.join(", ")
+            );
+        }
+
+        Ok(after)
+    }
+
     /// Insert a new criterion, keeping each family's block contiguous and each
     /// parent immediately followed by its own descendants.
     pub fn insert(&mut self, id: &Id, text: &str) -> Result<()> {
+        // Every refusal below has to leave the caller's document exactly as it
+        // found it, because `capture` holds one Doc for the whole run and a
+        // half-spliced buffer would be the next thing saved (hi: CAPTURE-5).
+        let before = self.clone();
+        let spliced = self.insert_inner(id, text).and_then(|()| {
+            before.read_back(
+                &self.to_text(),
+                Promise {
+                    verb: "capturing",
+                    ids: vec![id.to_string()],
+                    section: Section::Criteria,
+                    added: true,
+                },
+            )
+        });
+        match spliced {
+            // The verified parse is deliberately thrown away rather than
+            // adopted. `insert`'s index bookkeeping is the contract with
+            // `rewrite_families` and with the next insert, and re-deriving it
+            // here would make that contract untestable, so `capture` still
+            // reloads the file it saved before anything counts
+            // (DECISIONS.md §30, hi: INDEX-4).
+            Ok(_) => Ok(()),
+            Err(err) => {
+                *self = before;
+                Err(err)
+            }
+        }
+    }
+
+    fn insert_inner(&mut self, id: &Id, text: &str) -> Result<()> {
         // Without a section to land in, a criterion would be appended wherever
         // the file happens to end (inside the intent prose, or below a heading
         // where nothing would ever read it). Make the section instead.
@@ -591,6 +725,18 @@ impl Doc {
     /// is an orphan that `check` would then report. The section is created when
     /// the file has none, and the id stays reserved forever either way.
     pub fn retire(&mut self, id: &Id, reason: Option<&str>) -> Result<Vec<String>> {
+        let before = self.clone();
+        match self.retire_inner(id, reason) {
+            Ok(taken) => Ok(taken),
+            Err(err) => {
+                *self = before;
+                Err(err)
+            }
+        }
+    }
+
+    fn retire_inner(&mut self, id: &Id, reason: Option<&str>) -> Result<Vec<String>> {
+        let before = self.clone();
         let mut ranges: Vec<(usize, usize)> = self
             .criteria
             .iter()
@@ -648,8 +794,21 @@ impl Doc {
         self.lines.splice(at..at, block);
 
         // Positions moved in both directions, so re-derive them rather than
-        // trying to patch each one.
-        *self = Doc::parse(self.path.clone(), &self.to_text());
+        // trying to patch each one — and, on the way, refuse a buffer where the
+        // criterion did not actually arrive under `## Retired`. Retiring is the
+        // verb that frees nothing, so a retirement that lands anywhere else is
+        // the one promise breaking (hi: FILE-22, RETIRE-2).
+        let mut ids = vec![id.to_string()];
+        ids.extend(taken.iter().cloned());
+        *self = before.read_back(
+            &self.to_text(),
+            Promise {
+                verb: "retiring",
+                ids,
+                section: Section::Retired,
+                added: false,
+            },
+        )?;
         Ok(taken)
     }
 
@@ -660,6 +819,18 @@ impl Doc {
     /// to hand-edit the file, which is the thing the verb exists to remove
     /// (hi: RETIRE-1.b).
     pub fn set_retired_reason(&mut self, id: &Id, reason: &str) -> Result<()> {
+        let before = self.clone();
+        match self.set_retired_reason_inner(id, reason) {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                *self = before;
+                Err(err)
+            }
+        }
+    }
+
+    fn set_retired_reason_inner(&mut self, id: &Id, reason: &str) -> Result<()> {
+        let before = self.clone();
         let Some(criterion) = self
             .retired
             .iter()
@@ -683,14 +854,38 @@ impl Doc {
             None => self.lines.insert(criterion.end_line + 1, rendered),
         }
 
-        *self = Doc::parse(self.path.clone(), &self.to_text());
+        *self = before.read_back(
+            &self.to_text(),
+            Promise {
+                verb: "recording why",
+                ids: vec![id.to_string()],
+                section: Section::Retired,
+                added: false,
+            },
+        )?;
         Ok(())
     }
 
+    /// The line the body starts on: just past the frontmatter, or line 0.
+    ///
+    /// The same number `parse_front` hands `parse_body`, so a fence counted
+    /// here is a fence the parser counted too.
+    fn body_start(&self) -> usize {
+        self.front.range.map(|(_, close)| close + 1).unwrap_or(0)
+    }
+
+    /// Where `## Retired` is, as the *parser* sees it.
+    ///
+    /// This used to scan the raw lines. A `## Retired` inside a fenced example
+    /// under `## Intent` is a heading to a raw scan and prose to the parser
+    /// (hi: FILE-9), and the disagreement cost a criterion: `retire` dropped it
+    /// into the intent prose, printed success, and handed the id back out
+    /// (hi: FILE-22, RETIRE-5).
     fn retired_heading(&self) -> Option<usize> {
-        self.lines
-            .iter()
-            .position(|line| line.trim().eq_ignore_ascii_case("## Retired"))
+        let fences = fence_map(&self.lines, self.body_start());
+        (self.body_start()..self.lines.len()).find(|&index| {
+            !fences.inside[index] && self.lines[index].trim().eq_ignore_ascii_case("## Retired")
+        })
     }
 
     /// Where a newly retired criterion should be appended.
@@ -708,10 +903,13 @@ impl Doc {
             // so the criterion lands at the bottom of the retired block rather
             // than at the bottom of the file.
             Some(at) => {
-                let next = self.lines[at + 1..]
-                    .iter()
-                    .position(|line| line.trim_start().starts_with('#'))
-                    .map(|offset| at + 1 + offset)
+                // Fenced, so a `#` inside an example under `## Retired` does
+                // not cut the block short (hi: FILE-9, FILE-22).
+                let fences = fence_map(&self.lines, self.body_start());
+                let next = (at + 1..self.lines.len())
+                    .find(|&index| {
+                        !fences.inside[index] && self.lines[index].trim_start().starts_with('#')
+                    })
                     .unwrap_or(self.lines.len());
                 last_content_line(&self.lines, next) + 1
             }
@@ -825,6 +1023,55 @@ pub fn fence_marker(trimmed: &str) -> Option<(char, usize)> {
         }
     }
     None
+}
+
+/// Which body lines sit inside a fenced block, and where an unclosed fence
+/// opens.
+struct Fences {
+    /// True for every line between a fence's markers, markers included.
+    inside: Vec<bool>,
+    /// The marker and the line of a fence that is never closed, when one is
+    /// left open. The marker so a refusal can quote back what the person
+    /// actually typed, tildes and all.
+    unclosed: Option<(char, usize)>,
+}
+
+/// Run `fence_marker`'s open/close state machine over a whole file.
+///
+/// A fence is an example rather than structure everywhere hi reads markdown
+/// (hi: FILE-9), which means everything that *writes* has to agree with the
+/// parser about it too. Two verbs did not. `retired_heading` scanned raw lines
+/// and found a `## Retired` inside somebody's fenced example, so `hi retire`
+/// moved a real criterion into the intent prose and freed its id; and `insert`
+/// appended a `## Criteria` section below an unfinished fence, which swallowed
+/// it, so capture reported the same id saved twice and `hi check` saw nothing.
+/// One state machine, one answer (hi: FILE-22, DECISIONS.md §31).
+fn fence_map(lines: &[String], start: usize) -> Fences {
+    let mut inside = vec![false; lines.len()];
+    // Marker character, opening run length, and the line it opened on.
+    let mut open: Option<(char, usize, usize)> = None;
+
+    for (index, line) in lines.iter().enumerate().skip(start) {
+        let trimmed = line.trim();
+        match (fence_marker(trimmed), open) {
+            (Some(marker), None) => {
+                open = Some((marker.0, marker.1, index));
+                inside[index] = true;
+            }
+            (Some(marker), Some((char, width, _))) => {
+                inside[index] = true;
+                if marker.0 == char && marker.1 >= width {
+                    open = None;
+                }
+            }
+            (None, state) => inside[index] = state.is_some(),
+        }
+    }
+
+    Fences {
+        inside,
+        unclosed: open.map(|(marker, _, line)| (marker, line)),
+    }
 }
 
 /// Walk back from `before` to the last line with content on it.
@@ -1410,6 +1657,127 @@ mod tests {
             doc.intent
         );
         assert_eq!(doc.criteria.len(), 1);
+    }
+
+    /// A file hi did not write: hand-typed, with a properly closed example of
+    /// the format inside its own intent, exactly as `FILE-9` invites. Every
+    /// write-path test used to assert on files hi itself had produced, and
+    /// that is how these two got through (DECISIONS.md §26, §31).
+    const DOCUMENTED: &str = "---\nhi: 1\nfamilies: [SEND]\n---\n\n\
+         # Chat\n\n\
+         ## Intent\n\n\
+         Sending should feel instant. A file has three sections, and a criterion looks like this:\n\n\
+         ```markdown\n\
+         ## Intent\n\n\
+         ## Criteria\n\n\
+         - **SEND-4**  an example of the shape, not something anybody wants.\n\n\
+         ## Retired\n\
+         ```\n\n\
+         That is all there is to it.\n\n\
+         ## Criteria\n\n\
+         - **SEND-1**  I hit enter and the message is on its way.\n";
+
+    /// The fenced block of `DOCUMENTED`, which no verb may touch or read.
+    const EXAMPLE: &str = "```markdown\n\
+         ## Intent\n\n\
+         ## Criteria\n\n\
+         - **SEND-4**  an example of the shape, not something anybody wants.\n\n\
+         ## Retired\n\
+         ```";
+
+    #[test]
+    fn a_fenced_retired_example_is_not_the_retired_section() {
+        // `retired_heading` scanned raw lines, so the `## Retired` inside the
+        // example above was the section it retired into: the criterion landed
+        // in the intent prose, `retire` printed success, and the file parsed
+        // back with no criteria and no retirements at all. SEND-1 was then
+        // free (hi: FILE-22, FILE-9, RETIRE-2).
+        let mut file = doc(DOCUMENTED);
+        let id = Id::parse("SEND-1").unwrap();
+        file.retire(&id, Some("Dropped.")).unwrap();
+
+        assert!(file.criteria.is_empty(), "it is no longer active");
+        assert_eq!(file.retired.len(), 1, "and it is readable as retired");
+        assert_eq!(file.retired[0].raw_id, "SEND-1");
+        assert_eq!(file.retired[0].note.as_deref(), Some("Dropped."));
+
+        // The example is prose and stays exactly as it was typed, and the
+        // criterion inside it is still nobody's criterion.
+        let after = file.to_text();
+        assert!(
+            after.contains(EXAMPLE),
+            "the fenced example must be untouched:\n{after}"
+        );
+        // And the id is still spoken for, whichever way the file is read back.
+        let reread = doc(&after);
+        assert!(reread.all().any(|c| c.raw_id == "SEND-1"));
+        assert!(
+            !reread.all().any(|c| c.raw_id == "SEND-4"),
+            "the example is an example (hi: FILE-9)"
+        );
+    }
+
+    #[test]
+    fn a_documented_example_is_left_completely_alone_by_a_capture() {
+        // The other half of the same rule: the fix must not start treating a
+        // fence as structure. The example keeps its lines and the new
+        // criterion lands under the real heading below it (hi: FILE-9).
+        let mut file = doc(DOCUMENTED);
+        file.insert(&Id::parse("SEND-2").unwrap(), "It reaches them.")
+            .unwrap();
+
+        let text = file.to_text();
+        let after = doc(&text);
+        assert_eq!(
+            after.criteria.len(),
+            2,
+            "the two real criteria, and only those: {text}"
+        );
+        assert_eq!(after.criteria[1].raw_id, "SEND-2");
+        assert!(after.stray.is_empty(), "and nothing was stranded");
+        assert!(
+            text.contains(EXAMPLE),
+            "the fenced example is byte-identical:\n{text}"
+        );
+        // SEND-4 is only ever drawn, so the id it draws is still free.
+        assert!(
+            file.insert(&Id::parse("SEND-4").unwrap(), "A real one.")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_capture_into_an_unfinished_fence_is_refused_rather_than_lost() {
+        // `insert` appended a `## Criteria` section after the file's last line
+        // with content, which here is inside a fence nobody closed, so the
+        // heading and the criterion under it were both an example. Capture
+        // reported success, `hi check` reported nothing, and the same id could
+        // be "saved" over and over (hi: FILE-22, FILE-22.a, CAPTURE-5).
+        let unfinished = "---\nhi: 1\nfamilies: [SEND]\n---\n\n\
+             # Chat\n\n\
+             ## Intent\n\n\
+             Here is the shape I want, I was in the middle of writing it out:\n\n\
+             ```markdown\n\
+             ## Criteria\n";
+        let mut file = doc(unfinished);
+        let err = file
+            .insert(&Id::parse("SEND-1").unwrap(), "I hit enter.")
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("cannot read it back"), "{err}");
+        assert!(err.contains("unclosed"), "and it says why: {err}");
+        assert_eq!(
+            file.to_text(),
+            unfinished,
+            "the unfinished prose is left exactly as it was"
+        );
+
+        // Closing the fence is all it takes, so the refusal is not a dead end.
+        let mut file = doc(&format!("{unfinished}```\n"));
+        file.insert(&Id::parse("SEND-1").unwrap(), "I hit enter.")
+            .unwrap();
+        assert_eq!(doc(&file.to_text()).criteria.len(), 1);
     }
 
     #[test]
