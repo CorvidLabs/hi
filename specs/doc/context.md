@@ -115,7 +115,10 @@ spec: doc.spec.md
   `insert`, `retire` and `set_retired_reason` are thin wrappers: each clones the document, calls an
   `_inner` that does the work, and passes the proposed text through `Doc::read_back`, which parses it
   and checks that the ids the verb named are readable in the section it named, that no previously
-  readable id was lost, and that `stray` did not grow. Any error, from the inner call or from the
+  readable id was lost, that every criterion the verb did *not* name comes back with the same
+  section, sentence and reason, and that `stray` did not grow or change. That middle clause is
+  newer than the rest and was added because an id-only comparison approved a buffer in which a
+  retired criterion was live again (DECISIONS.md §35). Any error, from the inner call or from the
   read-back, restores the clone. Two bugs got past everything above this: one because a heading was
   found where the parser saw prose, one because a heading was appended where the parser saw an
   example. Both printed success. The check is cheap (one reparse of a small file per write) and it

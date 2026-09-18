@@ -1456,3 +1456,39 @@ fn what_hi_writes_passes_hi_own_check() {
         "the case carries no reason of its own"
     );
 }
+
+#[test]
+fn a_capture_never_brings_a_retired_criterion_back_to_life() {
+    // An indented `## Retired` is a heading to the parser and was a
+    // continuation line to the criterion capture spliced above it. So the
+    // sentence swallowed the heading, every retired criterion below it came
+    // back under `## Criteria` with its reason still attached, and `hi check`
+    // exited 0 before and after (hi: FILE-22.c, DECISIONS.md §35).
+    let repo = Repo::new("resurrect");
+    repo.write(
+        "hi/send.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n  ## Retired\n\n- **SEND-1**  Original retired intent.\n  retired: Dropped.\n",
+    );
+
+    let before = stdout(&repo.run(&["check"]));
+    assert!(before.contains("1 retired"), "{before}");
+
+    let capture = repo.run(&["SEND-2", "A new want."]);
+    assert!(capture.status.success(), "{}", stderr(&capture));
+
+    let after = stdout(&repo.run(&["check"]));
+    assert!(
+        after.contains("1 criterion") && after.contains("1 retired"),
+        "SEND-1 stays retired and SEND-2 is the only active one: {after}"
+    );
+
+    let listed = stdout(&repo.run(&["ls"]));
+    assert!(
+        listed.contains("A new want.") && !listed.contains("A new want. ## Retired"),
+        "the heading is not part of the sentence: {listed}"
+    );
+
+    // And the id it retired is still spent.
+    let reuse = repo.run(&["SEND-1", "Different intent."]);
+    assert!(!reuse.status.success(), "{}", stdout(&reuse));
+}

@@ -172,6 +172,31 @@ Recorded in DECISIONS.md §34, which also records why the two rules that stop th
 returning through the back door — verify the file you were granted is still the file the name
 points at, and unlink while holding rather than after — are load-bearing.
 
+### A capture could bring a retired criterion back to life
+
+Two spaces in front of a `## Retired` heading is something people type, and hi reads such a file
+exactly as its author meant it. Capturing into one did not. The new criterion was spliced directly
+above the indented heading, the parser read that heading as a continuation of the new criterion's
+sentence, and everything the heading had separated fell into `## Criteria`: the retired criterion
+was active again, still carrying its `retired:` reason, and the new one's sentence had
+`## Retired` on the end of it. The command reported success and `hi check` exited 0 before and
+after.
+
+Two things were wrong and both are fixed. `read_criterion` now stops a continuation at anything
+`parse_body` would read as a heading, through one shared predicate, so the parser cannot disagree
+with itself about where a section starts. **The indented heading is still legitimate** — it is
+valid markdown and refusing it would have been fixing the file instead of the code.
+
+And the postcondition every write is held to now compares criteria rather than ids. It was a
+multiset of ids, and every id in that file was still present afterwards; an id comparison cannot
+see a criterion change section, change its sentence, or pick up somebody else's retirement reason.
+Every criterion a write did not name now has to come back with the same section, the same sentence
+and the same reason, or the write is refused with nothing written and the refusal says which id and
+what would have happened to it.
+
+The two fixes are independent on purpose: with the parser fix removed, the postcondition refuses
+the capture instead of losing the criterion. Recorded in DECISIONS.md §35.
+
 ## [0.7.0] 2026-09-17
 
 ### The feature list in INTENT.md stays true by itself

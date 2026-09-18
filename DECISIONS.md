@@ -1800,3 +1800,71 @@ tested on.
 **What would change this decision:** a filesystem hi's users actually work on where `flock` cannot
 be relied on. The answer then is a lock whose location is configurable, not a return to guessing
 when somebody else is done. Age is not coming back, and neither is the heartbeat.
+
+## 35. Every id is still there is not every criterion is still there
+
+§31 made the write path and the parse path agree about where the sections are. §26 and §33 made a
+write read itself back. Both were right, and a re-review walked straight through them with nine
+lines of markdown:
+
+```markdown
+## Criteria
+  ## Retired
+
+- **SEND-1**  Original retired intent.
+  retired: Dropped.
+```
+
+That file is legitimate. Two spaces in front of a heading is a thing people type, `parse_body`
+trims before it looks for `## `, and hi reads the file exactly as its author meant it: nothing
+active, SEND-1 retired. `hi check` exits 0.
+
+Then `hi SEND-2 "A new want."` succeeded, and afterwards there were **two active criteria and none
+retired**. SEND-2's sentence was `A new want. ## Retired` and SEND-1 was live again, still carrying
+`retired: Dropped.` as a note. `hi check` exited 0 after as well. A retired id had come back, which
+is the one thing `RETIRE-2` says cannot happen, and nothing anywhere reported a problem.
+
+### Two causes, and both had to be fixed
+
+**The parser disagreed with itself.** `parse_body` reads `  ## Retired` as a heading.
+`read_criterion` reads any indented, non-blank line that is not itself a criterion as a
+*continuation* of the criterion above it. Neither is wrong on its own; they are wrong together, the
+moment a write puts a criterion immediately above such a line — which `insertion_point` does,
+because the section's append point is the last content line before that heading. So the new
+criterion ate the heading, and everything the heading had separated fell into `## Criteria`.
+
+`read_criterion` now stops at anything `parse_body` would read as a heading, through a shared
+`is_heading_line` so the two cannot drift apart again. **The indented heading is not rejected.** It
+is valid markdown and valid hi, and refusing it would be fixing the file instead of the code.
+
+**The postcondition was about ids.** `read_back` compared `readable()` before and after: a sorted
+multiset of `raw_id`. Every id in that file *was* still readable afterwards. A comparison of ids
+cannot see a criterion changing section, changing its sentence, or acquiring somebody else's
+retirement reason, and all three happened here.
+
+It now compares `shapes()`: (id, section, sentence, reason), sorted, for every criterion the verb
+did **not** name. For the ones it did name, `retire` and `set_retired_reason` may change the
+section and the reason and may not change the words. The refusal says which id and what would have
+happened to it — `move SEND-1 into ## Criteria` — because "would leave SEND-1 unreadable" was
+never going to be printed here: SEND-1 was perfectly readable, in the wrong place.
+
+**The general lesson, which is the third time this repository has met a version of it.** §26 found
+that a promise nobody checked was not a promise. §31 found that two pieces of code answering the
+same question separately will eventually answer it differently. This one is narrower and sharper:
+*a postcondition is only as strong as the thing it compares.* `readable()` was the right check for
+the bug that prompted it — a criterion vanishing into a fence — and it was never a check on
+anything else, while reading as though it were a check on the file. The two fixes are independent
+on purpose: with the parser fix reverted, the postcondition refuses the capture rather than
+losing SEND-1, and the test that fails is the one saying the legitimate file must still work.
+
+### One thing this does not do
+
+The comparison is strict equality of the unaffected criteria, but its baseline is a reparse of the
+document's own text rather than its parsed fields, because `insert` deliberately leaves
+`criteria` one splice behind `lines` (§30) and comparing against the fields would refuse a second
+insert into the same `Doc`. So the guarantee is about the bytes hi is replacing, which is the right
+thing to guarantee, and it is not a guarantee about anything that happened to the file between
+`Workspace::load` and the write. That window is the lock's job (§34), not this one's.
+
+**What would change this decision:** nothing, but the next postcondition added here should be
+written by asking what a reader of the file would notice, not by asking what the writer changed.

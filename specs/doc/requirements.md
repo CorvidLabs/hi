@@ -407,7 +407,8 @@ Acceptance Criteria
 ### REQ-doc-020
 
 Every write SHALL parse the buffer it is about to save and SHALL refuse it unless the edit is
-readable where the verb said it would be (hi: FILE-22).
+readable where the verb said it would be and every criterion the verb did not name is unchanged
+(hi: FILE-22, FILE-22.c).
 
 Acceptance Criteria
 
@@ -416,6 +417,19 @@ Acceptance Criteria
   `## Retired` for the other two, and for every case that went with a retirement); every `raw_id` the
   document made readable before the call is still readable, compared as a multiset so that losing one
   of a duplicated pair counts; and `stray` has not grown.
+- **Every criterion the verb did not name comes back identical**, compared as a sorted multiset of
+  (id, section, sentence, `retired:` note) — `Doc::shapes`. An id-only comparison passes a buffer
+  that moves an unrelated retired criterion into `## Criteria` or rewrites somebody else's sentence,
+  and both of those are the one promise breaking with every id still present (DECISIONS.md §35).
+  The refusal names what would have happened to which id: `move SEND-1 into ## Criteria`,
+  `rewrite SEND-1`, `lose SEND-1`, `change why SEND-1 was retired`, `add a second SEND-1`.
+- For the ids the verb *did* name, `retire` and `set_retired_reason` may change the section and the
+  note and may not change the sentence; `insert` is exempt because the criterion it names is new.
+- The `stray` comparison is by token as well as by count, so a stranded line changing identity
+  without changing the total is a refusal too.
+- The baseline for all of this is a reparse of the document's own text, not its parsed fields.
+  `insert` deliberately leaves `criteria` one splice behind its `lines` (REQ-doc-020's last bullet),
+  so comparing against the fields would refuse a second insert into the same `Doc`.
 - A refusal restores the document to its pre-call state and returns an error naming the verb, the id
   and the file. Nothing is written, in memory or on disk (hi: CAPTURE-5).
 - When the proposed text contains a fence that is never closed, the refusal adds a hint naming the
