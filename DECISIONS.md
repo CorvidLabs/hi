@@ -1911,3 +1911,49 @@ could not look" into "there is nothing there", and the second of those is a clai
 **What would change this decision:** a repository where an unreadable file in `hi/` is normal and
 the refusal is in the way. The answer then is to say which file and let the person move it, which
 is what the hint already says, not to go back to guessing on their behalf.
+
+## 37. Two workstreams reached for the same hand-chosen id, and git said nothing
+
+hi's whole premise is that a person chooses the id and the id is permanent. Two branches were open
+at once against this repository. One captured `FILE-22` for *when hi tells me it wrote something
+down, I can find it again*; the other captured `FILE-22` for *if hi is killed while holding the
+write lock, the next capture recovers by itself*. Both were valid captures: each ran against a
+workspace where `FILE-22` was the next free number, because the other branch's file was not in it.
+
+The same thing happened in the specs, where nothing even resembles an allocator. Both branches
+wrote a requirement numbered `REQ-workspace-011`, and git merged the two files with **no conflict**
+at all, because the headings landed in different places with different text around them. The result
+was one document with two `### REQ-workspace-011` sections saying unrelated things — which
+`specsync check` is not looking for and a reader would meet as a contradiction rather than as an
+error.
+
+### How they were resolved
+
+`FILE-22` **keeps the want that reached `main` first**, from the write-path pass. The lock branch's
+want was renumbered to `FILE-23` before it merged, and `FILE-24` was captured later in the same
+family for the other half of the lock guarantee. No id carries two sentences; nothing was retired,
+because nothing was withdrawn — both wants are live, under one id each.
+
+`REQ-workspace-011` keeps the reservation-lookup requirement, and the write-lock one became
+`REQ-workspace-012`, with its references in `specs/workspace/testing.md` and
+`specs/capture/requirements.md` moved with it.
+
+### Why this is written down rather than quietly fixed
+
+Because the failure mode is invisible and the tool is about ids. `hi check` would have caught the
+duplicate id in `hi/format.md` the moment both branches were on one tree — `duplicate-id` is one of
+the six — and that is exactly what the branch that renamed its criterion was reacting to. Nothing
+catches it *before* the merge, and nothing at all catches the spec one. So:
+
+- **An id is only unique against the tree you captured on.** Two agents working in parallel on
+  branches are two workspaces. hi does not coordinate across them and is not going to start: an id
+  allocator with shared state is a state file, and §5 says hi has none.
+- **The merge is where ids are reconciled**, and it is a human step. `hi check` on the merged tree
+  is the thing that proves it; run it before trusting a merge that touched `hi/`.
+- **A silent merge is worse than a conflict.** Both files here merged cleanly and both were wrong.
+  Text that carries an identifier — a criterion, a `### REQ-` heading — deserves a look after any
+  merge, whatever git said.
+
+**What would change this decision:** nothing about how ids are chosen. If parallel capture becomes
+common enough to hurt, the answer is a check that runs over a *merge result* — the one place the
+duplicate is visible — not a reservation protocol between branches.

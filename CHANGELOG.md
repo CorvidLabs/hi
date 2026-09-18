@@ -217,6 +217,16 @@ the check, which is not a finding.
 0.7.0 made `check` and `capture` answer from one lookup so they could not disagree. They could
 still both be wrong, and here they were. Recorded in DECISIONS.md §36.
 
+### Two branches had both captured FILE-22
+
+Two workstreams open at once each captured `FILE-22`, because on each branch that was the next free
+number. The lock branch's want is now `FILE-23`, the write-path branch's keeps `FILE-22`, and
+`FILE-24` was captured for the other half of the lock guarantee. Both wants are live and no id
+carries two sentences. The same thing happened to a spec requirement — both branches wrote
+`REQ-workspace-011`, and git merged them with no conflict into one document with two headings of
+that name — which is now `REQ-workspace-012` for the write lock. Recorded in DECISIONS.md §37,
+along with why an id is only unique against the tree you captured on.
+
 ## [0.7.0] 2026-09-17
 
 ### The feature list in INTENT.md stays true by itself
