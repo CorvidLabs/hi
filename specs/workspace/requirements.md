@@ -13,6 +13,7 @@ spec: workspace.spec.md
 - As someone who hand-edits a hi file, I want hi to resolve my family from either the frontmatter or the criteria I actually wrote so that the one machine-facing line stays optional in practice (hi: FILE-2)
 - As someone who keeps several features in one file, I want one file to answer for several families so that `hi/chat.md` can hold `SEND`, `RECEIPT` and `OFFLINE` (hi: FILE-5)
 - As someone who retired a criterion, I want its id to stay spoken for so that hi never hands the same number to two different intentions
+- As someone who parked a retired criterion in a file hi does not read, I want its id to stay spoken for there too, so that being told an id is used and being refused it are the same answer (hi: CAPTURE-14)
 - As someone reading `hi check` or piping `hi export` into an agent, I want file paths printed the same way every run, with forward slashes whatever platform I am on, so that output diffs cleanly and a path pasted into a link still works (hi: FILE-12)
 
 ## Acceptance Criteria
@@ -38,6 +39,22 @@ Acceptance Criteria
 - The rule is derived, not arbitrary: `capture::start_file` lowercases every family name, so a criteria file hi wrote is always lowercase and an uppercase name is never one (DECISIONS.md §27).
 - `skipped` is kept on the workspace so `check` can look inside those files. Dropping them would make a criterion written into one silently invisible, which is the failure `FILE-20` exists to prevent.
 - `holds_hi_files` is unchanged and still requires frontmatter carrying a `hi:` key, so `hi/AGENTS.md` alone never makes a directory look like a workspace.
+
+### REQ-workspace-011
+
+`Workspace::strays` SHALL be the one lookup for an id hi cannot read as structure, covering the
+loaded docs and the skipped files together, and `find_stray` SHALL answer from it (hi: CAPTURE-14,
+FILE-20).
+
+Acceptance Criteria
+
+- `strays` walks `skipped` first, reading each file and running `doc::criterion_tokens` over it, and records each hit as `StrayPlace::UnreadFile`; then it walks each doc's `Doc::stray` and records each as `StrayPlace::OutsideSection`.
+- A `Stray` carries the workspace-relative `file`, the 1-based `line`, the id-shaped `token` and the `place`. The token is whatever the source recorded: `Doc::stray` keeps markdown emphasis (`**SEND-9**`), `criterion_tokens` has already removed it. `check` quotes it back verbatim, so neither is normalized here.
+- `find_stray` compares each token with `doc::strip_emphasis` applied and ASCII-uppercased, and returns the first match.
+- A skipped file that cannot be read or decoded is passed over and the rest are still scanned, the behavior `check` has had since skipped files were first read. This is a lookup, not a verb: it returns no `Result` and cannot fail.
+- `check` builds its `StrayCriterion` problems from the same call, so an id reported as used and an id refused by capture are by construction the same set. They were two scans over two different sets of files, and a retired id in `hi/Archive.md` was reported by one and reissued by the other (DECISIONS.md §32).
+- Reading inside hi's own files reserves ids and nothing more: `docs`, `criteria_count`, `families` and the generated feature list are untouched by `strays`, so `hi/AGENTS.md` never becomes a file that holds criteria (DECISIONS.md §27).
+- A fenced block in a skipped file is an example rather than structure, exactly as under `## Intent`, so documenting the format in a `hi/README.md` reserves nothing (hi: FILE-9).
 
 
 ## Constraints

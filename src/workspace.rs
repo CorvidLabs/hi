@@ -20,6 +20,32 @@ pub struct Workspace {
     pub skipped: Vec<PathBuf>,
 }
 
+/// Why nothing reads a criterion-shaped line where it sits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StrayPlace {
+    /// In a criteria file, but outside `## Criteria` and `## Retired`.
+    OutsideSection,
+    /// In a file hi does not load as criteria at all, because its name is not
+    /// lowercase and is therefore hi's own (DECISIONS.md §27).
+    UnreadFile,
+}
+
+/// One criterion-shaped line hi cannot read as structure, located.
+///
+/// The id on it is taken whatever hi can do with the line, so this is both what
+/// `check` reports and what `capture` refuses to hand out (hi: CAPTURE-14).
+#[derive(Debug, Clone)]
+pub struct Stray {
+    /// Workspace-relative path of the file holding the line.
+    pub file: String,
+    /// One-based line number, the way an editor counts.
+    pub line: usize,
+    /// The id-shaped token exactly as the file has it.
+    pub token: String,
+    /// Why nothing reads it.
+    pub place: StrayPlace,
+}
+
 impl Workspace {
     /// Walk up from `start` looking for a `hi/` directory, stopping at the
     /// filesystem root or a `.git` boundary that has no `hi/` beside it.
@@ -130,24 +156,72 @@ impl Workspace {
         None
     }
 
-    /// A criterion-shaped line hi could not read, but which spoke for this id.
+    /// Every criterion-shaped line hi does not read as structure, wherever it
+    /// sits: in a criteria file outside every section, or in a file hi does not
+    /// read as criteria at all.
     ///
-    /// An id written where nothing parses it, outside every section or inside a
-    /// fence, has still been used. Handing it out again produces two lines with
-    /// the same id and different sentences, which is the one thing hi promises
-    /// cannot happen, so capture refuses and points at the line
-    /// (hi: FILE-20, CAPTURE-14).
-    pub fn find_stray(&self, id: &Id) -> Option<(usize, usize)> {
-        let wanted = id.to_string().to_ascii_uppercase();
-        for (index, doc) in self.docs.iter().enumerate() {
-            for (line, token) in &doc.stray {
-                // The recorded token keeps its markdown emphasis: `**SEND-2**`.
-                if crate::doc::strip_emphasis(token).to_ascii_uppercase() == wanted {
-                    return Some((index, line + 1));
-                }
+    /// One list rather than two scans, because `check` and `capture` have to
+    /// agree about which ids are taken. They did not: `find_stray` walked
+    /// `docs` and `check` separately walked `skipped`, so a retired `SEND-1`
+    /// in `hi/Archive.md` was reported by `check` and handed out again by
+    /// capture with different words. An id reported as used and then reissued
+    /// is worse than one nobody noticed (hi: CAPTURE-14, FILE-20,
+    /// DECISIONS.md §27, §32).
+    ///
+    /// A skipped file that cannot be read is passed over rather than raised:
+    /// this is a lookup, not a verb, and `check` has behaved that way since
+    /// skipped files were first scanned.
+    pub fn strays(&self) -> Vec<Stray> {
+        let mut found = Vec::new();
+
+        // A file hi skips is still a file somebody may have written a
+        // criterion into. Skipping quietly is the FILE-20 failure with a new
+        // cause, so look inside rather than assume (DECISIONS.md §27).
+        for path in &self.skipped {
+            let Ok(raw) = fs::read_to_string(path) else {
+                continue;
+            };
+            let file = self.rel(path);
+            for (line, token) in crate::doc::criterion_tokens(&raw) {
+                found.push(Stray {
+                    file: file.clone(),
+                    line: line + 1,
+                    token,
+                    place: StrayPlace::UnreadFile,
+                });
             }
         }
-        None
+
+        for doc in &self.docs {
+            let file = self.rel(&doc.path);
+            for (line, token) in &doc.stray {
+                found.push(Stray {
+                    file: file.clone(),
+                    line: line + 1,
+                    // Recorded as written, emphasis and all: `**SEND-2**`. It
+                    // is quoted back at the person, so it is the line's own
+                    // text rather than hi's reading of it.
+                    token: token.clone(),
+                    place: StrayPlace::OutsideSection,
+                });
+            }
+        }
+
+        found
+    }
+
+    /// A criterion-shaped line hi could not read, but which spoke for this id.
+    ///
+    /// An id written where nothing parses it, outside every section, inside a
+    /// fence, or in a file hi does not read as criteria, has still been used.
+    /// Handing it out again produces two lines with the same id and different
+    /// sentences, which is the one thing hi promises cannot happen, so capture
+    /// refuses and points at the line (hi: FILE-20, CAPTURE-14).
+    pub fn find_stray(&self, id: &Id) -> Option<Stray> {
+        let wanted = id.to_string().to_ascii_uppercase();
+        self.strays()
+            .into_iter()
+            .find(|stray| crate::doc::strip_emphasis(&stray.token).to_ascii_uppercase() == wanted)
     }
 
     /// The next free top-level number in a family.
@@ -272,6 +346,68 @@ mod tests {
         assert_eq!(workspace.docs.len(), 1, "AGENTS.md is not a criteria file");
         assert_eq!(workspace.skipped.len(), 1, "but it is not forgotten either");
         assert!(workspace.skipped[0].ends_with("AGENTS.md"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_id_in_a_file_hi_skips_is_still_taken() {
+        // `find_stray` walked `docs` and `check` separately walked `skipped`,
+        // so a retired SEND-1 parked in an uppercase file was reported by one
+        // and handed out again by the other (hi: CAPTURE-14).
+        let root = std::env::temp_dir().join(format!("hi-ws-reserve-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("hi")).unwrap();
+        fs::write(
+            root.join("hi/Archive.md"),
+            "# Archive\n\n## Retired\n\n- **SEND-1**  the old way of sending.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("hi/chat.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-2**  One.\n",
+        )
+        .unwrap();
+
+        let workspace = Workspace::load(&root).unwrap();
+
+        let found = workspace
+            .find_stray(&Id::parse("SEND-1").unwrap())
+            .expect("an id written where hi cannot read it is still taken");
+        assert_eq!(found.file, "hi/Archive.md");
+        assert_eq!(found.line, 5);
+        assert_eq!(found.place, StrayPlace::UnreadFile);
+        // And an id nobody wrote anywhere is still free.
+        assert!(
+            workspace
+                .find_stray(&Id::parse("SEND-3").unwrap())
+                .is_none()
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn hi_s_own_files_hold_no_criteria() {
+        // The reservation lookup reads inside hi's own files, so the habit hi
+        // writes there must not read as structure. It is prose, a numbered
+        // list and a fenced example (DECISIONS.md §27).
+        let root = std::env::temp_dir().join(format!("hi-ws-own-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("hi")).unwrap();
+        fs::write(root.join("hi/AGENTS.md"), crate::out::agent_instructions()).unwrap();
+        fs::write(
+            root.join("hi/chat.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  One.\n",
+        )
+        .unwrap();
+
+        let workspace = Workspace::load(&root).unwrap();
+
+        assert!(
+            workspace.strays().is_empty(),
+            "hi's own instruction file is not a file that holds criteria: {:?}",
+            workspace.strays()
+        );
+        assert_eq!(workspace.criteria_count(), 1);
         let _ = fs::remove_dir_all(&root);
     }
 

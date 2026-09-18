@@ -1318,8 +1318,17 @@ without adopting hi's own build.
 ### Capture keeps it current, rather than check reporting it
 
 The verb that changes the live count refreshes the block. Both of them: `capture` and `hi retire`,
-since retiring changes the count too. Drift is then structurally impossible rather than merely
-detectable, which is the difference between a promise and a report.
+since retiring changes the count too. Nobody has to remember, which is the difference between a
+promise and a report.
+
+The first version of this section said drift became "structurally impossible". That was too strong
+and §32 corrects it. The refresh is best effort by design — the subsection below says so two
+paragraphs later — so a file hi cannot read, a marker pair somebody broke, or a full disk all leave
+the list wrong while the capture succeeds, which is right and is not impossibility. `hi index` also
+still takes no lock of its own: the refresh is safe because it runs inside the lock `capture` and
+`hi retire` already hold, and `hi index` typed by hand is an unlocked read-modify-write like any
+other. What is true is narrower and still worth having: **the ordinary path no longer depends on
+anybody remembering.**
 
 The alternative was a seventh `check::Kind`. It was refused for the reason §9 and `CHECK-1` refuse
 every other quality gate: `hi check` fails on a structurally broken file and on nothing else, and
@@ -1364,7 +1373,8 @@ of 197 and right by luck at the end.
 
 A person who deleted the generated block gets one back on the next capture, through the append
 branch `write_index` has always had. That branch was previously only ever reached by somebody typing
-`hi index`, and it is now reached without being asked for.
+`hi index`, and it is now reached without being asked for. **§32 withdraws this one**: it was
+accepted as a cost, and on a second look it is hi arguing with the person.
 
 `scripts/index-is-current.sh` stays in the gate. It is no longer the thing that keeps this
 repository's list true — capture is — and it is now a backstop for hand-edits here, which is what
@@ -1458,3 +1468,100 @@ and one of them exists only to fail if the fix ever over-corrects into treating 
 costs too much, it narrows — check only the ids the verb touched rather than the whole document —
 before it is removed. If a future write path genuinely cannot express its postcondition this way,
 that is the signal it is doing something the format does not support, not the signal to skip it.
+
+---
+
+## 32. Making a write automatic widens whatever was already wrong with it
+
+§30 moved the index refresh from something a person typed to something every `capture` and every
+`hi retire` does. Nothing about `write_index` changed. Two defects that had sat in it since 0.2.0
+went from reachable-if-you-type-a-command to running on every write in every repository, and one of
+them destroys a file.
+
+**That is the general lesson, and it is the third time this repository has met it.** §26 found that
+concurrency stopped being hypothetical without anyone deciding it had. §30 found that a guarantee
+depending on somebody remembering is not a guarantee. This one is the same shape from the other
+side: *a code path's blast radius is a property of who calls it, not of the code*, so making a call
+automatic is a change to every bug inside it. The review that ships an automatic call has to be a
+review of the thing being called, not only of the calling.
+
+### The one that destroyed the file
+
+```rust
+let existing = fs::read_to_string(&path).unwrap_or_default();
+```
+
+Every read error became an empty string, and the branch below it treats an empty string as "no file
+here, write the starter". So an `INTENT.md` holding somebody's prose and one byte that is not valid
+UTF-8 — a Latin-1 `é` pasted in, a truncated write, anything — was replaced by the starter prompt
+and a generated list. Reproduced against the built binary: a three-line file became the scaffold and
+`hi index` printed `INTENT.md  index updated` and exited 0.
+
+`INDEX-2` promises hi only ever rewrites the list it generated and the prose around it stays the
+person's. Replacing the whole file is the largest possible way to break that, and it is also the
+quietest: nothing is reported, because from inside the function nothing went wrong.
+
+**Only absence may create.** The read now matches: `NotFound` is an empty file, and every other
+error returns `reading <path>` having written nothing. Through a capture that is a printed line and
+exit 0 with the criterion stored (`INDEX-4.a`); through `hi index` it is the exit code, because
+there the failure is the whole answer. That is `INDEX-2.c`.
+
+**`unwrap_or_default` on a read is the shape to distrust.** It reads as a default and behaves as an
+assertion that the file is empty. Where the next thing the code does is decide whether to create
+something, the two are not the same and the difference is the file.
+
+### The one that handed an id out twice
+
+`Workspace::find_stray` walked `docs`. `check` separately walked `skipped`, the uppercase-named
+files in `hi/` that are hi's own (§27). Both were looking for the same thing — a criterion-shaped
+line nothing reads — and neither knew about the other's half. So a retired `SEND-1` parked in
+`hi/Archive.md` was *reported by `check` as taken* and *handed out again by capture* with different
+words. `CAPTURE-14` says an id written somewhere hi cannot read it is still taken and is never
+handed out twice, and this was hi announcing the id was used and then reusing it.
+
+There is now one lookup, `Workspace::strays`, covering both sets. `check` reports from it and
+`capture` refuses from it, so the two cannot disagree again — not because they agree, but because
+there is only one answer. Reading inside hi's own files reserves ids and nothing else: `docs`,
+the criteria count, the families and the generated feature list are untouched, so `hi/AGENTS.md`
+still never becomes a file that holds criteria.
+
+**Two checks over overlapping inputs is the shape to distrust.** The audit in §26 found four ways
+one promise broke; this is a fifth, and its cause is not a missing check but two checks that were
+each correct about their own half.
+
+### Withdrawing §30's accepted cost
+
+§30 accepted that a person who deleted the generated block gets one back on the next capture,
+through `write_index`'s append branch. On a second look that is wrong, and the reasoning is §9's:
+hi does not stamp into human-authored prose. Rewriting the list between two markers hi wrote is what
+`INDEX-2` permits. Adding a `## Features` heading is writing prose, and doing it on every capture
+means a person who removes the block cannot keep it removed — they delete, hi restores, forever,
+with no verb to say no with.
+
+So the two acts are now separate. `refresh_index` passes `Absent::LeaveAlone`: it rewrites a block
+that is there and installs none. `hi index` passes `Absent::Install`, because there it was asked
+for. The effect of the automatic path on disk is now exactly a span replacement between two
+markers, which is `INDEX-2` stated as a mechanism rather than as good behaviour — and that is what
+makes it safe to run on every write.
+
+Two consequences, both deliberate:
+
+**The starter file carries its own list.** A first capture used to write the prose prompt and let
+the refresh append the `## Features` section a moment later. With the refresh installing nothing,
+`capture::start_product_intent` writes `out::starter_intent_file`, which is the prompt and the block
+together. The file hi creates is complete from birth, and a refresh over it changes nothing.
+
+**A file with no block gets silence.** Not a restored section, and not a note either. hi cannot tell
+a block somebody deleted from one that was never written, so it does not guess; and `check` nagging
+about it would be the thing §30's last paragraph warns against, a nag about something hi could have
+fixed itself. Here hi *could* fix it and has decided not to, so nagging would be arguing in a
+different tone. `hi index` is in `hi --help`, in the README's verb table, and in the note `check`
+already prints when a block that exists is behind. That is enough places.
+
+`INDEX-4.c` is the criterion for this, and it is the only genuinely new *want* in this pass. The
+other two fixes restore `INDEX-2` and `CAPTURE-14`, which were already written down and already
+true on paper.
+
+**What would change this decision:** evidence that adopters are ending up with an `INTENT.md` that
+has no feature list and no idea one is available. The answer then is a better first-run message or a
+line in the file hi already writes, not hi editing a file somebody edited on purpose.

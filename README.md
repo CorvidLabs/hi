@@ -152,8 +152,9 @@ product-level why, above any one feature, and it exists from the first capture r
 for you to discover it, because a product with criteria and no stated why is the common failure.
 The prose in it is yours; hi only ever regenerates the feature list between its own markers, and it
 does that itself on every capture and every `hi retire`, so the list is true without you
-remembering `hi index`. If it cannot — you broke a marker, say — it says so and your capture still
-succeeds, because the criterion is already stored. Until you have written that why, `hi check`
+remembering `hi index`. If it cannot — you broke a marker, or hi cannot read the file at all — it
+says so, leaves every byte where it is, and your capture still succeeds, because the criterion is
+already stored. Delete the list and it stays deleted: `hi index` is how you ask for one back. Until you have written that why, `hi check`
 mentions it, as a note and never as a failure:
 
 ```console
@@ -196,7 +197,7 @@ filter. Your words are passed through untouched in all of them.
 | `hi retire <ID> [reason]` | Change your mind. Moves a criterion and its cases into `## Retired`. |
 | `hi issue <ID> [--create]` | Print a ticket, or open a real GitHub issue with `gh`. |
 | `hi export [FAMILY \| file]` | JSON for an agent, intent prose included. |
-| `hi index` | Rewrite the feature list inside `INTENT.md`, and nothing else in it. Capture and `hi retire` do this for you; run it by hand after editing a `hi/*.md` yourself. |
+| `hi index` | Rewrite the feature list inside `INTENT.md`, and nothing else in it, adding the `## Features` section if there is none. Capture and `hi retire` refresh a list that is there; run this by hand after editing a `hi/*.md` yourself, or to ask for a list back after deleting one. |
 | `hi view [--out FILE]` | One self-contained HTML page: a sticky feature rail, search with match highlighting, sort, keyboard navigation, and a copyable link for every id. Named after your `INTENT.md` heading, in CorvidLabs brand colors, light and dark. Works offline, and with scripting off it is still readable. |
 
 Every command takes `--root <PATH>` to work on a repository other than the one you are standing in.
