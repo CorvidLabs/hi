@@ -134,6 +134,44 @@ hands back a lock it did not take.
 
 Recorded in DECISIONS.md §33, with why the §26 pass did not cover any of this.
 
+### The write lock is the operating system's
+
+An external re-review broke the lock this repository shipped a day earlier, with an interposer
+that only delays syscalls. A waiter was frozen at the instant *after* it had confirmed another
+lock was abandoned and *before* it removed it; a second waiter then broke the same lock, took its
+own, and started writing while heartbeating. The first waiter was released, executed its
+already-approved deletion, and removed a live holder's lock. Both processes saved their own
+snapshot, both printed the criterion they had stored, both exited 0, one criterion was gone, and
+`hi check` reported nothing wrong. The disclosed SIGSTOP case was reproduced too: a holder stopped
+part-way through its write was declared abandoned after five seconds, and its criterion was
+overwritten by the writer that took over.
+
+No extra check fixes that. Verifying and removing are two operations and the holder can change
+between them, which is true of any rule hi invents about when somebody else has finished.
+
+**So hi does not invent one.** It holds `flock(2)` on unix and `LockFileEx` on Windows and never
+breaks a lock at all. The kernel releases those when a process exits, however it exits, so a `hi`
+that was killed still frees its repository with nothing to delete — and a `hi` that is merely
+slow, stopped or waiting on a slow disk keeps what it took for as long as it is alive. Those two
+were in tension under every timeout, which is why every timeout was wrong.
+
+**No new dependency.** hi has four, and two `extern` declarations are not worth a fifth.
+
+Two consequences worth knowing:
+
+`.hi.lock` is no longer the lock, so deleting it while a `hi` is running is now the one act that
+can let two writers into a repository at once. The timeout message says so instead of telling you
+to delete it. A lock file left behind by a killed `hi` is harmless: the next writer takes it
+without waiting and without deleting anything.
+
+hi fails rather than writes if the filesystem cannot lock. `flock` is emulated or absent on some
+network filesystems, and hi has not been tested on any of them; a local checkout is the supported
+answer. The Windows path is compile-checked and has not been run.
+
+Recorded in DECISIONS.md §34, which also records why the two rules that stop the same defect
+returning through the back door — verify the file you were granted is still the file the name
+points at, and unlink while holding rather than after — are load-bearing.
+
 ## [0.7.0] 2026-09-17
 
 ### The feature list in INTENT.md stays true by itself

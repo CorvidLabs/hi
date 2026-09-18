@@ -1568,6 +1568,11 @@ line in the file hi already writes, not hi editing a file somebody edited on pur
 
 ## 33. The fifth way, which was live through the audit that found the other four
 
+> **The heartbeat this section introduces was wrong and is gone; §34 replaces it.** What survives
+> here is the bootstrap half — `hi/` is created before the lock and a `Guard` is only ever a lock
+> that was really taken — and the argument that age is not evidence. The mechanism that replaced
+> age was reproduced as a defect within a day of shipping.
+
 §26 named four ways hi broke its one promise, fixed them, and said the promise does not move. A
 fifth was open the whole time, in the fix for the fourth.
 
@@ -1686,3 +1691,112 @@ covers.
 machinery than a small tool should carry, the fallback is to stop breaking locks at all and print
 the file to delete; that is strictly safer and strictly less convenient. The one thing that may not
 come back is age as evidence.
+
+*It did not survive that long.* The heartbeat was reproduced as a defect immediately, and §34 took
+a third option neither this paragraph nor the review that prompted it considered: hand the lock to
+the operating system, where nothing has to be inferred and a killed process is not a special case.
+
+## 34. The lock belongs to the kernel, because every other owner is a guess
+
+§33 replaced "a lock older than sixty seconds is dead" with "a lock nobody has refreshed for five
+seconds is dead". Both are the same shape: hi looking at a file and deciding, on its own, that
+somebody else has finished. An external re-review took the second one apart in an afternoon.
+
+### What was reproduced
+
+Two `hi` processes, and a syscall interposer that only ever *delays* execution — it changes no
+behaviour, it just holds a process at a chosen call until it is let go. Waiter A was paused at the
+instant after it had confirmed the lock's mtime had stood still and immediately before the
+`remove_file` that acts on that confirmation. Waiter B then broke the same lock, took one of its
+own, and started writing; it was heartbeating throughout. A was released and executed its
+already-approved deletion, removing **B's live lock**. Both saved their own snapshot of the file,
+both printed the criterion they had stored, both exited 0, and one criterion was not in the file
+afterwards. `hi check` reported nothing wrong, and capturing the missing id again succeeded with
+different words.
+
+The re-read immediately before the removal is exactly the mitigation §33 describes, and it is not
+one: it narrows the window, and the window is still there, because *verifying* and *removing* are
+two operations and the world moves between them. There is no third check that fixes that. Anything
+hi can observe about a file it has to observe before it acts on it.
+
+The disclosed SIGSTOP case is the same defect without the interposer: a holder stopped part-way
+through its write has no heartbeat, so a second `hi` declared it abandoned after five seconds,
+took the lock, wrote, and exited 0; the stopped process then continued and wrote its own pre-image
+over the top, losing the second one's criterion.
+
+### The decision
+
+**hi does not decide when somebody else's lock has expired. The operating system does.** `flock(2)`
+on unix, `LockFileEx` on Windows. Both belong to the open file rather than to the pathname, which
+gives the one property no file-watching scheme can have: the kernel releases the lock when the
+process exits, however it exits — cleanly, by panic, by SIGKILL, by the machine losing power on the
+next boot's empty `/proc`. So:
+
+- a `hi` that was killed frees its repository by itself, with nothing to delete (`FILE-23`), and
+- a `hi` that is merely slow, stopped, swapped out or waiting on a slow filesystem keeps what it
+  took for as long as it is alive (`FILE-24`),
+
+and those two stop being in tension, which is what made every timeout-based design wrong. hi now
+never breaks a lock at all. There is no age, no heartbeat, no takeover, and no code path that
+removes a lock file hi does not itself hold the OS lock on.
+
+### The dependency question, answered explicitly
+
+hi has four dependencies — clap, serde, serde_json, anyhow — and no `libc`. An OS lock needs one of
+them or raw FFI, and the reviewer offered "never break a lock, print the path to delete" as an
+acceptable alternative. That alternative was rejected, because `FILE-23` is a criterion this
+repository captured and a person would have to act on every crash for the rest of the tool's life.
+
+**No dependency was added.** `flock` is one `extern "C"` declaration and two integer constants that
+have been stable on Linux, macOS and the BSDs for thirty years; `LockFileEx` is one
+`extern "system"` declaration, two flags and a zeroed `OVERLAPPED`. That is about twenty lines in
+`src/lock.rs`, in one module, behind three functions with the same signatures on every platform.
+A `libc` or `fs2` dependency would buy the same twenty lines and a supply chain. The trade is the
+`unsafe` blocks, which are two calls that take a descriptor or a handle the caller owns.
+
+### The part that is not obvious, and was nearly the same defect again
+
+**Holding the kernel's lock on a file is not holding the pathname.** The holder unlinks
+`.hi.lock` when it releases. A waiter that opened that file *before* the unlink is still queued on
+it, and the kernel will happily grant it the lock afterwards — on an inode with no name — while a
+third writer creates a brand new `.hi.lock` and is granted the lock on *that*. Two processes, two
+valid locks, one repository. This is a well-known hazard of unlinking lock files and it would have
+reproduced the original defect with a different mechanism.
+
+Two rules close it, and both are load-bearing:
+
+1. **Verify after acquiring.** Once the kernel grants the lock, `still_at` compares the open file's
+   `dev`/`ino` against the pathname's. If they differ, hi is holding an orphan: it drops it and
+   starts over. `lock::tests::a_lock_granted_on_a_file_that_was_replaced_is_not_the_repository_s_lock`
+   forces exactly that sequence rather than hoping to hit it.
+2. **Unlink while holding, never after.** `Guard::drop` removes the file and *then* closes it. In
+   the other order, a new holder could be granted the lock between the close and the removal, and
+   hi would delete a live lock — the original defect, rebuilt.
+
+On Windows neither is available and neither is needed. A delete there marks the file and leaves it
+in place until the last handle closes, and while it is marked every `CreateFile` on that name is
+refused, so no replacement can exist during the window `still_at` covers. `still_at` is therefore
+`Ok(true)` on Windows. That is an argument, not a test: **the Windows path is compile-checked
+against `x86_64-pc-windows-msvc` and has not been run.** The unix path is what this change was
+tested on.
+
+### What is still true, and what is not claimed
+
+- Exclusion rests on nothing but the OS lock and the file identity check. It does **not** rest on
+  timing, on mtimes, on pids — the pid in the file is for a person and nothing reads it back — or
+  on anybody deleting anything.
+- It does rest on the filesystem implementing `flock` properly. On NFS, SMB and similar, `flock`
+  may be emulated, local-only or refused. hi fails closed on a refusal, with a message naming the
+  path, and **hi has not been tested on any network filesystem**. A local checkout is the supported
+  answer.
+- Deleting `.hi.lock` by hand while a `hi` is running now breaks the exclusion that hi provides,
+  where before it was the documented remedy. So the timeout message no longer says to delete it; it
+  says the lock belongs to a running process and that hi takes it back by itself when that process
+  exits.
+- On a platform that is neither unix nor Windows the fallback is exclusive creation with no
+  breaking, which is safe and is not self-healing. `FILE-23` is unmet there. hi ships for Linux,
+  macOS and Windows, and this arm exists so the crate still builds elsewhere.
+
+**What would change this decision:** a filesystem hi's users actually work on where `flock` cannot
+be relied on. The answer then is a lock whose location is configurable, not a return to guessing
+when somebody else is done. Age is not coming back, and neither is the heartbeat.

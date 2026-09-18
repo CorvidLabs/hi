@@ -60,22 +60,25 @@ Acceptance Criteria
 
 ### REQ-workspace-012
 
-The write lock SHALL be a real lock in every repository, including one that has never run hi, and SHALL be broken only when nobody is holding it (hi: FILE-19, FILE-23, CAPTURE-5).
+The write lock SHALL be held by the operating system rather than inferred from a file, SHALL be a real lock in every repository including one that has never run hi, and SHALL never be taken from a process that is still alive (hi: FILE-19, FILE-23, FILE-24, CAPTURE-5).
 
 Acceptance Criteria
 
-- `lock::acquire` creates `hi/` with `create_dir_all` before it tries to create `<hi>/.hi.lock`. The lock lives inside the directory it protects, so before that directory exists there is nothing to create a lock file in. That open failed with `NotFound`, and the failure used to be returned as a `Guard`: every concurrent first capture in a repository then ran unlocked (DECISIONS.md §33).
+- `lock::acquire` creates `hi/` with `create_dir_all` before it opens `<hi>/.hi.lock`. The lock lives inside the directory it protects, so before that directory exists there is nothing to open a lock file in. That open failed with `NotFound`, and the failure used to be returned as a `Guard`: every concurrent first capture in a repository then ran unlocked (DECISIONS.md §33).
 - `create_dir_all` succeeds when another writer created the directory first, so the bootstrap race is safe by construction.
-- Any failure other than `AlreadyExists` is an error. `acquire` never returns a guard for a lock it did not take, and `Guard`'s only constructor is private and takes the `File` that was exclusively created, so an unacquired guard cannot exist to remove somebody else's lock when it drops.
+- The lock itself is `flock(LOCK_EX | LOCK_NB)` on unix and `LockFileEx(LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY)` on Windows, each declared in a three-line `extern` block rather than pulled in as a dependency. Both belong to the open file, so the kernel releases them when the process exits however it exits (hi: FILE-23) and holds them for as long as it lives (hi: FILE-24).
+- hi never removes a lock file it does not hold the OS lock on. There is no staleness rule, no age, no heartbeat and no takeover: the only `remove_file` of `.hi.lock` in the module is `Guard::drop`, and it runs before the close, while the lock is still held (DECISIONS.md §34).
+- On unix, after the kernel grants the lock, `still_at` compares the open file's `dev`/`ino` against the pathname's. The outgoing holder unlinks the file as it releases, so a queued waiter can be granted the lock on an inode the name no longer points at while another writer creates a fresh file and locks that. A waiter that finds it is holding an orphan drops it and starts over.
+- On Windows `still_at` is `Ok(true)` and the platform supplies the same exclusion: a delete leaves the file in place until the last handle closes and refuses every `CreateFile` on that name meanwhile, so no replacement can exist during the window the unix check covers. There is no stable std API for file identity by handle, and hi does not add one (DECISIONS.md §34).
+- Any error from the open other than `NotFound`, `AlreadyExists` or a Windows handoff is an error. `acquire` never returns a guard for a lock it did not take, and `Guard`'s only constructor is private and takes the `File` the kernel granted, so an unacquired guard cannot exist to remove somebody else's lock when it drops.
+- A filesystem that cannot lock is reported rather than pretended away: a `flock` or `LockFileEx` failure that is not "somebody has it" is returned with the path and a hint about network shares. hi fails closed, because the only other answer is to write unlocked.
 - A guard that had to create `hi/` removes that directory again on release. `fs::remove_dir` refuses a directory with anything in it, so this only ever takes back an empty one: a capture that wrote a file keeps its directory, and a capture that refused leaves nothing at all behind (hi: CAPTURE-5).
-- The holder refreshes the lock file every `HEARTBEAT` (250ms) from a thread of its own, which moves the file's mtime.
-- A waiter remembers the mtime it first saw and when it saw it, and breaks the lock only after that mtime has stood still for `ABANDONED` (5s) of the waiter's own elapsed time. It re-reads the mtime immediately before removing the file, so a lock another waiter has just taken is never removed. Age alone is not evidence: the previous rule broke any lock older than 60 seconds, which said a holder was slow rather than dead.
-- Nothing compares this machine's clock against the file's timestamp, so clock skew on a shared filesystem cannot make a held lock look abandoned.
-- A waiter gives up after `PATIENCE` (30s) with a message naming the directory and the file to delete. `PATIENCE` outlasts `ABANDONED`, or a lock whose holder was killed could never be recovered (hi: FILE-23).
+- A waiter gives up after `PATIENCE` (30s). The message names the directory, and where the OS releases on exit it says the lock belongs to a running process and that deleting the file while it is held is the one act that lets two writers in. It no longer tells anybody to delete it.
+- A lock file left behind by a killed `hi` is not a lock. The next writer opens it, is granted the OS lock at once and goes on, so nothing has to be deleted by hand and nothing has to be waited out (hi: FILE-23).
 
 ## Constraints
 
-- No dependency beyond `std`, `anyhow`, and the sibling `doc` and `id` modules. The `hi/` directory has no manifest format to parse, so nothing else is needed (hi: FILE-1)
+- No dependency beyond `std`, `anyhow`, and the sibling `doc` and `id` modules. The `hi/` directory has no manifest format to parse, so nothing else is needed (hi: FILE-1). The two OS lock calls are declared in `lock`'s own `extern` blocks for the same reason: a lock that the kernel owns is worth three lines of FFI and is not worth a fifth dependency (DECISIONS.md §34)
 - Discovery must terminate: the ancestor walk ends at a `.git` boundary or at the filesystem root, whichever comes first. In the worst case, where the start directory has neither a workspace nor a repository above it, it examines every ancestor before failing
 - `Doc::parse` is infallible by contract, so this module may not introduce a parse-failure path of its own. `holds_hi_files` keeps that contract by answering `bool`: every I/O or encoding problem it meets reads as "not a hi file", never as an error
 - Recognition reads candidate files off disk during the walk, so it must stay cheap: only files directly inside the candidate `hi/`, only `*.md`, and it stops at the first match

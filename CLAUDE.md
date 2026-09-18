@@ -114,10 +114,15 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   and it takes back an empty `hi/` it made so a refusal still writes nothing. A write-path test
   that starts from a repository which already has a `hi/` cannot see any of this: use
   `cli::Repo::bare` (DECISIONS.md §33, `hi: FILE-19`, `CAPTURE-5`).
-- **Never break a lock because it is old.** Age says a holder is slow, and a bulk capture is slow.
-  The holder heartbeats, and a waiter breaks a lock only after its mtime stands still for
-  `ABANDONED` of the waiter's own elapsed time. Do not reintroduce a rule that compares this
-  machine's clock to the file's (DECISIONS.md §33, `hi: FILE-23`).
+- **hi never breaks a lock, because the lock is the kernel's.** `flock` on unix, `LockFileEx` on
+  Windows, both declared in `lock`'s own three-line `extern` blocks rather than added as a fifth
+  dependency. Age was wrong, and so was the heartbeat that replaced it: a waiter that decides a
+  lock is abandoned and then removes it has already approved the removal by the time the holder
+  changes, and no extra check closes that. Do not reintroduce any rule that lets one process
+  decide another is finished. The one `remove_file` of `.hi.lock` is `Guard::drop`, and it runs
+  *before* the close, while the lock is still held. On unix, `still_at` must stay: the kernel can
+  grant a queued waiter a lock on an inode the pathname no longer names (DECISIONS.md §34,
+  `hi: FILE-23`, `FILE-24`).
 - **Never write a fixed temp or fixture path.** `write_atomically` and the integration-test
   fixtures both used one, so two processes shared a scratch file. That is why the suite flaked and
   why bulk capture lost writes. Include the pid.
