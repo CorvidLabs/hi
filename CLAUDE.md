@@ -163,7 +163,7 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   `Doc::save`, and do not give it a lock: `capture` and `retire` already hold `lock::acquire` and
   it is not reentrant (DECISIONS.md §30, `hi: INDEX-4`, `INDEX-4.a`).
 - **`hi check`'s note about that list is a note, not a problem.** `out::index_note` is
-  pushed onto `Report::note`, which `Report::ok` never reads, so the exit code cannot move. It is
+  pushed onto `Report::notes`, which `Report::ok` never reads, so the exit code cannot move. It is
   the first thing `check` nags about that hi itself maintains, and it is only admissible because
   capture and retire keep the list current, leaving one cause: a criterion typed in by hand, which
   `FILE-14` allows (DECISIONS.md §30, `hi: INDEX-4.b`, `CHECK-1`).

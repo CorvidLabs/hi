@@ -587,7 +587,10 @@ pub fn write_with_endings(path: &std::path::Path, text: &str, like: &str) -> std
     } else {
         text.to_string()
     };
-    std::fs::write(path, body)
+    // Atomic, because this is the one file `hi seed` exists to rewrite: a
+    // truncating write that dies halfway leaves a file that is no longer a
+    // template hi shipped, which `hi seed` would then refuse forever (hi: FILE-8).
+    crate::doc::write_atomically(path, &body)
 }
 
 /// Byte range of the generated block, matched on whole lines only.

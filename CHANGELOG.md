@@ -10,6 +10,18 @@ refused rather than read as this one.
 
 ## Unreleased
 
+### After the 1.0 readiness review of #20
+
+- `hi: "1"`, `hi: '1'` and `hi: 1 # comment` are HI/1. They were refused as unknown versions,
+  which locked the whole repository over YAML punctuation that `owner:` already tolerated.
+- `hi seed` rewrites `hi/AGENTS.md` atomically. A truncating write that died halfway would have
+  left a file that is no longer a template hi shipped, which `hi seed` then refuses forever.
+- On Windows, `still_at` now compares the held handle's file identity against the path's, through
+  `GetFileInformationByHandle`, instead of relying on the delete-pending argument DECISIONS.md §34
+  admitted nothing tested.
+- HI-1.md's id grammar names the digits a family may contain, the `a-z` letter levels, and the
+  32-bit bound on a number.
+
 ### Two files claiming one family is a structural problem, not a tie-break
 
 Two files can both declare `families: [SEND]`. `hi check` exited 0 and said nothing, and

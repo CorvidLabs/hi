@@ -391,16 +391,68 @@ mod os {
         Err(err)
     }
 
-    /// Windows does not need the unix check, and has no stable way to make it.
+    #[repr(C)]
+    struct FileTime {
+        low: u32,
+        high: u32,
+    }
+
+    /// `BY_HANDLE_FILE_INFORMATION`. Volume serial plus the two index words is
+    /// the file's identity, the same fact `dev`/`ino` states on unix.
+    #[repr(C)]
+    struct ByHandleFileInformation {
+        attributes: u32,
+        creation: FileTime,
+        last_access: FileTime,
+        last_write: FileTime,
+        volume_serial: u32,
+        size_high: u32,
+        size_low: u32,
+        links: u32,
+        index_high: u32,
+        index_low: u32,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetFileInformationByHandle(file: Handle, info: *mut ByHandleFileInformation) -> i32;
+    }
+
+    fn identity(file: &File) -> io::Result<(u32, u32, u32)> {
+        let mut info = ByHandleFileInformation {
+            attributes: 0,
+            creation: FileTime { low: 0, high: 0 },
+            last_access: FileTime { low: 0, high: 0 },
+            last_write: FileTime { low: 0, high: 0 },
+            volume_serial: 0,
+            size_high: 0,
+            size_low: 0,
+            links: 0,
+            index_high: 0,
+            index_low: 0,
+        };
+        // SAFETY: the handle belongs to `file`, which outlives this call, and
+        // `info` is a live, correctly laid out BY_HANDLE_FILE_INFORMATION.
+        let ok = unsafe { GetFileInformationByHandle(file.as_raw_handle() as Handle, &mut info) };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok((info.volume_serial, info.index_high, info.index_low))
+    }
+
+    /// Whether the locked file is still the file `path` names.
     ///
-    /// A delete there marks the file and leaves it in place until the last
-    /// handle closes, and while it is marked every `CreateFile` on that name is
-    /// refused. So nobody can create a replacement while the outgoing holder's
-    /// or the incoming one's handle is open, which is the exact window the unix
-    /// check exists to cover. Waiters see access denied during a handoff, which
-    /// `acquire` already sits out (DECISIONS.md §34).
-    pub fn still_at(_file: &File, _path: &Path) -> io::Result<bool> {
-        Ok(true)
+    /// The delete-pending argument says this cannot fail on Windows: a removed
+    /// file stays in place until its last handle closes and no `CreateFile` on
+    /// that name succeeds meanwhile. That argument was never asserted by a
+    /// test, and a frozen promise should not rest on it, so the same identity
+    /// comparison unix makes is made here: the volume and file index of the
+    /// handle hi holds against those of whatever the path names now. A path
+    /// that cannot be opened (gone, or delete-pending) is not this file, and
+    /// `acquire` drops the lock and starts over (DECISIONS.md §34).
+    pub fn still_at(file: &File, path: &Path) -> io::Result<bool> {
+        let named = File::open(path)?;
+        Ok(identity(file)? == identity(&named)?)
     }
 }
 

@@ -1803,10 +1803,11 @@ the bootstrap into a repository with no `hi/` locks like every later capture, a 
 into a fresh repository all land. What is *not* asserted anywhere is the delete-pending argument
 itself — that no replacement lock file can be created while a handoff is in flight. Nothing in the
 suite forces that interleaving on Windows the way
-`a_lock_granted_on_a_file_that_was_replaced_is_not_the_repository_s_lock` forces it on unix. If
-that argument is wrong, Windows has the same hazard `still_at` exists to close, and the fix would
-be a `GetFileInformationByHandle` comparison in `still_at`, which is a fourth `extern` and no new
-dependency.
+`a_lock_granted_on_a_file_that_was_replaced_is_not_the_repository_s_lock` forces it on unix. *Since the
+1.0 readiness pass, Windows makes the same comparison unix does: `still_at` compares the volume
+serial and file index of the held handle against the path's, through `GetFileInformationByHandle`,
+a fourth `extern` and no new dependency. The delete-pending argument may well be right; the promise
+no longer rests on it.*
 
 ### What is still true, and what is not claimed
 

@@ -276,6 +276,17 @@ impl Doc {
                     // is what the file says it is; `version_text` is what the
                     // file actually wrote, which is the only thing that can
                     // tell an unreadable version from an absent one.
+                    // Quotes and a trailing `# comment` are YAML, not a version:
+                    // `hi: "1"` and `hi: 1 # format` both mean 1, and `owner`
+                    // already sheds its quotes. Refusing them would lock a whole
+                    // repository over punctuation (hi: FILE-25).
+                    let value = value
+                        .split_once(" #")
+                        .map(|(v, _)| v)
+                        .unwrap_or(value)
+                        .trim()
+                        .trim_matches(['"', '\''])
+                        .trim();
                     self.front.version = value.parse::<u32>().ok();
                     self.front.version_text = Some(value.to_string());
                 }
@@ -1408,6 +1419,17 @@ mod tests {
 
         let one = doc("---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n");
         assert_eq!(one.front.unreadable_version(), None);
+
+        // YAML punctuation is not a version. Refusing these locked a whole
+        // repository over quotes (hi: FILE-25).
+        for spelled in ["\"1\"", "'1'", "1 # the format version", "\"1\" # quoted"] {
+            let raw = format!("---\nhi: {spelled}\nfamilies: [SEND]\n---\n\n## Criteria\n");
+            assert_eq!(
+                doc(&raw).front.unreadable_version(),
+                None,
+                "`hi: {spelled}` is HI/1"
+            );
+        }
 
         for declared in ["2", "0", "10", "1.1", "one", "HI/1"] {
             let raw = format!("---\nhi: {declared}\nfamilies: [SEND]\n---\n\n## Criteria\n");
