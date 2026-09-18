@@ -842,6 +842,132 @@ fn a_capture_survives_an_index_it_cannot_refresh() {
 }
 
 #[test]
+fn a_root_file_hi_cannot_read_survives_a_capture_byte_for_byte() {
+    // Written by hand, not by hi, and not valid UTF-8. `write_index` turned
+    // every read error into an empty string and then wrote the starter
+    // scaffold over the file: years of somebody's prose replaced by a starter
+    // prompt and a generated list, exit 0, nothing said. 0.7.0 made every
+    // capture run that path (hi: INDEX-2, INDEX-2.c, DECISIONS.md §32).
+    let repo = Repo::with_chat("undecodable-intent");
+    let mut bytes =
+        b"# Product\n\nWhy we exist, in my own words, written over three years.\n\nCaf".to_vec();
+    bytes.push(0xe9); // Latin-1 e-acute: one byte, and not UTF-8.
+    bytes.extend_from_slice(b" is how we spell it.\n");
+    fs::write(repo.root.join("INTENT.md"), &bytes).unwrap();
+
+    let out = repo.run(&["SEND-2", "it reaches them and the mark changes to sent"]);
+
+    assert!(
+        out.status.success(),
+        "the criterion is what mattered: {}",
+        stderr(&out)
+    );
+    assert!(
+        repo.read("hi/chat.md")
+            .contains("**SEND-2**  it reaches them and the mark changes to sent"),
+        "and it is on disk"
+    );
+    assert_eq!(
+        fs::read(repo.root.join("INTENT.md")).unwrap(),
+        bytes,
+        "a file hi could not read is never a file hi replaces"
+    );
+    assert!(
+        stderr(&out).contains("not refreshed"),
+        "but hi says so rather than going quiet:\n{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn hi_index_refuses_a_root_file_it_cannot_read_rather_than_replacing_it() {
+    // The same read, reached by the verb that is allowed to install a section.
+    // There the empty-string fallback was fatal: `existing.trim().is_empty()`
+    // was true, so the starter scaffold was written straight over the file and
+    // the command reported success (hi: INDEX-2, INDEX-2.c).
+    let repo = Repo::with_chat("undecodable-index");
+    let mut bytes = b"# Product\n\nEverything I have ever written about why: ".to_vec();
+    bytes.push(0xe9);
+    bytes.extend_from_slice(b"\n");
+    fs::write(repo.root.join("INTENT.md"), &bytes).unwrap();
+
+    let out = repo.run(&["index"]);
+
+    assert!(
+        !out.status.success(),
+        "a file hi cannot read is not a file hi rewrites: {}",
+        stdout(&out)
+    );
+    assert_eq!(
+        fs::read(repo.root.join("INTENT.md")).unwrap(),
+        bytes,
+        "and every byte of it is still there"
+    );
+    assert!(stderr(&out).contains("INTENT.md"), "{}", stderr(&out));
+}
+
+#[test]
+fn a_retired_id_in_a_file_hi_skips_is_never_handed_out_again() {
+    // Written by hand, not by hi (DECISIONS.md §26). `check` reported this id
+    // and `capture` reissued it, because they were two separate scans over two
+    // different sets of files (hi: CAPTURE-14, DECISIONS.md §32).
+    let repo = Repo::with_chat("skipped-reservation");
+    repo.write(
+        "hi/Archive.md",
+        "# Archive\n\nWhat we dropped.\n\n## Retired\n\n- **SEND-4**  the old outbox.\n",
+    );
+
+    let out = repo.run(&["SEND-4", "a completely different thing"]);
+    assert!(
+        !out.status.success(),
+        "an id written where hi cannot read it is still taken:\n{}",
+        stdout(&out)
+    );
+    assert!(stderr(&out).contains("hi/Archive.md"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("lowercase"), "{}", stderr(&out));
+    // And nothing was written on the way to refusing (hi: CAPTURE-5).
+    assert!(!repo.read("hi/chat.md").contains("SEND-4"));
+
+    // check still reports it, from the same lookup that refused it.
+    let check = repo.run(&["check"]);
+    assert_eq!(check.status.code(), Some(1));
+    assert!(stdout(&check).contains("SEND-4"), "{}", stdout(&check));
+
+    // An id nobody wrote anywhere is still free, so this is a reservation and
+    // not a wall.
+    assert!(
+        repo.run(&["SEND-5", "the real one"]).status.success(),
+        "SEND-5 was never written"
+    );
+}
+
+#[test]
+fn a_feature_list_i_deleted_stays_deleted() {
+    // Refreshing the list hi generated is what INDEX-2 permits. Putting a
+    // `## Features` heading back into somebody's file on every capture is
+    // writing prose they removed, with no way to say no (hi: INDEX-4.c).
+    let repo = Repo::with_chat("deleted-list");
+    let mine = "# Product\n\nI keep this file by hand, thanks.\n";
+    repo.write("INTENT.md", mine);
+
+    let out = repo.run(&["SEND-2", "it reaches them"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(repo.read("INTENT.md"), mine, "my file, unchanged");
+    assert!(
+        !stderr(&out).contains("not refreshed"),
+        "and nothing to apologize for:\n{}",
+        stderr(&out)
+    );
+
+    // Asking for one is how you get one back.
+    assert!(repo.run(&["index"]).status.success());
+    let body = repo.read("INTENT.md");
+    assert!(body.starts_with(mine), "prose is still mine:\n{body}");
+    assert!(body.contains("## Features"), "{body}");
+    assert!(body.contains("(2 criteria)"), "{body}");
+}
+
+#[test]
 fn check_says_the_feature_list_is_behind_without_failing() {
     // FILE-14 lets somebody type a criterion straight into the file, and no
     // verb can see that happen. `hi check` is what notices afterwards.
@@ -1254,6 +1380,15 @@ fn the_first_capture_starts_the_product_intent_file() {
         "and hi must say so: {}",
         stdout(&out)
     );
+    // With its feature list already in it. The refresh that follows rewrites a
+    // block and installs none, so the file has to be born with one
+    // (hi: INDEX-1.a, INDEX-4.c).
+    let intent = repo.read("INTENT.md");
+    assert!(intent.contains("## Features"), "{intent}");
+    assert!(
+        intent.contains("[spend](hi/spend.md): SPEND (1 criterion)"),
+        "and the list is true from the first capture:\n{intent}"
+    );
 
     // check mentions it while it is still unwritten, and never fails.
     let check = repo.run(&["check"]);
@@ -1320,4 +1455,109 @@ fn what_hi_writes_passes_hi_own_check() {
         case.get("retired").is_none(),
         "the case carries no reason of its own"
     );
+}
+
+#[test]
+fn a_capture_never_brings_a_retired_criterion_back_to_life() {
+    // An indented `## Retired` is a heading to the parser and was a
+    // continuation line to the criterion capture spliced above it. So the
+    // sentence swallowed the heading, every retired criterion below it came
+    // back under `## Criteria` with its reason still attached, and `hi check`
+    // exited 0 before and after (hi: FILE-22.c, DECISIONS.md §35).
+    let repo = Repo::new("resurrect");
+    repo.write(
+        "hi/send.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n  ## Retired\n\n- **SEND-1**  Original retired intent.\n  retired: Dropped.\n",
+    );
+
+    let before = stdout(&repo.run(&["check"]));
+    assert!(before.contains("1 retired"), "{before}");
+
+    let capture = repo.run(&["SEND-2", "A new want."]);
+    assert!(capture.status.success(), "{}", stderr(&capture));
+
+    let after = stdout(&repo.run(&["check"]));
+    assert!(
+        after.contains("1 criterion") && after.contains("1 retired"),
+        "SEND-1 stays retired and SEND-2 is the only active one: {after}"
+    );
+
+    let listed = stdout(&repo.run(&["ls"]));
+    assert!(
+        listed.contains("A new want.") && !listed.contains("A new want. ## Retired"),
+        "the heading is not part of the sentence: {listed}"
+    );
+
+    // And the id it retired is still spent.
+    let reuse = repo.run(&["SEND-1", "Different intent."]);
+    assert!(!reuse.status.success(), "{}", stdout(&reuse));
+}
+
+#[test]
+fn a_file_hi_cannot_read_never_frees_the_id_reserved_in_it() {
+    // A retired id parked in a file hi skips is reserved (CAPTURE-14). If hi
+    // cannot read that file it cannot see the reservation, and it used to
+    // treat "could not read" as "nothing there": the capture succeeded, the
+    // reservation stayed on disk, and `hi check` exited 0 before and after. An
+    // answer hi does not have is not the answer "free" (hi: CAPTURE-15,
+    // DECISIONS.md §36).
+    let repo = Repo::new("unreadable");
+    repo.write(
+        "hi/send.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-2**  Existing.\n",
+    );
+    // One Latin-1 byte in the retirement reason, which is how a pasted "café"
+    // arrives out of an older file.
+    fs::write(
+        repo.root.join("hi/Archive.md"),
+        b"---\nhi: 1\nfamilies: [SEND]\n---\n\n## Retired\n\n- **SEND-1**  Original.\n  retired: Old caf\xe9.\n".as_slice(),
+    )
+    .unwrap();
+
+    let before: Vec<String> = listing(&repo.root);
+
+    let check = repo.run(&["check"]);
+    assert!(!check.status.success(), "{}", stdout(&check));
+    assert!(
+        stderr(&check).contains("hi/Archive.md"),
+        "it names the file it could not read: {}",
+        stderr(&check)
+    );
+
+    let capture = repo.run(&["SEND-1", "Different intent."]);
+    assert!(
+        !capture.status.success(),
+        "an id hi cannot rule out is not free: {}",
+        stdout(&capture)
+    );
+
+    assert_eq!(
+        listing(&repo.root),
+        before,
+        "and the refusal wrote nothing at all, INTENT.md and hi/AGENTS.md included"
+    );
+    assert_eq!(
+        repo.read("hi/send.md"),
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-2**  Existing.\n"
+    );
+}
+
+/// Every path under `root`, with its bytes, so a refusal can be held to
+/// changing nothing at all rather than to changing no criteria.
+fn listing(root: &std::path::Path) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                let name = path.strip_prefix(root).unwrap().display().to_string();
+                found.push(format!("{name}\u{0}{:?}", fs::read(&path).unwrap()));
+            }
+        }
+    }
+    found.sort();
+    found
 }

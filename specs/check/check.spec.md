@@ -61,7 +61,7 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `run` | `pub fn run(workspace: &Workspace) -> Report` | The whole module. Collects every retired id across the workspace in a first pass, then walks every criterion in every doc applying the per-criterion checks and reporting each doc's stray lines, sorts the problems by file then line, and returns a `Report` with the workspace's counts and families. Takes `&Workspace`, performs no I/O, and cannot fail. There is no `Result`. |
+| `run` | `pub fn run(workspace: &Workspace) -> Report` | The whole module. Collects every retired id across the workspace in a first pass, reports every entry of `Workspace::strays` (stray lines in criteria files and in the files `load` skipped alike), then walks every criterion in every doc applying the per-criterion checks, sorts the problems by file then line, and returns a `Report` with the workspace's counts and families. Takes `&Workspace`, and cannot fail. There is no `Result`. |
 | `code` | `pub fn code(self) -> &'static str` | Method on `Kind`. Maps each variant to its stable kebab-case code (`duplicate-id`, `orphan-case`, `retired-collision`, `unparseable-id`, `undeclared-family`, `stray-criterion`), which `main.rs` prints between the line number and the message. |
 | `ok` | `pub fn ok(&self) -> bool` | Method on `Report`. `true` exactly when `problems` is empty. This is the single source of truth for `hi check`'s exit code; counts never affect it. |
 
@@ -69,9 +69,9 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
 
 1. `run` writes nothing and decides nothing outside its own `Report`. It opens no socket, consults
    no environment variable, and mutates neither the workspace nor anything on disk. It does read:
-   `INTENT.md` for the two notes about it, and each path in `Workspace::skipped` for the criteria
-   hidden in them. Every read is a read, and a file it cannot read is passed over rather than
-   reported (hi: CHECK-4). Every `hi/*.md` it inspects was already parsed by `workspace`/`doc`.
+   `INTENT.md` for the two notes about it, and, through `Workspace::strays`, each path in
+   `Workspace::skipped` for the criteria hidden in them. Every read is a read, and a file it cannot
+   read is passed over rather than reported (hi: CHECK-4). Every `hi/*.md` it inspects was already parsed by `workspace`/`doc`.
 2. `run` cannot fail. It returns `Report`, not `Result<Report>`, and reports a malformed id as a
    `Problem` rather than as an error. No input shape aborts the walk, so one run reports every
    problem in every file rather than stopping at the first (hi: CHECK-5).
@@ -83,7 +83,8 @@ Deciding what to print and which exit code to use is `main.rs`'s job; this modul
    seventh kind is a contract change to this spec, not an implementation detail.
 5. Every `Problem` names the file and a 1-based line, so a human or an editor can jump straight to
    it (hi: CHECK-3). For a criterion, `line` comes from `Criterion::line_no()`, never from the
-   0-based `line` field; for a stray, it is the 0-based index in `Doc::stray` plus one. `file` is
+   0-based `line` field; for a stray, it is `Stray::line`, which `Workspace::strays` has already
+   made 1-based. `file` is
    `Workspace::rel`, which strips the workspace root and joins the remaining components with
    forward slashes on every platform, so a reported path is stable across machines and usable as a
    link wherever the report is read (hi: FILE-12).

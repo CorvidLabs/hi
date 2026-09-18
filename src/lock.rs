@@ -7,58 +7,66 @@
 //! over the other. Eight concurrent captures used to land two.
 //!
 //! That stopped being theoretical the day agents started bulk-capturing into a
-//! repository, so the whole read-modify-write is taken under a lock file. No
-//! dependency: `create_new` is the exclusive-create every platform already has
+//! repository, so the whole read-modify-write is taken under a lock
 //! (hi: FILE-19).
 //!
-//! Two things here are not obvious, and both were bugs first
-//! (DECISIONS.md §33):
+//! **The lock is the kernel's, not the file's** (DECISIONS.md §34). Two earlier
+//! designs decided for themselves when somebody else's lock had expired — first
+//! by age, then by a heartbeat the holder wrote and a waiter watched. Both are
+//! guesses, and a guess that is wrong hands the repository to two writers. The
+//! second one was also racy in a way no amount of extra checking fixes: between
+//! deciding a lock was abandoned and removing it, the holder can change, and
+//! the removal is already approved. A reviewer forced exactly that interleaving
+//! against a live, heartbeating holder and lost a criterion whose capture had
+//! reported success.
+//!
+//! So hi holds `flock(2)` on unix and `LockFileEx` on Windows, and never breaks
+//! a lock at all. Both are owned by the open file, which means the kernel drops
+//! them when the process exits however it exits, so a `hi` that was killed
+//! leaves nothing to clean up and the next writer simply takes the lock
+//! (hi: FILE-23) — while a `hi` that is merely slow keeps what it took, for as
+//! long as it is alive (hi: FILE-24). No dependency: both are three lines of
+//! `extern` each, and hi has four dependencies for a reason.
+//!
+//! Three things here are not obvious, and each was a defect first:
 //!
 //! **A guard is only ever a lock that was really taken.** The lock lives inside
 //! `hi/`, so before the directory exists there is nothing to create it in, and
 //! the first capture in a repository used to be handed a guard it never held.
 //! Thirty-two of those ran unlocked and nine were lost. `acquire` creates `hi/`
 //! first and fails closed on anything else, so a `Guard` cannot exist without
-//! the file it names.
+//! the file it names (DECISIONS.md §33).
 //!
-//! Windows is the reason the "anything else" arm waits out `GRACE` first: a
-//! removed file lingers there until every handle to it is closed, so a waiter
-//! that arrives during a handoff is told access is denied rather than that the
-//! lock already exists. It still fails closed; it just does not mistake a
-//! handoff for a locked-out directory.
+//! **Holding the kernel's lock on a file is not holding the pathname.** The
+//! holder unlinks the lock file when it releases, so a waiter that was already
+//! queued on that file can be granted the lock on an inode the name no longer
+//! points at, while somebody else creates a fresh file and locks that. On unix
+//! `still_at` closes it: after the lock is granted, the file hi holds has to be
+//! the file the path names, and if it is not, hi drops it and tries again.
 //!
-//! **A lock is broken because nobody is holding it, never because it is old.**
-//! The holder refreshes the file four times a second from a thread of its own,
-//! and a waiter breaks the lock only after watching that mtime stand still for
-//! `ABANDONED` of the waiter's own elapsed time. Age proved a process was slow,
-//! not that it was dead, and a bulk capture is slow.
+//! **Unlink while holding, never after.** Releasing is `remove_file` and *then*
+//! the close, so nobody can take the lock between the two and have their live
+//! lock file removed by us. Every removal of `.hi.lock` in this module happens
+//! under the lock on the file being removed. Nothing else removes it, ever.
 
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, RecvTimeoutError, Sender};
-use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 
 /// The lock file, inside the `hi/` directory it protects.
 const LOCK: &str = ".hi.lock";
-/// How long to keep trying before giving up on another writer. Long enough to
-/// outlast `ABANDONED`, or a lock whose holder died could never be recovered,
-/// and long enough for a bulk capture's queue: two hundred captures serialized
-/// through this lock is a few seconds of waiting for the last one.
+/// How long to keep trying before giving up on another writer. Long enough for
+/// a bulk capture's queue: two hundred captures serialized through this lock is
+/// a few seconds of waiting for the last one.
 const PATIENCE: Duration = Duration::from_secs(30);
-/// How often the holder proves it is still there.
-const HEARTBEAT: Duration = Duration::from_millis(250);
-/// A lock nobody has refreshed for this long, measured on the waiter's own
-/// clock, is nobody's.
-const ABANDONED: Duration = Duration::from_secs(5);
 /// How often a waiter looks again.
 const RETRY: Duration = Duration::from_millis(20);
 /// How long an error that is neither "somebody has it" nor "the directory went
 /// away" has to keep happening before it counts as a real one. Windows marks a
-/// file for deletion rather than removing it, so a waiter whose create lands in
+/// file for deletion rather than removing it, so a waiter whose open lands in
 /// the window between one writer releasing and the file actually going is told
 /// access is denied. With thirty-two captures queued there are thirty-one of
 /// those handoffs, and one of them failed a capture on CI.
@@ -67,28 +75,26 @@ const GRACE: Duration = Duration::from_millis(500);
 /// Held for as long as the caller may write. Releases on drop, including when
 /// the caller returns an error, so a refusal never leaves the lock behind.
 ///
-/// There is no public constructor, and the private one takes the file that was
-/// exclusively created. A guard that does not hold the lock cannot be built, so
-/// releasing one can never remove somebody else's (DECISIONS.md §33).
+/// There is no public constructor, and the private one takes the file the
+/// kernel granted the lock on. A guard that does not hold the lock cannot be
+/// built, so releasing one can never remove somebody else's (DECISIONS.md §33).
 pub struct Guard {
     path: PathBuf,
     dir: PathBuf,
     /// True when taking the lock had to create `hi/` itself.
     created_dir: bool,
-    /// Dropping this ends the heartbeat.
-    stop: Option<Sender<()>>,
-    beat: Option<JoinHandle<()>>,
+    /// The open file the kernel's lock belongs to. Dropping it releases the
+    /// lock, and so does the process exiting for any reason at all.
+    held: Option<fs::File>,
 }
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        // Stop saying we are alive before the file goes, so the heartbeat can
-        // never write a lock back after it has been released.
-        drop(self.stop.take());
-        if let Some(beat) = self.beat.take() {
-            let _ = beat.join();
-        }
+        // Unlink first, close second. While the lock is still held nobody else
+        // can be holding this file, so this can only ever remove our own; after
+        // the close it could be somebody's live lock (DECISIONS.md §34).
         let _ = fs::remove_file(&self.path);
+        drop(self.held.take());
         if self.created_dir {
             // Only ever an empty one: `remove_dir` refuses a directory with
             // anything in it, so a capture that wrote a file keeps its `hi/`
@@ -99,52 +105,31 @@ impl Drop for Guard {
 }
 
 impl Guard {
-    /// Take ownership of a lock file this process exclusively created.
+    /// Take ownership of a file the kernel has granted this process the lock on.
     fn held(mut file: fs::File, path: PathBuf, dir: PathBuf, created_dir: bool) -> Guard {
-        // The pid is for the person deciding whether the holder is still alive,
-        // and it is what the heartbeat rewrites. The same bytes every time, so
-        // the file never grows and never needs truncating.
+        // The pid is for the person who finds the file and wants to know who
+        // has it. It is not evidence of anything and nothing reads it back: the
+        // lock is the kernel's, and a file with a stale pid in it is taken by
+        // the next writer without ceremony.
+        let _ = file.set_len(0);
         let _ = writeln!(file, "{}", std::process::id());
-        drop(file);
-
-        let (stop, wake) = mpsc::channel::<()>();
-        let beating = path.clone();
-        let beat = thread::spawn(move || {
-            // Every wake refreshes the mtime, which is the only evidence a
-            // waiter has that somebody is still working. The channel ends this:
-            // `Disconnected` when the guard drops its sender, which is a moment
-            // before the file goes.
-            while matches!(wake.recv_timeout(HEARTBEAT), Err(RecvTimeoutError::Timeout)) {
-                // Never `create`: once the guard has released, there is nothing
-                // to refresh, and recreating the file would lock out every
-                // writer for `ABANDONED` with nobody holding anything.
-                let refreshed = fs::OpenOptions::new()
-                    .write(true)
-                    .open(&beating)
-                    .and_then(|mut file| writeln!(file, "{}", std::process::id()));
-                if refreshed.is_err() {
-                    return;
-                }
-            }
-        });
 
         Guard {
             path,
             dir,
             created_dir,
-            stop: Some(stop),
-            beat: Some(beat),
+            held: Some(file),
         }
     }
 }
 
 /// Take the write lock for `hi_dir`, waiting for another writer to finish.
 pub fn acquire(hi_dir: &Path) -> Result<Guard> {
-    acquire_within(hi_dir, PATIENCE, ABANDONED)
+    acquire_within(hi_dir, PATIENCE)
 }
 
-/// `acquire`, with the two waits named, so a test can wait in milliseconds.
-fn acquire_within(hi_dir: &Path, patience: Duration, abandoned: Duration) -> Result<Guard> {
+/// `acquire`, with the wait named, so a test can wait in milliseconds.
+fn acquire_within(hi_dir: &Path, patience: Duration) -> Result<Guard> {
     let path = hi_dir.join(LOCK);
 
     // The lock lives inside `hi/`, so the first capture in a repository has to
@@ -157,18 +142,42 @@ fn acquire_within(hi_dir: &Path, patience: Duration, abandoned: Duration) -> Res
     fs::create_dir_all(hi_dir).with_context(|| format!("creating {}", hi_dir.display()))?;
 
     let waited = Instant::now();
-    // The mtime last seen on somebody else's lock, and when we first saw it.
-    let mut watched: Option<(SystemTime, Instant)> = None;
     // When an error we are willing to sit out started.
     let mut trouble: Option<Instant> = None;
 
     loop {
-        match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
-            Ok(file) => return Ok(Guard::held(file, path, hi_dir.to_path_buf(), created_dir)),
+        match os::open_lock(&path) {
+            Ok(file) => {
+                trouble = None;
+                match os::try_hold(&file) {
+                    // Granted by the kernel. On unix that can still be a lock
+                    // on a file this pathname no longer names, because the
+                    // previous holder unlinks on release: hold the name, not
+                    // just the inode (DECISIONS.md §34).
+                    Ok(true) => match os::still_at(&file, &path) {
+                        Ok(true) => {
+                            return Ok(Guard::held(file, path, hi_dir.to_path_buf(), created_dir));
+                        }
+                        // Somebody replaced the file while we queued on it.
+                        // Drop the lock we were granted and start over.
+                        Ok(false) | Err(_) => drop(file),
+                    },
+                    Ok(false) => drop(file),
+                    Err(err) => {
+                        return Err(err).with_context(|| {
+                            format!(
+                                "could not lock {}.\n\
+                                 hint:  hi needs a filesystem that supports locking. If {} is on \
+                                 a network share, run hi against a local checkout",
+                                path.display(),
+                                hi_dir.display()
+                            )
+                        });
+                    }
+                }
+            }
+            // Only the fallback implementation reports this, where creating the
+            // file exclusively *is* the lock.
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => trouble = None,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
                 // `hi/` went away under us: another writer refused and took the
@@ -176,7 +185,6 @@ fn acquire_within(hi_dir: &Path, patience: Duration, abandoned: Duration) -> Res
                 fs::create_dir_all(hi_dir)
                     .with_context(|| format!("creating {}", hi_dir.display()))?;
                 created_dir = true;
-                watched = None;
                 trouble = None;
             }
             // Anything else fails closed, because a guard that was not acquired
@@ -201,44 +209,226 @@ fn acquire_within(hi_dir: &Path, patience: Duration, abandoned: Duration) -> Res
             }
         }
 
-        // A live holder refreshes its lock four times a second, so a lock whose
-        // mtime has not moved while this process watched it for `abandoned` is
-        // held by nobody. Only our own elapsed time is used, never the
-        // difference between this clock and the file's: age alone never
-        // established that a process had died, and a slow capture is not a dead
-        // one (DECISIONS.md §33).
-        match fs::metadata(&path).and_then(|meta| meta.modified()) {
-            Ok(mtime) => match watched {
-                Some((seen, _)) if seen != mtime => watched = Some((mtime, Instant::now())),
-                Some((seen, since)) if since.elapsed() >= abandoned => {
-                    // Read it again first. Another waiter may have broken this
-                    // same lock and taken one of its own a moment ago, and
-                    // removing that one would hand the directory to two writers
-                    // at once. A fresh lock has a fresh mtime.
-                    if fs::metadata(&path).and_then(|meta| meta.modified()).ok() == Some(seen) {
-                        let _ = fs::remove_file(&path);
-                    }
-                    watched = None;
-                    continue;
-                }
-                Some(_) => {}
-                None => watched = Some((mtime, Instant::now())),
-            },
-            // It was there a moment ago and is not now: whoever held it has
-            // finished, and the next turn of the loop takes it.
-            Err(_) => watched = None,
-        }
-
         if waited.elapsed() > patience {
-            bail!(
-                "another hi is writing to {} and has not finished.\n\
-                 hint:  if nothing else is running, delete {}",
-                hi_dir.display(),
-                path.display()
-            )
+            bail!("{}", busy(hi_dir, &path))
         }
 
-        thread::sleep(RETRY);
+        std::thread::sleep(RETRY);
+    }
+}
+
+/// What to say to somebody whose capture waited out another writer.
+///
+/// Deliberately not "delete this file". Where the kernel owns the lock, the
+/// file is not the lock: deleting it while a writer holds it is the one act
+/// that can put two writers in a repository at once, and deleting it when
+/// nobody holds it achieves nothing hi would not have done itself.
+fn busy(hi_dir: &Path, path: &Path) -> String {
+    if os::RELEASED_ON_EXIT {
+        format!(
+            "another hi is writing to {} and has not finished.\n\
+             hint:  the lock belongs to a running process, not to {}. hi takes it back by \
+             itself the moment that process exits, so wait for it or stop it — deleting \
+             the file while it is held is the one thing that lets two writers in",
+            hi_dir.display(),
+            path.display()
+        )
+    } else {
+        format!(
+            "another hi is writing to {} and has not finished.\n\
+             hint:  if nothing else is running, delete {}",
+            hi_dir.display(),
+            path.display()
+        )
+    }
+}
+
+/// The three operations that differ per platform, and nothing else.
+///
+/// `open_lock` opens (and creates) the lock file, `try_hold` asks the kernel
+/// for the exclusive lock without waiting, and `still_at` says whether the file
+/// hi now holds is the one the pathname names.
+#[cfg(unix)]
+mod os {
+    use std::ffi::c_int;
+    use std::fs::{File, OpenOptions};
+    use std::io;
+    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::io::AsRawFd;
+    use std::path::Path;
+
+    /// The kernel drops a `flock` when the descriptor closes, and closes every
+    /// descriptor when the process exits, whatever killed it (hi: FILE-23).
+    pub const RELEASED_ON_EXIT: bool = true;
+
+    const LOCK_EX: c_int = 2;
+    const LOCK_NB: c_int = 4;
+
+    // Three lines rather than a dependency. `flock` has had these two flag
+    // values and this signature on Linux, macOS and the BSDs for decades.
+    unsafe extern "C" {
+        fn flock(fd: c_int, operation: c_int) -> c_int;
+    }
+
+    pub fn open_lock(path: &Path) -> io::Result<File> {
+        // `create`, never `create_new`: the file is not the lock, so joining an
+        // existing one is right, including one a killed hi left behind.
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(path)
+    }
+
+    /// Ask for the exclusive lock, returning false when somebody else has it.
+    pub fn try_hold(file: &File) -> io::Result<bool> {
+        // SAFETY: the descriptor belongs to `file`, which outlives this call,
+        // and `flock` does nothing with it but lock.
+        if unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) } == 0 {
+            return Ok(true);
+        }
+        let err = io::Error::last_os_error();
+        match err.kind() {
+            // Somebody has it, or a signal arrived: either way, look again.
+            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted => Ok(false),
+            // A filesystem that cannot lock is reported rather than pretended
+            // away. hi fails closed: there is no third answer that is honest.
+            _ => Err(err),
+        }
+    }
+
+    /// Whether the locked file is still the file `path` names.
+    ///
+    /// The previous holder unlinks the lock file as it releases, so a waiter
+    /// can be granted the lock on an inode that has no name left while another
+    /// writer creates a fresh file and locks that. Comparing the open file
+    /// against the pathname is what makes the lock a lock on the repository
+    /// rather than on an orphan (DECISIONS.md §34).
+    pub fn still_at(file: &File, path: &Path) -> io::Result<bool> {
+        let held = file.metadata()?;
+        let named = std::fs::metadata(path)?;
+        Ok(held.dev() == named.dev() && held.ino() == named.ino())
+    }
+}
+
+#[cfg(windows)]
+mod os {
+    use std::fs::{File, OpenOptions};
+    use std::io;
+    use std::os::windows::io::AsRawHandle;
+    use std::path::Path;
+
+    /// A process's handles are closed by the kernel when it exits, and the byte
+    /// range lock goes with them (hi: FILE-23).
+    pub const RELEASED_ON_EXIT: bool = true;
+
+    type Handle = *mut core::ffi::c_void;
+
+    const LOCKFILE_FAIL_IMMEDIATELY: u32 = 0x0000_0001;
+    const LOCKFILE_EXCLUSIVE_LOCK: u32 = 0x0000_0002;
+    const ERROR_LOCK_VIOLATION: i32 = 33;
+
+    #[repr(C)]
+    struct Overlapped {
+        internal: usize,
+        internal_high: usize,
+        offset: u32,
+        offset_high: u32,
+        event: Handle,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn LockFileEx(
+            file: Handle,
+            flags: u32,
+            reserved: u32,
+            bytes_low: u32,
+            bytes_high: u32,
+            overlapped: *mut Overlapped,
+        ) -> i32;
+    }
+
+    pub fn open_lock(path: &Path) -> io::Result<File> {
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(path)
+    }
+
+    pub fn try_hold(file: &File) -> io::Result<bool> {
+        let mut overlapped = Overlapped {
+            internal: 0,
+            internal_high: 0,
+            offset: 0,
+            offset_high: 0,
+            event: core::ptr::null_mut(),
+        };
+        // One byte at offset zero: every hi locks the same range, which is all
+        // an exclusive lock needs.
+        // SAFETY: the handle belongs to `file`, which outlives this call, and
+        // `overlapped` is a live, fully initialized OVERLAPPED for its duration.
+        let taken = unsafe {
+            LockFileEx(
+                file.as_raw_handle() as Handle,
+                LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+                0,
+                1,
+                0,
+                &mut overlapped,
+            )
+        };
+        if taken != 0 {
+            return Ok(true);
+        }
+        let err = io::Error::last_os_error();
+        if err.raw_os_error() == Some(ERROR_LOCK_VIOLATION) {
+            return Ok(false);
+        }
+        Err(err)
+    }
+
+    /// Windows does not need the unix check, and has no stable way to make it.
+    ///
+    /// A delete there marks the file and leaves it in place until the last
+    /// handle closes, and while it is marked every `CreateFile` on that name is
+    /// refused. So nobody can create a replacement while the outgoing holder's
+    /// or the incoming one's handle is open, which is the exact window the unix
+    /// check exists to cover. Waiters see access denied during a handoff, which
+    /// `acquire` already sits out (DECISIONS.md §34).
+    pub fn still_at(_file: &File, _path: &Path) -> io::Result<bool> {
+        Ok(true)
+    }
+}
+
+/// Neither unix nor Windows: hi ships for Linux, macOS and Windows, and this
+/// arm exists so the crate still builds elsewhere.
+///
+/// There is no OS lock to ask for, so exclusive creation is the lock, and hi
+/// never breaks one. That is safe and it is not self-healing: a `hi` killed
+/// while holding it leaves a file somebody has to delete, which is `FILE-23`
+/// unmet on a platform hi does not ship for (DECISIONS.md §34).
+#[cfg(not(any(unix, windows)))]
+mod os {
+    use std::fs::{File, OpenOptions};
+    use std::io;
+    use std::path::Path;
+
+    pub const RELEASED_ON_EXIT: bool = false;
+
+    pub fn open_lock(path: &Path) -> io::Result<File> {
+        OpenOptions::new().write(true).create_new(true).open(path)
+    }
+
+    pub fn try_hold(_file: &File) -> io::Result<bool> {
+        Ok(true)
+    }
+
+    pub fn still_at(_file: &File, _path: &Path) -> io::Result<bool> {
+        Ok(true)
     }
 }
 
@@ -269,8 +459,11 @@ mod tests {
             "a guard must be a lock that was really taken, bootstrap included"
         );
 
-        // And it is exclusive from the moment it is granted.
-        let second = acquire_within(&hi, Duration::from_millis(80), Duration::from_secs(60));
+        // And it is exclusive from the moment it is granted. Another *process*
+        // is what proves that; within one process `flock` is per open file, so
+        // this is a second open of the same path, which is what a second hi
+        // does.
+        let second = acquire_within(&hi, Duration::from_millis(80));
         assert!(second.is_err(), "a held lock cannot be taken twice");
         assert!(
             hi.join(LOCK).is_file(),
@@ -319,42 +512,154 @@ mod tests {
     }
 
     #[test]
-    fn a_lock_that_is_being_refreshed_is_never_broken() {
-        // The old rule broke any lock older than sixty seconds, which says a
-        // process is slow and not that it is dead. This waiter watches for well
-        // past a heartbeat and must still refuse.
+    fn a_lock_a_live_process_holds_is_never_taken_however_long_it_waits() {
+        // Both earlier designs eventually took this lock: the first because the
+        // file was a minute old, the second because a heartbeat stopped for
+        // five seconds. Nothing hi can observe about a file proves its holder
+        // is gone, so hi no longer tries: the waiter gives up instead
+        // (hi: FILE-24, DECISIONS.md §34).
         let root = scratch("alive");
         let hi = root.join("hi");
         fs::create_dir_all(&hi).unwrap();
 
         let held = acquire(&hi).unwrap();
-        // Well past a heartbeat, and past a whole second, so this holds even on
-        // a filesystem that records mtimes to the second.
-        let refused = acquire_within(
-            &hi,
-            Duration::from_millis(1500),
-            Duration::from_millis(1200),
-        );
+        let refused = acquire_within(&hi, Duration::from_millis(1500));
 
-        assert!(refused.is_err(), "a lock somebody is holding stays theirs");
-        assert!(hi.join(LOCK).is_file(), "and is still on disk");
+        let complaint = match refused {
+            Ok(_) => panic!("a lock somebody is holding stays theirs"),
+            Err(err) => format!("{err:#}"),
+        };
+        assert!(
+            !complaint.contains("if nothing else is running, delete"),
+            "and hi does not suggest deleting a file a live process is holding: {complaint}"
+        );
+        assert!(hi.join(LOCK).is_file(), "and the lock is still on disk");
         drop(held);
         let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn a_lock_nobody_is_refreshing_is_broken_and_taken() {
-        // The other half: a hi that died holding the lock must not wedge the
-        // repository until somebody deletes a file by hand.
-        let root = scratch("dead");
+    fn a_lock_file_nobody_holds_is_taken_without_anybody_deleting_it() {
+        // The other half: a `hi` that died holding the lock must not wedge the
+        // repository until somebody deletes a file by hand. Under `flock` the
+        // leftover file is not a lock at all, so this is immediate rather than
+        // after a timeout (hi: FILE-23).
+        let root = scratch("leftover");
         let hi = root.join("hi");
         fs::create_dir_all(&hi).unwrap();
         fs::write(hi.join(LOCK), "999999\n").unwrap();
 
-        let taken = acquire_within(&hi, Duration::from_secs(2), Duration::from_millis(100));
+        let started = Instant::now();
+        let taken = acquire_within(&hi, Duration::from_millis(200));
 
-        assert!(taken.is_ok(), "a lock nobody refreshes is nobody's");
+        assert!(taken.is_ok(), "a lock file nobody holds is nobody's");
+        assert!(
+            started.elapsed() < Duration::from_millis(200),
+            "and it is taken at once, not waited out"
+        );
         drop(taken);
         let _ = fs::remove_dir_all(&root);
+    }
+
+    /// The interleaving that broke the heartbeat design, forced rather than
+    /// raced for.
+    ///
+    /// A waiter opened the lock file, queued behind the holder, and was still
+    /// queued when the holder released — which unlinks the file — and a third
+    /// writer created a brand new one and locked that. The kernel then grants
+    /// the waiter its lock, on an inode with no name. Nothing about that lock
+    /// is wrong; believing it is the repository's lock is (DECISIONS.md §34).
+    #[test]
+    #[cfg(unix)]
+    fn a_lock_granted_on_a_file_that_was_replaced_is_not_the_repository_s_lock() {
+        let root = scratch("replaced");
+        let hi = root.join("hi");
+        fs::create_dir_all(&hi).unwrap();
+        let path = hi.join(LOCK);
+
+        // The holder.
+        let holder = os::open_lock(&path).unwrap();
+        assert!(os::try_hold(&holder).unwrap(), "the holder has it");
+
+        // A waiter that opened the same file and was refused.
+        let waiter = os::open_lock(&path).unwrap();
+        assert!(!os::try_hold(&waiter).unwrap(), "the waiter is queued");
+
+        // The holder releases: unlink, then close, exactly as `Guard` does.
+        fs::remove_file(&path).unwrap();
+        drop(holder);
+
+        // A third writer arrives first and takes a brand new lock file.
+        let fresh = acquire(&hi).expect("the next writer takes the lock");
+
+        // Now the kernel grants the waiter the lock it queued for.
+        assert!(
+            os::try_hold(&waiter).unwrap(),
+            "the kernel grants the orphaned inode, which is correct and useless"
+        );
+        assert!(
+            !os::still_at(&waiter, &path).unwrap(),
+            "and `still_at` is the only thing that stops two writers here"
+        );
+
+        drop(fresh);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A `hi` killed outright, from a second process, releases the repository.
+    ///
+    /// The child re-runs this test binary with `HI_LOCK_CHILD` set, takes the
+    /// lock, says so, and waits to be killed. Nothing tidies up after it: the
+    /// kernel drops the lock because the process is gone (hi: FILE-23).
+    #[test]
+    fn a_killed_holder_frees_the_repository_with_nothing_to_clean_up() {
+        let hi = match std::env::var("HI_LOCK_CHILD") {
+            Ok(dir) => {
+                let held = acquire(Path::new(&dir)).expect("the child takes the lock");
+                fs::write(Path::new(&dir).join("held"), "yes").unwrap();
+                std::thread::sleep(Duration::from_secs(120));
+                drop(held);
+                return;
+            }
+            Err(_) => {
+                let root = scratch("killed");
+                let hi = root.join("hi");
+                fs::create_dir_all(&hi).unwrap();
+                hi
+            }
+        };
+
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "lock::tests::a_killed_holder_frees_the_repository_with_nothing_to_clean_up",
+            ])
+            .env("HI_LOCK_CHILD", &hi)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("re-running this test binary as the holder");
+
+        let held = hi.join("held");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !held.exists() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(held.exists(), "the child said it had the lock");
+        assert!(
+            acquire_within(&hi, Duration::from_millis(200)).is_err(),
+            "and while it lives, nobody else gets it"
+        );
+
+        child.kill().unwrap();
+        child.wait().unwrap();
+
+        let taken = acquire_within(&hi, Duration::from_secs(5));
+        assert!(
+            taken.is_ok(),
+            "a killed holder leaves nothing anybody has to delete"
+        );
+        drop(taken);
+        let _ = fs::remove_dir_all(hi.parent().unwrap());
     }
 }

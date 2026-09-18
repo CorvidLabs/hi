@@ -62,7 +62,7 @@ named back to them (hi: CAPTURE-11).
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `capture` | `capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Result<Captured>` | Validate `raw_id` against the id grammar, reject an empty sentence, refuse an id that already exists anywhere in the workspace (active or retired) with a next-free hint, refuse a sub-id whose parent is absent, then resolve the destination file (the file holding the parent first, the file that declares or uses the family second, and `hi/<family>.md` created or adopted when neither exists), insert the criterion through `Doc::insert`, save the file atomically through `Doc::save`, reload the saved file so what is in memory matches what is on disk, then do three best-effort things in order: start `INTENT.md` if the repository has none, write `hi/AGENTS.md` and `hi/CLAUDE.md` if they are not there, and refresh the generated feature list through `out::refresh_index`. Reports what happened. Returns `anyhow::Error` on every refusal. |
+| `capture` | `capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Result<Captured>` | Validate `raw_id` against the id grammar, reject an empty sentence, refuse an id that already exists anywhere in the workspace (active or retired) with a next-free hint, refuse a sub-id whose parent is absent, then resolve the destination file (the file holding the parent first, the file that declares or uses the family second, and `hi/<family>.md` created or adopted when neither exists), insert the criterion through `Doc::insert`, save the file atomically through `Doc::save`, reload the saved file so what is in memory matches what is on disk, then do three best-effort things in order: start `INTENT.md` from `out::starter_intent_file` if the repository has none, write `hi/AGENTS.md` and `hi/CLAUDE.md` if they are not there, and refresh the generated feature list through `out::refresh_index`, which rewrites a block that is there and installs none. Reports what happened. Returns `anyhow::Error` on every refusal. |
 
 ## Invariants
 
@@ -76,11 +76,17 @@ named back to them (hi: CAPTURE-11).
    well-formed capture, and the refusal always names both the existing location as `file:line` and
    the next free top-level id in that family (hi: CAPTURE-3).
 4. Existence is checked against active and retired criteria alike, because `Workspace::find_id`
-   walks `Doc::all()`. A retired id is still spoken for and cannot be captured again. It is checked
-   against *parsed* criteria only: `Doc::all()` chains `criteria` and `retired`, so a criterion-shaped
-   line inside a fenced code block (the parser treats a fence as opaque prose, hi: FILE-9) and a
-   criterion-shaped line outside every section (`Doc::stray`) are both invisible to capture. Neither
-   makes an id taken, and neither raises `Workspace::next_free`.
+   walks `Doc::all()`. A retired id is still spoken for and cannot be captured again. `find_id` sees
+   *parsed* criteria only: `Doc::all()` chains `criteria` and `retired`, so a criterion-shaped line
+   inside a fenced code block (the parser treats a fence as opaque prose, hi: FILE-9), one outside
+   every section (`Doc::stray`), and one in a file `Workspace::load` skipped are all invisible to it
+   and none of them raises `Workspace::next_free`. All three are still refused, by the separate
+   `Workspace::find_stray` reservation check below, with a different message: an id hi cannot read
+   has still been used (hi: CAPTURE-14, FILE-20).
+4a. That reservation check is one lookup shared with `check`, so an id `hi check` reports as sitting
+   where nothing reads it is always an id capture refuses to hand out. A retired `SEND-1` in
+   `hi/Archive.md` was reported by `check` and reissued by capture for four releases, because the
+   two walked different sets of files (DECISIONS.md §32).
 5. The next-free hint is always a single-level top-level id, `FAMILY-<n>` where `n` is
    `Workspace::next_free(family)`. It is never a case or a step, even when the rejected id was
    nested.
@@ -347,7 +353,7 @@ named back to them (hi: CAPTURE-11).
 | `crate::id` | `Id::parse` for grammar validation, `Id::parent` for the parent check, `Id`'s `Display` for messages, and `Level::Number` to build the next-free hint |
 | `crate::doc` | `Doc::load` to adopt an existing file, `Doc::insert` for placement under the parent (and for opening a `## Criteria` section when the file has none), `Doc::save` to persist atomically, `new_file_text` for a new family file's scaffold |
 | `crate::workspace` | `Workspace::find_id` (duplicate lookup, parent lookup, and destination-file resolution), `next_free`, `doc_for_family`, `rel`, and the `docs`/`dir` fields |
-| `crate::out` | `starter_intent` and `agent_instructions` for the files a first capture writes, and `refresh_index` to keep the generated feature list true once the criterion is on disk (hi: INDEX-3, HABIT-1, INDEX-4) |
+| `crate::out` | `starter_intent_file` and `agent_instructions` for the files a first capture writes, and `refresh_index` to keep the generated feature list true once the criterion is on disk (hi: INDEX-3, HABIT-1, INDEX-4) |
 
 ### Consumed By
 

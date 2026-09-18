@@ -12,7 +12,7 @@ use anyhow::{Context, Result, bail};
 use crate::id::{Id, IdError, looks_like_id};
 
 /// Where a criterion lives in its file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Section {
     Criteria,
     Retired,
@@ -45,6 +45,12 @@ impl Criterion {
     }
 }
 
+/// One criterion as a reader finds it: id, section, sentence, retirement note.
+///
+/// Sorted and compared as a multiset, so two criteria sharing an id (which
+/// `check` reports and the format permits) still have to survive as two.
+type Shape = (String, Section, String, Option<String>);
+
 /// What a write said it was about to do, so the reparse can hold it to that.
 struct Promise<'a> {
     /// The verb, for the first words of a refusal.
@@ -74,6 +80,54 @@ fn missing(expected: &[String], found: &[String]) -> Option<String> {
         }
     }
     (!lost.is_empty()).then(|| lost.join(", "))
+}
+
+/// The ids and sentences of a set of shapes, for the comparison that ignores
+/// which section they sit in and whether they carry a reason.
+fn sentences(shapes: &[Shape]) -> Vec<(&String, &String)> {
+    let mut pairs: Vec<(&String, &String)> =
+        shapes.iter().map(|(id, _, text, _)| (id, text)).collect();
+    pairs.sort();
+    pairs
+}
+
+/// Every criterion-shaped line nothing reads, as written, sorted.
+fn strayed(doc: &Doc) -> Vec<&String> {
+    let mut tokens: Vec<&String> = doc.stray.iter().map(|(_, token)| token).collect();
+    tokens.sort();
+    tokens
+}
+
+/// How the first criterion that changed changed, in words a person can act on.
+///
+/// Whichever difference comes first in the sorted order, described rather than
+/// dumped: "move SEND-1 back under ## Criteria" is actionable, a pair of debug
+/// tuples is not.
+fn unlike(before: &[Shape], after: &[Shape]) -> String {
+    for (id, section, text, note) in before {
+        let same_id: Vec<&Shape> = after.iter().filter(|other| &other.0 == id).collect();
+        let Some(found) = same_id.iter().find(|other| &other.2 == text) else {
+            return match same_id.first() {
+                Some(_) => format!("rewrite {id}"),
+                None => format!("lose {id}"),
+            };
+        };
+        if &found.1 != section {
+            let moved = match found.1 {
+                Section::Criteria => "## Criteria",
+                Section::Retired => "## Retired",
+            };
+            return format!("move {id} into {moved}");
+        }
+        if &found.3 != note {
+            return format!("change why {id} was retired");
+        }
+    }
+    // The only way here is an extra criterion nobody asked for.
+    match after.iter().find(|other| !before.contains(other)) {
+        Some((id, _, _, _)) => format!("add a second {id}"),
+        None => "change a criterion it was not about".to_string(),
+    }
 }
 
 /// Frontmatter, hand-parsed so a hi file needs no YAML library.
@@ -371,6 +425,15 @@ impl Doc {
             if is_criterion_line(next.trim()) {
                 break;
             }
+            // So does one `parse_body` would read as a heading. `parse_body`
+            // trims before it looks for `## `, so `  ## Retired` opens the
+            // retired section; swallowing it here as a continuation is the
+            // parser disagreeing with itself, and capture inserting just above
+            // such a line then resurrected every criterion below it while
+            // reporting success (hi: FILE-22, FILE-22.c, DECISIONS.md §35).
+            if is_heading_line(next.trim()) {
+                break;
+            }
             let content = next.trim();
             if let Some(reason) = content.strip_prefix("retired:") {
                 note = Some(reason.trim().to_string());
@@ -433,6 +496,30 @@ impl Doc {
         ids
     }
 
+    /// Every criterion as somebody looking for it would find it again: its
+    /// section, its id as written, its sentence and its retirement note.
+    ///
+    /// `readable` answers "is this id still findable"; this answers "is this
+    /// still the same criterion". The difference is the whole of `FILE-22.c`:
+    /// a write that moves a retired criterion back into `## Criteria`, or
+    /// changes the words of one it was never asked about, passes an id-only
+    /// comparison untouched (DECISIONS.md §35).
+    fn shapes(&self) -> Vec<Shape> {
+        let mut shapes: Vec<Shape> = self
+            .all()
+            .map(|c| {
+                (
+                    c.raw_id.to_ascii_uppercase(),
+                    c.section,
+                    c.text.clone(),
+                    c.note.clone(),
+                )
+            })
+            .collect();
+        shapes.sort();
+        shapes
+    }
+
     /// Read a buffer back before hi makes it its own, and refuse it unless the
     /// edit really happened where the verb said it did.
     ///
@@ -447,6 +534,12 @@ impl Doc {
     /// reporting success into a place nothing reads (hi: FILE-22, CAPTURE-5).
     fn read_back(&self, proposed: &str, promise: Promise<'_>) -> Result<Doc> {
         let after = Doc::parse(self.path.clone(), proposed);
+        // The baseline is a parse of the text as it stood, not `self`'s parsed
+        // fields. `insert` deliberately does not reparse after splicing, so a
+        // second insert into the same `Doc` starts from criteria that are one
+        // behind the lines (see `insert_inner`). Comparing against the text is
+        // what both of them agree on.
+        let before = Doc::parse(self.path.clone(), &self.to_text());
         let file = self.path.display();
 
         // An unfinished fence is the likeliest reason a write lands nowhere, and
@@ -482,7 +575,7 @@ impl Doc {
 
         // Then the collateral: an edit that lands correctly and takes somebody
         // else's criterion with it is the same failure one line over.
-        let mut expected = self.readable();
+        let mut expected = before.readable();
         if promise.added {
             expected.extend(promise.ids.iter().cloned());
             expected.sort();
@@ -496,7 +589,46 @@ impl Doc {
             );
         }
 
-        if after.stray.len() > self.stray.len() {
+        // Then the criteria this write was never about. An id that is still
+        // findable is not the same criterion: a capture spliced above an
+        // indented `## Retired` used to consume that heading as its own
+        // continuation, which put every retired criterion below it back under
+        // `## Criteria` with its reason still attached. Every id was present,
+        // so the check above passed, and a retired id was live again with the
+        // command reporting success (hi: FILE-22.c, DECISIONS.md §35).
+        let names = |shape: &Shape| {
+            promise
+                .ids
+                .iter()
+                .any(|id| id.eq_ignore_ascii_case(&shape.0))
+        };
+        let (mine, theirs): (Vec<Shape>, Vec<Shape>) = before.shapes().into_iter().partition(names);
+        let (mine_after, theirs_after): (Vec<Shape>, Vec<Shape>) =
+            after.shapes().into_iter().partition(names);
+
+        if theirs != theirs_after {
+            let changed = unlike(&theirs, &theirs_after);
+            bail!(
+                "{} {} would {changed} in {file}, and a write only ever changes what it names, \
+                 so nothing was written{hint}",
+                promise.verb,
+                promise.ids.join(", ")
+            );
+        }
+
+        // And the ones it was about: `retire` moves a criterion and gives it a
+        // reason, and neither it nor `set_retired_reason` may touch the words.
+        // Only `insert` adds a criterion, and that one is new by definition.
+        if !promise.added && sentences(&mine) != sentences(&mine_after) {
+            bail!(
+                "{} {} would change the words of a criterion it was only moving in {file}, \
+                 so nothing was written{hint}",
+                promise.verb,
+                promise.ids.join(", ")
+            );
+        }
+
+        if after.stray.len() > before.stray.len() || strayed(&after) != strayed(&before) {
             bail!(
                 "{} {} would strand a criterion in {file} where nothing reads it, \
                  so nothing was written{hint}",
@@ -963,6 +1095,16 @@ fn strip_bullet(trimmed: &str) -> &str {
 
 /// True when a trimmed line is shaped like a criterion: an optional bullet
 /// followed by an id-shaped token.
+/// Whether `parse_body` would read this line as a heading that closes a section.
+///
+/// Exactly the two forms `parse_body` recognizes, and no others: `# ` for a
+/// title and `## ` for a section. `### ` is neither, there as here. The one
+/// caller is `read_criterion`, and the point is that the two functions cannot
+/// disagree about what a heading is (DECISIONS.md §35).
+fn is_heading_line(trimmed: &str) -> bool {
+    trimmed.starts_with("# ") || trimmed.starts_with("## ")
+}
+
 fn is_criterion_line(trimmed: &str) -> bool {
     strip_bullet(trimmed)
         .split_whitespace()
@@ -1744,6 +1886,97 @@ mod tests {
             file.insert(&Id::parse("SEND-4").unwrap(), "A real one.")
                 .is_ok()
         );
+    }
+
+    /// An indented `## Retired` is a heading, and capture above it used to eat
+    /// it (hi: FILE-22.c, DECISIONS.md §35).
+    const INDENTED_RETIRED: &str = "---\nhi: 1\nfamilies: [SEND]\n---\n\n\
+         ## Criteria\n  ## Retired\n\n- **SEND-1**  Original retired intent.\n  retired: Dropped.\n";
+
+    #[test]
+    fn a_capture_above_an_indented_retired_heading_does_not_swallow_it() {
+        // Before: the spliced criterion consumed `  ## Retired` as its own
+        // continuation line, so its sentence became "A new want. ## Retired"
+        // and every criterion below the heading came back under `## Criteria`
+        // with its `retired:` note still attached. `hi check` exited 0 before
+        // and after, and a retired id was live again.
+        let before = doc(INDENTED_RETIRED);
+        assert_eq!(before.criteria.len(), 0, "nothing is active to begin with");
+        assert_eq!(before.retired.len(), 1, "and SEND-1 is retired");
+
+        let mut file = doc(INDENTED_RETIRED);
+        file.insert(&Id::parse("SEND-2").unwrap(), "A new want.")
+            .expect("an indented retirement heading is legitimate, not a reason to refuse");
+
+        let after = doc(&file.to_text());
+        assert_eq!(
+            after.criteria.len(),
+            1,
+            "one new criterion: {}",
+            file.to_text()
+        );
+        assert_eq!(after.criteria[0].raw_id, "SEND-2");
+        assert_eq!(
+            after.criteria[0].text, "A new want.",
+            "and the heading below it is not part of the sentence"
+        );
+        assert_eq!(after.retired.len(), 1, "SEND-1 is still retired");
+        assert_eq!(after.retired[0].raw_id, "SEND-1");
+        assert_eq!(after.retired[0].note.as_deref(), Some("Dropped."));
+    }
+
+    #[test]
+    fn a_write_that_would_bring_an_unrelated_criterion_back_is_refused() {
+        // The postcondition, independently of the parser: every id being
+        // present is not the same as every criterion still being itself. This
+        // hands `read_back` a buffer that keeps both ids and moves the retired
+        // one into `## Criteria`, which is what the old comparison could not
+        // see (hi: FILE-22.c, DECISIONS.md §35).
+        let file = doc(INDENTED_RETIRED);
+        let resurrected = "---\nhi: 1\nfamilies: [SEND]\n---\n\n\
+             ## Criteria\n\n- **SEND-2**  A new want.\n- **SEND-1**  Original retired intent.\n  retired: Dropped.\n";
+
+        let err = file
+            .read_back(
+                resurrected,
+                Promise {
+                    verb: "capturing",
+                    ids: vec!["SEND-2".to_string()],
+                    section: Section::Criteria,
+                    added: true,
+                },
+            )
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            err.contains("SEND-1") && err.contains("## Criteria"),
+            "the refusal names the criterion it would have moved: {err}"
+        );
+        assert!(err.contains("nothing was written"), "{err}");
+    }
+
+    #[test]
+    fn a_write_may_not_reword_a_criterion_it_was_not_about() {
+        // The other half of the same postcondition. Same ids, same sections,
+        // one sentence quietly different (hi: FILE-22.c).
+        let file = doc("---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  One.\n");
+        let reworded = "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-1**  Something else.\n- **SEND-2**  Two.\n";
+
+        let err = file
+            .read_back(
+                reworded,
+                Promise {
+                    verb: "capturing",
+                    ids: vec!["SEND-2".to_string()],
+                    section: Section::Criteria,
+                    added: true,
+                },
+            )
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("rewrite SEND-1"), "{err}");
     }
 
     #[test]

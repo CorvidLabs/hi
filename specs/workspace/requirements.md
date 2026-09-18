@@ -13,6 +13,7 @@ spec: workspace.spec.md
 - As someone who hand-edits a hi file, I want hi to resolve my family from either the frontmatter or the criteria I actually wrote so that the one machine-facing line stays optional in practice (hi: FILE-2)
 - As someone who keeps several features in one file, I want one file to answer for several families so that `hi/chat.md` can hold `SEND`, `RECEIPT` and `OFFLINE` (hi: FILE-5)
 - As someone who retired a criterion, I want its id to stay spoken for so that hi never hands the same number to two different intentions
+- As someone who parked a retired criterion in a file hi does not read, I want its id to stay spoken for there too, so that being told an id is used and being refused it are the same answer (hi: CAPTURE-14)
 - As someone reading `hi check` or piping `hi export` into an agent, I want file paths printed the same way every run, with forward slashes whatever platform I am on, so that output diffs cleanly and a path pasted into a link still works (hi: FILE-12)
 
 ## Acceptance Criteria
@@ -40,25 +41,44 @@ Acceptance Criteria
 - `skipped` is kept on the workspace so `check` can look inside those files. Dropping them would make a criterion written into one silently invisible, which is the failure `FILE-20` exists to prevent.
 - `holds_hi_files` is unchanged and still requires frontmatter carrying a `hi:` key, so `hi/AGENTS.md` alone never makes a directory look like a workspace.
 
-
 ### REQ-workspace-011
 
-The write lock SHALL be a real lock in every repository, including one that has never run hi, and SHALL be broken only when nobody is holding it (hi: FILE-19, FILE-23, CAPTURE-5).
+`Workspace::strays` SHALL be the one lookup for an id hi cannot read as structure, covering the
+loaded docs and the skipped files together, and `find_stray` SHALL answer from it (hi: CAPTURE-14,
+FILE-20).
 
 Acceptance Criteria
 
-- `lock::acquire` creates `hi/` with `create_dir_all` before it tries to create `<hi>/.hi.lock`. The lock lives inside the directory it protects, so before that directory exists there is nothing to create a lock file in. That open failed with `NotFound`, and the failure used to be returned as a `Guard`: every concurrent first capture in a repository then ran unlocked (DECISIONS.md §33).
+- `strays` walks `skipped` first, reading each file and running `doc::criterion_tokens` over it, and records each hit as `StrayPlace::UnreadFile`; then it walks each doc's `Doc::stray` and records each as `StrayPlace::OutsideSection`.
+- A `Stray` carries the workspace-relative `file`, the 1-based `line`, the id-shaped `token` and the `place`. The token is whatever the source recorded: `Doc::stray` keeps markdown emphasis (`**SEND-9**`), `criterion_tokens` has already removed it. `check` quotes it back verbatim, so neither is normalized here.
+- `find_stray` compares each token with `doc::strip_emphasis` applied and ASCII-uppercased, and returns the first match.
+- A skipped file that cannot be read or decoded fails the whole lookup with `reading <file>: <cause>` and a hint saying hi has to read it before it can say whether an id is taken. `strays` returns `Result<Vec<Stray>>`. It used to pass such a file over and carry on, so the lookup answered "this id is free" about a file it had not been able to look in — and because `check` and `capture` share the lookup, the two now agreed on the same wrong answer (hi: CAPTURE-15, DECISIONS.md §36).
+- `check` builds its `StrayCriterion` problems from the same call, so an id reported as used and an id refused by capture are by construction the same set — and a failure of the lookup fails both, rather than making both wrong. The failure is operational and is never a seventh problem kind: `check::run` returns `Result<Report>`, the error exits 1 through `main::fail`, and `hi check` still fails on exactly six structural things (hi: CHECK-1). They were two scans over two different sets of files, and a retired id in `hi/Archive.md` was reported by one and reissued by the other (DECISIONS.md §32).
+- Reading inside hi's own files reserves ids and nothing more: `docs`, `criteria_count`, `families` and the generated feature list are untouched by `strays`, so `hi/AGENTS.md` never becomes a file that holds criteria (DECISIONS.md §27).
+- A fenced block in a skipped file is an example rather than structure, exactly as under `## Intent`, so documenting the format in a `hi/README.md` reserves nothing (hi: FILE-9).
+
+
+### REQ-workspace-012
+
+The write lock SHALL be held by the operating system rather than inferred from a file, SHALL be a real lock in every repository including one that has never run hi, and SHALL never be taken from a process that is still alive (hi: FILE-19, FILE-23, FILE-24, CAPTURE-5).
+
+Acceptance Criteria
+
+- `lock::acquire` creates `hi/` with `create_dir_all` before it opens `<hi>/.hi.lock`. The lock lives inside the directory it protects, so before that directory exists there is nothing to open a lock file in. That open failed with `NotFound`, and the failure used to be returned as a `Guard`: every concurrent first capture in a repository then ran unlocked (DECISIONS.md §33).
 - `create_dir_all` succeeds when another writer created the directory first, so the bootstrap race is safe by construction.
-- Any failure other than `AlreadyExists` is an error. `acquire` never returns a guard for a lock it did not take, and `Guard`'s only constructor is private and takes the `File` that was exclusively created, so an unacquired guard cannot exist to remove somebody else's lock when it drops.
+- The lock itself is `flock(LOCK_EX | LOCK_NB)` on unix and `LockFileEx(LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY)` on Windows, each declared in a three-line `extern` block rather than pulled in as a dependency. Both belong to the open file, so the kernel releases them when the process exits however it exits (hi: FILE-23) and holds them for as long as it lives (hi: FILE-24).
+- hi never removes a lock file it does not hold the OS lock on. There is no staleness rule, no age, no heartbeat and no takeover: the only `remove_file` of `.hi.lock` in the module is `Guard::drop`, and it runs before the close, while the lock is still held (DECISIONS.md §34).
+- On unix, after the kernel grants the lock, `still_at` compares the open file's `dev`/`ino` against the pathname's. The outgoing holder unlinks the file as it releases, so a queued waiter can be granted the lock on an inode the name no longer points at while another writer creates a fresh file and locks that. A waiter that finds it is holding an orphan drops it and starts over.
+- On Windows `still_at` is `Ok(true)` and the platform supplies the same exclusion: a delete leaves the file in place until the last handle closes and refuses every `CreateFile` on that name meanwhile, so no replacement can exist during the window the unix check covers. There is no stable std API for file identity by handle, and hi does not add one (DECISIONS.md §34).
+- Any error from the open other than `NotFound`, `AlreadyExists` or a Windows handoff is an error. `acquire` never returns a guard for a lock it did not take, and `Guard`'s only constructor is private and takes the `File` the kernel granted, so an unacquired guard cannot exist to remove somebody else's lock when it drops.
+- A filesystem that cannot lock is reported rather than pretended away: a `flock` or `LockFileEx` failure that is not "somebody has it" is returned with the path and a hint about network shares. hi fails closed, because the only other answer is to write unlocked.
 - A guard that had to create `hi/` removes that directory again on release. `fs::remove_dir` refuses a directory with anything in it, so this only ever takes back an empty one: a capture that wrote a file keeps its directory, and a capture that refused leaves nothing at all behind (hi: CAPTURE-5).
-- The holder refreshes the lock file every `HEARTBEAT` (250ms) from a thread of its own, which moves the file's mtime.
-- A waiter remembers the mtime it first saw and when it saw it, and breaks the lock only after that mtime has stood still for `ABANDONED` (5s) of the waiter's own elapsed time. It re-reads the mtime immediately before removing the file, so a lock another waiter has just taken is never removed. Age alone is not evidence: the previous rule broke any lock older than 60 seconds, which said a holder was slow rather than dead.
-- Nothing compares this machine's clock against the file's timestamp, so clock skew on a shared filesystem cannot make a held lock look abandoned.
-- A waiter gives up after `PATIENCE` (30s) with a message naming the directory and the file to delete. `PATIENCE` outlasts `ABANDONED`, or a lock whose holder was killed could never be recovered (hi: FILE-23).
+- A waiter gives up after `PATIENCE` (30s). The message names the directory, and where the OS releases on exit it says the lock belongs to a running process and that deleting the file while it is held is the one act that lets two writers in. It no longer tells anybody to delete it.
+- A lock file left behind by a killed `hi` is not a lock. The next writer opens it, is granted the OS lock at once and goes on, so nothing has to be deleted by hand and nothing has to be waited out (hi: FILE-23).
 
 ## Constraints
 
-- No dependency beyond `std`, `anyhow`, and the sibling `doc` and `id` modules. The `hi/` directory has no manifest format to parse, so nothing else is needed (hi: FILE-1)
+- No dependency beyond `std`, `anyhow`, and the sibling `doc` and `id` modules. The `hi/` directory has no manifest format to parse, so nothing else is needed (hi: FILE-1). The two OS lock calls are declared in `lock`'s own `extern` blocks for the same reason: a lock that the kernel owns is worth three lines of FFI and is not worth a fifth dependency (DECISIONS.md §34)
 - Discovery must terminate: the ancestor walk ends at a `.git` boundary or at the filesystem root, whichever comes first. In the worst case, where the start directory has neither a workspace nor a repository above it, it examines every ancestor before failing
 - `Doc::parse` is infallible by contract, so this module may not introduce a parse-failure path of its own. `holds_hi_files` keeps that contract by answering `bool`: every I/O or encoding problem it meets reads as "not a hi file", never as an error
 - Recognition reads candidate files off disk during the walk, so it must stay cheap: only files directly inside the candidate `hi/`, only `*.md`, and it stops at the first match

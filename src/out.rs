@@ -457,6 +457,21 @@ pub fn starter_intent(workspace: &Workspace) -> String {
     )
 }
 
+/// The whole of a root file hi starts: the prose prompt, and a feature list
+/// already in place.
+///
+/// The list is born with the file rather than appended by the refresh that
+/// follows, because the refresh no longer installs a section it does not find
+/// (`Absent::LeaveAlone`). A first capture still leaves a complete `INTENT.md`
+/// (hi: INDEX-1.a, INDEX-3, INDEX-4).
+pub fn starter_intent_file(workspace: &Workspace) -> String {
+    format!(
+        "{}\n## Features\n\n{INDEX_OPEN}\n{}{INDEX_CLOSE}\n",
+        starter_intent(workspace),
+        index_block(workspace)
+    )
+}
+
 /// What hi writes into `hi/AGENTS.md` on the first capture.
 ///
 /// The habit, and one sentence about how prose is written here. It carries no
@@ -593,14 +608,40 @@ pub fn index_block(workspace: &Workspace) -> String {
     out
 }
 
-/// Rewrite the index in INTENT.md between its markers, creating the file or the
-/// section when they are not there yet. Prose outside the markers is untouched.
-pub fn write_index(workspace: &Workspace) -> Result<String> {
+/// What a write is allowed to do to an `INTENT.md` that has no generated block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Absent {
+    /// Add the `## Features` section. `hi index` was typed, so a block is what
+    /// was asked for.
+    Install,
+    /// Leave the file exactly as it is. The refresh a capture runs rewrites the
+    /// list it finds and puts nothing back that somebody removed
+    /// (DECISIONS.md §32).
+    LeaveAlone,
+}
+
+/// Rewrite the index in INTENT.md between its markers. Prose outside the
+/// markers is untouched; what happens when there are no markers is `absent`.
+pub fn write_index(workspace: &Workspace, absent: Absent) -> Result<String> {
     let path = workspace.intent_path();
     let block = index_block(workspace);
     let generated = format!("{INDEX_OPEN}\n{block}{INDEX_CLOSE}");
 
-    let existing = fs::read_to_string(&path).unwrap_or_default();
+    // Only a file that is not there may be created. Every other read error
+    // means there IS a file here whose bytes hi could not see — an invalid
+    // UTF-8 byte in somebody's prose, a permission, a directory in the way —
+    // and treating that as an empty string writes the starter scaffold over
+    // it. Losing the whole file is the largest possible way to break INDEX-2's
+    // promise that the prose stays the person's, and since 0.7.0 every capture
+    // runs this (hi: INDEX-2, INDEX-2.c, DECISIONS.md §32).
+    let existing = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(err) => {
+            return Err(anyhow::Error::new(err))
+                .with_context(|| format!("reading {}", path.display()));
+        }
+    };
 
     let updated = match index_span(&existing) {
         Some(span) => {
@@ -617,12 +658,11 @@ pub fn write_index(workspace: &Workspace) -> Result<String> {
                 workspace.rel(&path)
             )
         }
-        None if existing.trim().is_empty() => {
-            format!(
-                "{}\n## Features\n\n{generated}\n",
-                starter_intent(workspace)
-            )
-        }
+        // Nothing to refresh, and installing a section was not asked for.
+        // A file with no block reads the same whether the person deleted one
+        // or never had one, so the automatic path does neither.
+        None if absent == Absent::LeaveAlone => return Ok(workspace.rel(&path)),
+        None if existing.trim().is_empty() => starter_intent_file(workspace),
         None => format!("{}\n\n## Features\n\n{generated}\n", existing.trim_end()),
     };
 
@@ -642,11 +682,20 @@ pub fn write_index(workspace: &Workspace) -> Result<String> {
 /// `capture::start_product_intent` already follows for the file's creation
 /// (hi: INDEX-4, INDEX-4.a, INDEX-3, CAPTURE-1.a).
 ///
+/// Refreshes a block and installs none. Rewriting the list hi generated is
+/// what INDEX-2 permits; adding a `## Features` heading to somebody's file is
+/// writing prose, and a person who deleted the block would get it back on
+/// every capture with no way to say no. `hi index` is where installing one
+/// lives, because there it was asked for (hi: INDEX-2, INDEX-4.c,
+/// DECISIONS.md §32).
+///
 /// Takes no lock of its own. `capture` and `retire` already hold
 /// `lock::acquire` across their whole read-modify-write and the lock is not
 /// reentrant, so acquiring one here would deadlock every writer (hi: FILE-19).
 pub fn refresh_index(workspace: &Workspace) -> Option<String> {
-    write_index(workspace).err().map(|err| format!("{err:#}"))
+    write_index(workspace, Absent::LeaveAlone)
+        .err()
+        .map(|err| format!("{err:#}"))
 }
 
 /// What to say about the generated index, if anything.
@@ -970,6 +1019,87 @@ mod tests {
             index_note(&on_disk("noblock", "# P\n\nJust prose.\n")),
             None
         );
+    }
+
+    #[test]
+    fn a_root_file_hi_cannot_decode_is_left_alone() {
+        // Every read error used to become an empty string, and the empty
+        // branch then wrote the starter scaffold over the top. A person's
+        // prose plus one invalid byte was replaced by a starter prompt and a
+        // generated list, and the capture exited 0 saying nothing. This is the
+        // most complete violation of INDEX-2 there is (hi: INDEX-2.c).
+        let workspace = on_disk("undecodable", "placeholder");
+        let path = workspace.intent_path();
+        let mut bytes = b"# Product\n\nYears of prose, and one bad byte: ".to_vec();
+        bytes.push(0xff);
+        bytes.extend_from_slice(b"\n");
+        fs::write(&path, &bytes).unwrap();
+
+        let why = refresh_index(&workspace).expect("a reason, handed back");
+        assert!(why.contains("reading"), "{why}");
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            bytes,
+            "a file hi could not read is never a file hi replaces"
+        );
+    }
+
+    #[test]
+    fn a_refresh_puts_back_no_block_that_was_removed() {
+        // Refreshing the list hi generated is what INDEX-2 permits. Adding a
+        // `## Features` heading to somebody's file is writing prose, and a
+        // person who deleted the block would get it back on every capture
+        // (hi: INDEX-4.c, DECISIONS.md §32).
+        let workspace = on_disk("deleted-block", "# P\n\nJust my prose.\n");
+        let before = fs::read_to_string(workspace.intent_path()).unwrap();
+        assert_eq!(refresh_index(&workspace), None, "and it is not a failure");
+        assert_eq!(fs::read_to_string(workspace.intent_path()).unwrap(), before);
+    }
+
+    #[test]
+    fn hi_index_still_installs_a_block_because_it_was_asked_for() {
+        let workspace = on_disk("install-block", "# P\n\nJust my prose.\n");
+        write_index(&workspace, Absent::Install).expect("installing");
+        let body = fs::read_to_string(workspace.intent_path()).unwrap();
+        assert!(body.starts_with("# P\n\nJust my prose.\n"), "{body}");
+        assert!(body.contains("## Features"), "{body}");
+        assert!(
+            body.contains("[chat](hi/chat.md): SEND (3 criteria)"),
+            "{body}"
+        );
+    }
+
+    #[test]
+    fn a_block_that_is_there_is_still_refreshed() {
+        // The correction must not go the other way: a list that exists is the
+        // whole point of refreshing (hi: INDEX-4).
+        let stale = CURRENT.replace("(3 criteria)", "(1 criterion)");
+        let workspace = on_disk("still-refreshed", &stale);
+        assert_eq!(refresh_index(&workspace), None);
+        let body = fs::read_to_string(workspace.intent_path()).unwrap();
+        assert!(body.contains("(3 criteria)"), "{body}");
+        assert!(
+            body.starts_with("# P\n\nMine.\n"),
+            "prose is still mine:\n{body}"
+        );
+    }
+
+    #[test]
+    fn a_starter_root_file_is_born_with_its_feature_list() {
+        // The refresh installs nothing, so the file hi writes on a first
+        // capture has to carry the list already (hi: INDEX-1.a, INDEX-4.c).
+        let workspace = on_disk("starter", "placeholder");
+        let body = starter_intent_file(&workspace);
+        assert!(body.contains("## Features"), "{body}");
+        assert!(
+            body.contains(INDEX_OPEN) && body.contains(INDEX_CLOSE),
+            "{body}"
+        );
+        assert!(body.contains("[chat](hi/chat.md)"), "{body}");
+        // And a refresh over it changes nothing, so a capture writes it once.
+        fs::write(workspace.intent_path(), &body).unwrap();
+        assert_eq!(refresh_index(&workspace), None);
+        assert_eq!(fs::read_to_string(workspace.intent_path()).unwrap(), body);
     }
 
     #[test]

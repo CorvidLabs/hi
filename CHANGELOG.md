@@ -41,6 +41,47 @@ the same fence tracking the parser uses, so the legitimate retirement lands unde
 real `## Retired` and your example comes back byte-identical, with the id drawn in it
 still free to capture for real.
 
+### Fixed
+
+**An automatic index refresh could erase your whole `INTENT.md`.** `write_index` turned
+every read error into an empty string, and then treated an empty string as "no file
+here, write the starter". An `INTENT.md` holding your prose and one byte that is not
+valid UTF-8 was replaced by the starter prompt and a generated list, and the command
+exited 0 saying nothing. Only a file that is genuinely absent is created now; any other
+read failure leaves every byte where it is and is reported — as a printed note on a
+capture, which still succeeds with your criterion stored, and as the exit code on
+`hi index`, where the failure is the whole answer.
+
+This defect had been there since 0.2.0 and was reachable only by typing `hi index`.
+0.7.0 made capture and `hi retire` refresh the block on every write, which turned it
+into one that fires constantly. DECISIONS.md §32 records that making a call automatic
+is a change to every bug inside it.
+
+**An id in a file hi skips was reported as used and then handed out again.** hi does
+not read an uppercase-named file in `hi/` as criteria, because those are its own
+(`hi/AGENTS.md`, `hi/CLAUDE.md`). `hi check` looked inside them anyway and reported any
+criterion it found, but capture did not, so a retired `SEND-1` parked in `hi/Archive.md`
+was announced as taken and then reissued with different words. There is now one
+reservation lookup covering the files hi loads and the files it skips, and `check` and
+`capture` both answer from it. hi's own files still hold no criteria, are still not
+counted, and still never appear in the feature list.
+
+### Changed
+
+**A feature list you deleted stays deleted.** Capture and `hi retire` refresh the block
+they find and no longer reinstate a `## Features` section you removed; `hi index` is how
+you ask for one. Rewriting the list between hi's markers is what hi promised; adding a
+heading to your file is writing prose, and hi cannot tell a block you deleted from one
+you never had. An `INTENT.md` hi creates on your first capture now carries its feature
+list from birth, so nothing about a fresh repository changes. DECISIONS.md §30 accepted
+the old behaviour as a cost; §32 withdraws it.
+
+§30's claim that drift became "structurally impossible" is softened in the same section.
+The refresh is best effort by design, so a broken marker pair or a file hi cannot read
+leaves the list wrong while your capture succeeds, and `hi index` typed by hand still
+takes no lock. What is true is narrower: the ordinary path no longer depends on anybody
+remembering.
+
 ### The first capture in a repository is locked like every other one
 
 Thirty-two `hi SEND-N "..."` at once in a repository with no `hi/` yet: all
@@ -92,6 +133,99 @@ reporting it, which is a handoff rather than a locked directory. It still never
 hands back a lock it did not take.
 
 Recorded in DECISIONS.md §33, with why the §26 pass did not cover any of this.
+
+### The write lock is the operating system's
+
+An external re-review broke the lock this repository shipped a day earlier, with an interposer
+that only delays syscalls. A waiter was frozen at the instant *after* it had confirmed another
+lock was abandoned and *before* it removed it; a second waiter then broke the same lock, took its
+own, and started writing while heartbeating. The first waiter was released, executed its
+already-approved deletion, and removed a live holder's lock. Both processes saved their own
+snapshot, both printed the criterion they had stored, both exited 0, one criterion was gone, and
+`hi check` reported nothing wrong. The disclosed SIGSTOP case was reproduced too: a holder stopped
+part-way through its write was declared abandoned after five seconds, and its criterion was
+overwritten by the writer that took over.
+
+No extra check fixes that. Verifying and removing are two operations and the holder can change
+between them, which is true of any rule hi invents about when somebody else has finished.
+
+**So hi does not invent one.** It holds `flock(2)` on unix and `LockFileEx` on Windows and never
+breaks a lock at all. The kernel releases those when a process exits, however it exits, so a `hi`
+that was killed still frees its repository with nothing to delete — and a `hi` that is merely
+slow, stopped or waiting on a slow disk keeps what it took for as long as it is alive. Those two
+were in tension under every timeout, which is why every timeout was wrong.
+
+**No new dependency.** hi has four, and two `extern` declarations are not worth a fifth.
+
+Two consequences worth knowing:
+
+`.hi.lock` is no longer the lock, so deleting it while a `hi` is running is now the one act that
+can let two writers into a repository at once. The timeout message says so instead of telling you
+to delete it. A lock file left behind by a killed `hi` is harmless: the next writer takes it
+without waiting and without deleting anything.
+
+hi fails rather than writes if the filesystem cannot lock. `flock` is emulated or absent on some
+network filesystems, and hi has not been tested on any of them; a local checkout is the supported
+answer. Linux, macOS and Windows all run the full suite in CI, the concurrency tests included.
+
+Recorded in DECISIONS.md §34, which also records why the two rules that stop the same defect
+returning through the back door — verify the file you were granted is still the file the name
+points at, and unlink while holding rather than after — are load-bearing.
+
+### A capture could bring a retired criterion back to life
+
+Two spaces in front of a `## Retired` heading is something people type, and hi reads such a file
+exactly as its author meant it. Capturing into one did not. The new criterion was spliced directly
+above the indented heading, the parser read that heading as a continuation of the new criterion's
+sentence, and everything the heading had separated fell into `## Criteria`: the retired criterion
+was active again, still carrying its `retired:` reason, and the new one's sentence had
+`## Retired` on the end of it. The command reported success and `hi check` exited 0 before and
+after.
+
+Two things were wrong and both are fixed. `read_criterion` now stops a continuation at anything
+`parse_body` would read as a heading, through one shared predicate, so the parser cannot disagree
+with itself about where a section starts. **The indented heading is still legitimate** — it is
+valid markdown and refusing it would have been fixing the file instead of the code.
+
+And the postcondition every write is held to now compares criteria rather than ids. It was a
+multiset of ids, and every id in that file was still present afterwards; an id comparison cannot
+see a criterion change section, change its sentence, or pick up somebody else's retirement reason.
+Every criterion a write did not name now has to come back with the same section, the same sentence
+and the same reason, or the write is refused with nothing written and the refusal says which id and
+what would have happened to it.
+
+The two fixes are independent on purpose: with the parser fix removed, the postcondition refuses
+the capture instead of losing the criterion. Recorded in DECISIONS.md §35.
+
+### A file hi could not read gave away an id that was reserved in it
+
+hi does not read an uppercase-named file in `hi/` as criteria, but it does look inside one for ids,
+because an id written there is still taken. That lookup swallowed read errors: a file it could not
+open or decode was passed over, and "nothing found" was handed back to both of its callers as "that
+id is free". One Latin-1 byte in a retirement reason was enough. A retired `SEND-1` parked in
+`hi/Archive.md` was reissued with different words, the reservation was still on disk, and
+`hi check` exited 0 before and after.
+
+The read failure is now the answer. `hi check` exits 1 naming the file it could not read, and a
+capture refuses before it writes anything at all — not the criterion, not `hi/`, not `INTENT.md`
+and not `hi/AGENTS.md`.
+
+**This is not a seventh thing `hi check` fails on.** It still fails on exactly six structural
+problems, and still never on unfinished intent. A file hi cannot read is hi saying it could not do
+the check, which is not a finding.
+
+0.7.0 made `check` and `capture` answer from one lookup so they could not disagree. They could
+still both be wrong, and here they were. Recorded in DECISIONS.md §36.
+
+### Two branches had both captured FILE-22
+
+Two workstreams open at once each captured `FILE-22`, because on each branch that was the next free
+number. The lock branch's want is now `FILE-23`, the write-path branch's keeps `FILE-22`, and
+`FILE-24` was captured for the other half of the lock guarantee. Both wants are live and no id
+carries two sentences. The same thing happened to a spec requirement — both branches wrote
+`REQ-workspace-011`, and git merged them with no conflict into one document with two headings of
+that name — which is now `REQ-workspace-012` for the write lock. Recorded in DECISIONS.md §37,
+along with why an id is only unique against the tree you captured on.
 
 ## [0.7.0] 2026-09-17
 

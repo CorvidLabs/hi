@@ -89,6 +89,27 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   a `## Criteria` heading inside an unclosed fence and reported the same id saved twice. Anything
   that needs to know where a section is calls `doc::fence_map`, the same one `parse_body` uses, and
   then still reads its result back (DECISIONS.md §31, `hi: FILE-22`, `FILE-22.a`, `FILE-22.b`).
+- **`unwrap_or_default` on a read of somebody's file is a bug.** `write_index` had it, so every
+  read error read as "no file here" and the starter scaffold was written over an `INTENT.md`
+  holding a person's prose and one invalid byte. Only `NotFound` may create; every other read
+  error preserves the file and is reported. Since 0.7.0 that path runs on every capture, which is
+  how a latent bug became a constant one (DECISIONS.md §32, `hi: INDEX-2.c`).
+- **One reservation lookup, not two.** `Workspace::strays` covers the docs hi loads and the
+  uppercase files it skips, and `check` reports from it while `capture` refuses from it. They were
+  two scans over two different sets of files, so a retired id in `hi/Archive.md` was reported as
+  taken and handed out again (`hi: CAPTURE-14`, DECISIONS.md §32). Reading inside hi's own files
+  reserves ids and nothing else: they are still not docs, not counted, not in the feature list.
+- **Unreadable is not absent.** `strays` returns a `Result`, and a file it cannot read or decode is
+  that failure rather than an empty list. Swallowing the error made the shared lookup say "free"
+  about an id it had not been able to look for, so `check` and `capture` agreed on the same wrong
+  answer and a reserved id was handed out. `let Ok(x) = read(..) else { continue }` is the same
+  shape as `unwrap_or_default` on a read: distrust both wherever the answer decides whether
+  something exists. The failure is operational and never a seventh check kind (`hi: CAPTURE-15`,
+  DECISIONS.md §36).
+- **The automatic refresh rewrites a block and installs none.** `refresh_index` passes
+  `Absent::LeaveAlone` so its whole effect on disk is a span replacement between two markers.
+  `hi index` passes `Absent::Install`. A `## Features` heading is prose, and a person who deleted
+  the block gets to keep it deleted (`hi: INDEX-4.c`, DECISIONS.md §32).
 - **Read inside the lock, or you are writing from before it.** Both write verbs call
   `Workspace::find` again once the lock is granted. `retire` did not, and two concurrent retires
   both reported success while one criterion came back to life. Holding a lock around a write you
@@ -100,10 +121,15 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   and it takes back an empty `hi/` it made so a refusal still writes nothing. A write-path test
   that starts from a repository which already has a `hi/` cannot see any of this: use
   `cli::Repo::bare` (DECISIONS.md §33, `hi: FILE-19`, `CAPTURE-5`).
-- **Never break a lock because it is old.** Age says a holder is slow, and a bulk capture is slow.
-  The holder heartbeats, and a waiter breaks a lock only after its mtime stands still for
-  `ABANDONED` of the waiter's own elapsed time. Do not reintroduce a rule that compares this
-  machine's clock to the file's (DECISIONS.md §33, `hi: FILE-23`).
+- **hi never breaks a lock, because the lock is the kernel's.** `flock` on unix, `LockFileEx` on
+  Windows, both declared in `lock`'s own three-line `extern` blocks rather than added as a fifth
+  dependency. Age was wrong, and so was the heartbeat that replaced it: a waiter that decides a
+  lock is abandoned and then removes it has already approved the removal by the time the holder
+  changes, and no extra check closes that. Do not reintroduce any rule that lets one process
+  decide another is finished. The one `remove_file` of `.hi.lock` is `Guard::drop`, and it runs
+  *before* the close, while the lock is still held. On unix, `still_at` must stay: the kernel can
+  grant a queued waiter a lock on an inode the pathname no longer names (DECISIONS.md §34,
+  `hi: FILE-23`, `FILE-24`).
 - **Never write a fixed temp or fixture path.** `write_atomically` and the integration-test
   fixtures both used one, so two processes shared a scratch file. That is why the suite flaked and
   why bulk capture lost writes. Include the pid.

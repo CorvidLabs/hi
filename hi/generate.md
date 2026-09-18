@@ -40,8 +40,10 @@ Generation must work with no auth, no network, and no integration, because the m
 - **INDEX-2**  I keep the rest of the root file mine, because hi only ever rewrites the list it generated.
   - **INDEX-2.a**  I can quote the comments hi marks its list with, even on a line of their own or inside a code block, and hi does not mistake my example for the real list.
   - **INDEX-2.b**  I get a refusal when those comments are broken or unpaired, rather than hi guessing where its list ends.
+  - **INDEX-2.c**  If hi cannot read my root file at all, it leaves every byte of it alone rather than starting a fresh one over the top.
 - **INDEX-3**  The product-level file exists from my first capture, so I never have to discover it.
   - **INDEX-3.a**  hi keeps reminding me while the product-level why is still unwritten.
 - **INDEX-4**  The list at the front of my product is true after every command that changes it, without me remembering to refresh it.
   - **INDEX-4.a**  A capture that stored my criterion is never reported as a failure because the list could not be refreshed.
   - **INDEX-4.b**  If I write a criterion into the file by hand, hi tells me the list is behind rather than leaving it wrong.
+  - **INDEX-4.c**  If I delete the generated list from my root file, it stays deleted until I ask for it back, because refreshing a list is not the same as installing one.

@@ -1318,8 +1318,17 @@ without adopting hi's own build.
 ### Capture keeps it current, rather than check reporting it
 
 The verb that changes the live count refreshes the block. Both of them: `capture` and `hi retire`,
-since retiring changes the count too. Drift is then structurally impossible rather than merely
-detectable, which is the difference between a promise and a report.
+since retiring changes the count too. Nobody has to remember, which is the difference between a
+promise and a report.
+
+The first version of this section said drift became "structurally impossible". That was too strong
+and §32 corrects it. The refresh is best effort by design — the subsection below says so two
+paragraphs later — so a file hi cannot read, a marker pair somebody broke, or a full disk all leave
+the list wrong while the capture succeeds, which is right and is not impossibility. `hi index` also
+still takes no lock of its own: the refresh is safe because it runs inside the lock `capture` and
+`hi retire` already hold, and `hi index` typed by hand is an unlocked read-modify-write like any
+other. What is true is narrower and still worth having: **the ordinary path no longer depends on
+anybody remembering.**
 
 The alternative was a seventh `check::Kind`. It was refused for the reason §9 and `CHECK-1` refuse
 every other quality gate: `hi check` fails on a structurally broken file and on nothing else, and
@@ -1364,7 +1373,8 @@ of 197 and right by luck at the end.
 
 A person who deleted the generated block gets one back on the next capture, through the append
 branch `write_index` has always had. That branch was previously only ever reached by somebody typing
-`hi index`, and it is now reached without being asked for.
+`hi index`, and it is now reached without being asked for. **§32 withdraws this one**: it was
+accepted as a cost, and on a second look it is hi arguing with the person.
 
 `scripts/index-is-current.sh` stays in the gate. It is no longer the thing that keeps this
 repository's list true — capture is — and it is now a backstop for hand-edits here, which is what
@@ -1461,7 +1471,107 @@ that is the signal it is doing something the format does not support, not the si
 
 ---
 
+## 32. Making a write automatic widens whatever was already wrong with it
+
+§30 moved the index refresh from something a person typed to something every `capture` and every
+`hi retire` does. Nothing about `write_index` changed. Two defects that had sat in it since 0.2.0
+went from reachable-if-you-type-a-command to running on every write in every repository, and one of
+them destroys a file.
+
+**That is the general lesson, and it is the third time this repository has met it.** §26 found that
+concurrency stopped being hypothetical without anyone deciding it had. §30 found that a guarantee
+depending on somebody remembering is not a guarantee. This one is the same shape from the other
+side: *a code path's blast radius is a property of who calls it, not of the code*, so making a call
+automatic is a change to every bug inside it. The review that ships an automatic call has to be a
+review of the thing being called, not only of the calling.
+
+### The one that destroyed the file
+
+```rust
+let existing = fs::read_to_string(&path).unwrap_or_default();
+```
+
+Every read error became an empty string, and the branch below it treats an empty string as "no file
+here, write the starter". So an `INTENT.md` holding somebody's prose and one byte that is not valid
+UTF-8 — a Latin-1 `é` pasted in, a truncated write, anything — was replaced by the starter prompt
+and a generated list. Reproduced against the built binary: a three-line file became the scaffold and
+`hi index` printed `INTENT.md  index updated` and exited 0.
+
+`INDEX-2` promises hi only ever rewrites the list it generated and the prose around it stays the
+person's. Replacing the whole file is the largest possible way to break that, and it is also the
+quietest: nothing is reported, because from inside the function nothing went wrong.
+
+**Only absence may create.** The read now matches: `NotFound` is an empty file, and every other
+error returns `reading <path>` having written nothing. Through a capture that is a printed line and
+exit 0 with the criterion stored (`INDEX-4.a`); through `hi index` it is the exit code, because
+there the failure is the whole answer. That is `INDEX-2.c`.
+
+**`unwrap_or_default` on a read is the shape to distrust.** It reads as a default and behaves as an
+assertion that the file is empty. Where the next thing the code does is decide whether to create
+something, the two are not the same and the difference is the file.
+
+### The one that handed an id out twice
+
+`Workspace::find_stray` walked `docs`. `check` separately walked `skipped`, the uppercase-named
+files in `hi/` that are hi's own (§27). Both were looking for the same thing — a criterion-shaped
+line nothing reads — and neither knew about the other's half. So a retired `SEND-1` parked in
+`hi/Archive.md` was *reported by `check` as taken* and *handed out again by capture* with different
+words. `CAPTURE-14` says an id written somewhere hi cannot read it is still taken and is never
+handed out twice, and this was hi announcing the id was used and then reusing it.
+
+There is now one lookup, `Workspace::strays`, covering both sets. `check` reports from it and
+`capture` refuses from it, so the two cannot disagree again — not because they agree, but because
+there is only one answer. Reading inside hi's own files reserves ids and nothing else: `docs`,
+the criteria count, the families and the generated feature list are untouched, so `hi/AGENTS.md`
+still never becomes a file that holds criteria.
+
+**Two checks over overlapping inputs is the shape to distrust.** The audit in §26 found four ways
+one promise broke; this is a fifth, and its cause is not a missing check but two checks that were
+each correct about their own half.
+
+### Withdrawing §30's accepted cost
+
+§30 accepted that a person who deleted the generated block gets one back on the next capture,
+through `write_index`'s append branch. On a second look that is wrong, and the reasoning is §9's:
+hi does not stamp into human-authored prose. Rewriting the list between two markers hi wrote is what
+`INDEX-2` permits. Adding a `## Features` heading is writing prose, and doing it on every capture
+means a person who removes the block cannot keep it removed — they delete, hi restores, forever,
+with no verb to say no with.
+
+So the two acts are now separate. `refresh_index` passes `Absent::LeaveAlone`: it rewrites a block
+that is there and installs none. `hi index` passes `Absent::Install`, because there it was asked
+for. The effect of the automatic path on disk is now exactly a span replacement between two
+markers, which is `INDEX-2` stated as a mechanism rather than as good behaviour — and that is what
+makes it safe to run on every write.
+
+Two consequences, both deliberate:
+
+**The starter file carries its own list.** A first capture used to write the prose prompt and let
+the refresh append the `## Features` section a moment later. With the refresh installing nothing,
+`capture::start_product_intent` writes `out::starter_intent_file`, which is the prompt and the block
+together. The file hi creates is complete from birth, and a refresh over it changes nothing.
+
+**A file with no block gets silence.** Not a restored section, and not a note either. hi cannot tell
+a block somebody deleted from one that was never written, so it does not guess; and `check` nagging
+about it would be the thing §30's last paragraph warns against, a nag about something hi could have
+fixed itself. Here hi *could* fix it and has decided not to, so nagging would be arguing in a
+different tone. `hi index` is in `hi --help`, in the README's verb table, and in the note `check`
+already prints when a block that exists is behind. That is enough places.
+
+`INDEX-4.c` is the criterion for this, and it is the only genuinely new *want* in this pass. The
+other two fixes restore `INDEX-2` and `CAPTURE-14`, which were already written down and already
+true on paper.
+
+**What would change this decision:** evidence that adopters are ending up with an `INTENT.md` that
+has no feature list and no idea one is available. The answer then is a better first-run message or a
+line in the file hi already writes, not hi editing a file somebody edited on purpose.
+
 ## 33. The fifth way, which was live through the audit that found the other four
+
+> **The heartbeat this section introduces was wrong and is gone; §34 replaces it.** What survives
+> here is the bootstrap half — `hi/` is created before the lock and a `Guard` is only ever a lock
+> that was really taken — and the argument that age is not evidence. The mechanism that replaced
+> age was reproduced as a defect within a day of shipping.
 
 §26 named four ways hi broke its one promise, fixed them, and said the promise does not move. A
 fifth was open the whole time, in the fix for the fourth.
@@ -1581,3 +1691,279 @@ covers.
 machinery than a small tool should carry, the fallback is to stop breaking locks at all and print
 the file to delete; that is strictly safer and strictly less convenient. The one thing that may not
 come back is age as evidence.
+
+*It did not survive that long.* The heartbeat was reproduced as a defect immediately, and §34 took
+a third option neither this paragraph nor the review that prompted it considered: hand the lock to
+the operating system, where nothing has to be inferred and a killed process is not a special case.
+
+## 34. The lock belongs to the kernel, because every other owner is a guess
+
+§33 replaced "a lock older than sixty seconds is dead" with "a lock nobody has refreshed for five
+seconds is dead". Both are the same shape: hi looking at a file and deciding, on its own, that
+somebody else has finished. An external re-review took the second one apart in an afternoon.
+
+### What was reproduced
+
+Two `hi` processes, and a syscall interposer that only ever *delays* execution — it changes no
+behaviour, it just holds a process at a chosen call until it is let go. Waiter A was paused at the
+instant after it had confirmed the lock's mtime had stood still and immediately before the
+`remove_file` that acts on that confirmation. Waiter B then broke the same lock, took one of its
+own, and started writing; it was heartbeating throughout. A was released and executed its
+already-approved deletion, removing **B's live lock**. Both saved their own snapshot of the file,
+both printed the criterion they had stored, both exited 0, and one criterion was not in the file
+afterwards. `hi check` reported nothing wrong, and capturing the missing id again succeeded with
+different words.
+
+The re-read immediately before the removal is exactly the mitigation §33 describes, and it is not
+one: it narrows the window, and the window is still there, because *verifying* and *removing* are
+two operations and the world moves between them. There is no third check that fixes that. Anything
+hi can observe about a file it has to observe before it acts on it.
+
+The disclosed SIGSTOP case is the same defect without the interposer: a holder stopped part-way
+through its write has no heartbeat, so a second `hi` declared it abandoned after five seconds,
+took the lock, wrote, and exited 0; the stopped process then continued and wrote its own pre-image
+over the top, losing the second one's criterion.
+
+### The decision
+
+**hi does not decide when somebody else's lock has expired. The operating system does.** `flock(2)`
+on unix, `LockFileEx` on Windows. Both belong to the open file rather than to the pathname, which
+gives the one property no file-watching scheme can have: the kernel releases the lock when the
+process exits, however it exits — cleanly, by panic, by SIGKILL, by the machine losing power on the
+next boot's empty `/proc`. So:
+
+- a `hi` that was killed frees its repository by itself, with nothing to delete (`FILE-23`), and
+- a `hi` that is merely slow, stopped, swapped out or waiting on a slow filesystem keeps what it
+  took for as long as it is alive (`FILE-24`),
+
+and those two stop being in tension, which is what made every timeout-based design wrong. hi now
+never breaks a lock at all. There is no age, no heartbeat, no takeover, and no code path that
+removes a lock file hi does not itself hold the OS lock on.
+
+### The dependency question, answered explicitly
+
+hi has four dependencies — clap, serde, serde_json, anyhow — and no `libc`. An OS lock needs one of
+them or raw FFI, and the reviewer offered "never break a lock, print the path to delete" as an
+acceptable alternative. That alternative was rejected, because `FILE-23` is a criterion this
+repository captured and a person would have to act on every crash for the rest of the tool's life.
+
+**No dependency was added.** `flock` is one `extern "C"` declaration and two integer constants that
+have been stable on Linux, macOS and the BSDs for thirty years; `LockFileEx` is one
+`extern "system"` declaration, two flags and a zeroed `OVERLAPPED`. That is about twenty lines in
+`src/lock.rs`, in one module, behind three functions with the same signatures on every platform.
+A `libc` or `fs2` dependency would buy the same twenty lines and a supply chain. The trade is the
+`unsafe` blocks, which are two calls that take a descriptor or a handle the caller owns.
+
+### The part that is not obvious, and was nearly the same defect again
+
+**Holding the kernel's lock on a file is not holding the pathname.** The holder unlinks
+`.hi.lock` when it releases. A waiter that opened that file *before* the unlink is still queued on
+it, and the kernel will happily grant it the lock afterwards — on an inode with no name — while a
+third writer creates a brand new `.hi.lock` and is granted the lock on *that*. Two processes, two
+valid locks, one repository. This is a well-known hazard of unlinking lock files and it would have
+reproduced the original defect with a different mechanism.
+
+Two rules close it, and both are load-bearing:
+
+1. **Verify after acquiring.** Once the kernel grants the lock, `still_at` compares the open file's
+   `dev`/`ino` against the pathname's. If they differ, hi is holding an orphan: it drops it and
+   starts over. `lock::tests::a_lock_granted_on_a_file_that_was_replaced_is_not_the_repository_s_lock`
+   forces exactly that sequence rather than hoping to hit it.
+2. **Unlink while holding, never after.** `Guard::drop` removes the file and *then* closes it. In
+   the other order, a new holder could be granted the lock between the close and the removal, and
+   hi would delete a live lock — the original defect, rebuilt.
+
+On Windows neither is available and neither is needed. A delete there marks the file and leaves it
+in place until the last handle closes, and while it is marked every `CreateFile` on that name is
+refused, so no replacement can exist during the window `still_at` covers. `still_at` is therefore
+`Ok(true)` on Windows.
+
+**What is actually verified there, and what is not.** CI runs the whole suite on `windows-latest`,
+so the `LockFileEx` path builds, links and passes: one process cannot take a lock another holds,
+the bootstrap into a repository with no `hi/` locks like every later capture, a holder killed with
+`TerminateProcess` frees the repository with nothing cleaned up, and thirty-two concurrent captures
+into a fresh repository all land. What is *not* asserted anywhere is the delete-pending argument
+itself — that no replacement lock file can be created while a handoff is in flight. Nothing in the
+suite forces that interleaving on Windows the way
+`a_lock_granted_on_a_file_that_was_replaced_is_not_the_repository_s_lock` forces it on unix. If
+that argument is wrong, Windows has the same hazard `still_at` exists to close, and the fix would
+be a `GetFileInformationByHandle` comparison in `still_at`, which is a fourth `extern` and no new
+dependency.
+
+### What is still true, and what is not claimed
+
+- Exclusion rests on nothing but the OS lock and the file identity check. It does **not** rest on
+  timing, on mtimes, on pids — the pid in the file is for a person and nothing reads it back — or
+  on anybody deleting anything.
+- It does rest on the filesystem implementing `flock` properly. On NFS, SMB and similar, `flock`
+  may be emulated, local-only or refused. hi fails closed on a refusal, with a message naming the
+  path, and **hi has not been tested on any network filesystem**. A local checkout is the supported
+  answer.
+- Deleting `.hi.lock` by hand while a `hi` is running now breaks the exclusion that hi provides,
+  where before it was the documented remedy. So the timeout message no longer says to delete it; it
+  says the lock belongs to a running process and that hi takes it back by itself when that process
+  exits.
+- On a platform that is neither unix nor Windows the fallback is exclusive creation with no
+  breaking, which is safe and is not self-healing. `FILE-23` is unmet there. hi ships for Linux,
+  macOS and Windows, and this arm exists so the crate still builds elsewhere.
+
+**What would change this decision:** a filesystem hi's users actually work on where `flock` cannot
+be relied on. The answer then is a lock whose location is configurable, not a return to guessing
+when somebody else is done. Age is not coming back, and neither is the heartbeat.
+
+## 35. Every id is still there is not every criterion is still there
+
+§31 made the write path and the parse path agree about where the sections are. §26 and §33 made a
+write read itself back. Both were right, and a re-review walked straight through them with nine
+lines of markdown:
+
+```markdown
+## Criteria
+  ## Retired
+
+- **SEND-1**  Original retired intent.
+  retired: Dropped.
+```
+
+That file is legitimate. Two spaces in front of a heading is a thing people type, `parse_body`
+trims before it looks for `## `, and hi reads the file exactly as its author meant it: nothing
+active, SEND-1 retired. `hi check` exits 0.
+
+Then `hi SEND-2 "A new want."` succeeded, and afterwards there were **two active criteria and none
+retired**. SEND-2's sentence was `A new want. ## Retired` and SEND-1 was live again, still carrying
+`retired: Dropped.` as a note. `hi check` exited 0 after as well. A retired id had come back, which
+is the one thing `RETIRE-2` says cannot happen, and nothing anywhere reported a problem.
+
+### Two causes, and both had to be fixed
+
+**The parser disagreed with itself.** `parse_body` reads `  ## Retired` as a heading.
+`read_criterion` reads any indented, non-blank line that is not itself a criterion as a
+*continuation* of the criterion above it. Neither is wrong on its own; they are wrong together, the
+moment a write puts a criterion immediately above such a line — which `insertion_point` does,
+because the section's append point is the last content line before that heading. So the new
+criterion ate the heading, and everything the heading had separated fell into `## Criteria`.
+
+`read_criterion` now stops at anything `parse_body` would read as a heading, through a shared
+`is_heading_line` so the two cannot drift apart again. **The indented heading is not rejected.** It
+is valid markdown and valid hi, and refusing it would be fixing the file instead of the code.
+
+**The postcondition was about ids.** `read_back` compared `readable()` before and after: a sorted
+multiset of `raw_id`. Every id in that file *was* still readable afterwards. A comparison of ids
+cannot see a criterion changing section, changing its sentence, or acquiring somebody else's
+retirement reason, and all three happened here.
+
+It now compares `shapes()`: (id, section, sentence, reason), sorted, for every criterion the verb
+did **not** name. For the ones it did name, `retire` and `set_retired_reason` may change the
+section and the reason and may not change the words. The refusal says which id and what would have
+happened to it — `move SEND-1 into ## Criteria` — because "would leave SEND-1 unreadable" was
+never going to be printed here: SEND-1 was perfectly readable, in the wrong place.
+
+**The general lesson, which is the third time this repository has met a version of it.** §26 found
+that a promise nobody checked was not a promise. §31 found that two pieces of code answering the
+same question separately will eventually answer it differently. This one is narrower and sharper:
+*a postcondition is only as strong as the thing it compares.* `readable()` was the right check for
+the bug that prompted it — a criterion vanishing into a fence — and it was never a check on
+anything else, while reading as though it were a check on the file. The two fixes are independent
+on purpose: with the parser fix reverted, the postcondition refuses the capture rather than
+losing SEND-1, and the test that fails is the one saying the legitimate file must still work.
+
+### One thing this does not do
+
+The comparison is strict equality of the unaffected criteria, but its baseline is a reparse of the
+document's own text rather than its parsed fields, because `insert` deliberately leaves
+`criteria` one splice behind `lines` (§30) and comparing against the fields would refuse a second
+insert into the same `Doc`. So the guarantee is about the bytes hi is replacing, which is the right
+thing to guarantee, and it is not a guarantee about anything that happened to the file between
+`Workspace::load` and the write. That window is the lock's job (§34), not this one's.
+
+**What would change this decision:** nothing, but the next postcondition added here should be
+written by asking what a reader of the file would notice, not by asking what the writer changed.
+
+## 36. Unreadable is not absent, and sharing a lookup shares its mistakes
+
+§32 replaced two disagreeing reservation scans with one, `Workspace::strays`, so that an id `check`
+reports as used and an id `capture` refuses are by construction the same set. That is still right.
+It also had this in it:
+
+```rust
+let Ok(raw) = fs::read_to_string(path) else {
+    continue;
+};
+```
+
+A file hi could not read was passed over, and the lookup returned "no stray here" — which its two
+callers read as *this id is free*. The re-review put one Latin-1 byte in a retirement reason in
+`hi/Archive.md`, where a retired `SEND-1` was parked. `hi check` exited 0. `hi SEND-1 "Different
+intent."` succeeded. `hi check` exited 0 again. The reservation was still sitting on disk the whole
+time, in a file nothing had managed to open.
+
+**Making the two callers share a lookup makes them share its mistakes.** §32's argument was that
+they could no longer disagree, and they cannot; it did not follow that the shared answer was right,
+and here it made a quiet wrong answer authoritative in a place — capture — where it had not been
+before. That is worth saying plainly, because "one source of truth" is usually offered as though it
+were the whole of correctness.
+
+`strays` now returns `Result<Vec<Stray>>` and a file it cannot read is the failure, named, with a
+hint. `find_stray` propagates it, so `capture` refuses before it writes anything at all — no
+criterion, no `hi/`, no `INTENT.md`, no `hi/AGENTS.md`. `check::run` returns `Result<Report>` and
+exits 1 through the same path any other I/O failure takes.
+
+**This is not a seventh check kind and it is not a rule about what a criterion may say.** `hi check`
+still fails on exactly six structural things, and still never fails on unfinished intent (§5,
+`CHECK-1`). An unreadable file is hi saying it could not do the check, which is a different
+sentence from hi saying the check found something. The six stay six.
+
+The shape to distrust is `let Ok(x) = read(...) else { continue }` wherever the answer feeds a
+decision about whether something exists. §32 named `unwrap_or_default` on a read as that shape; this
+is the same shape spelled differently, in the function that same pass introduced. Both convert "I
+could not look" into "there is nothing there", and the second of those is a claim.
+
+**What would change this decision:** a repository where an unreadable file in `hi/` is normal and
+the refusal is in the way. The answer then is to say which file and let the person move it, which
+is what the hint already says, not to go back to guessing on their behalf.
+
+## 37. Two workstreams reached for the same hand-chosen id, and git said nothing
+
+hi's whole premise is that a person chooses the id and the id is permanent. Two branches were open
+at once against this repository. One captured `FILE-22` for *when hi tells me it wrote something
+down, I can find it again*; the other captured `FILE-22` for *if hi is killed while holding the
+write lock, the next capture recovers by itself*. Both were valid captures: each ran against a
+workspace where `FILE-22` was the next free number, because the other branch's file was not in it.
+
+The same thing happened in the specs, where nothing even resembles an allocator. Both branches
+wrote a requirement numbered `REQ-workspace-011`, and git merged the two files with **no conflict**
+at all, because the headings landed in different places with different text around them. The result
+was one document with two `### REQ-workspace-011` sections saying unrelated things — which
+`specsync check` is not looking for and a reader would meet as a contradiction rather than as an
+error.
+
+### How they were resolved
+
+`FILE-22` **keeps the want that reached `main` first**, from the write-path pass. The lock branch's
+want was renumbered to `FILE-23` before it merged, and `FILE-24` was captured later in the same
+family for the other half of the lock guarantee. No id carries two sentences; nothing was retired,
+because nothing was withdrawn — both wants are live, under one id each.
+
+`REQ-workspace-011` keeps the reservation-lookup requirement, and the write-lock one became
+`REQ-workspace-012`, with its references in `specs/workspace/testing.md` and
+`specs/capture/requirements.md` moved with it.
+
+### Why this is written down rather than quietly fixed
+
+Because the failure mode is invisible and the tool is about ids. `hi check` would have caught the
+duplicate id in `hi/format.md` the moment both branches were on one tree — `duplicate-id` is one of
+the six — and that is exactly what the branch that renamed its criterion was reacting to. Nothing
+catches it *before* the merge, and nothing at all catches the spec one. So:
+
+- **An id is only unique against the tree you captured on.** Two agents working in parallel on
+  branches are two workspaces. hi does not coordinate across them and is not going to start: an id
+  allocator with shared state is a state file, and §5 says hi has none.
+- **The merge is where ids are reconciled**, and it is a human step. `hi check` on the merged tree
+  is the thing that proves it; run it before trusting a merge that touched `hi/`.
+- **A silent merge is worse than a conflict.** Both files here merged cleanly and both were wrong.
+  Text that carries an identifier — a criterion, a `### REQ-` heading — deserves a look after any
+  merge, whatever git said.
+
+**What would change this decision:** nothing about how ids are chosen. If parallel capture becomes
+common enough to hurt, the answer is a check that runs over a *merge result* — the one place the
+duplicate is visible — not a reservation protocol between branches.

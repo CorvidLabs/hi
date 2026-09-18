@@ -61,7 +61,7 @@ Acceptance Criteria
 - The message carries a second line of the form `hint:  next free is SEND-2`, taken from `Workspace::next_free` for that family.
 - The hint is always a single-level top-level id, even when the rejected id was a case or a step.
 - `Workspace::find_id` walks active and retired criteria alike, so a retired id counts as existing and a retired number is never handed back out.
-- Only parsed criteria count. `Doc::all()` chains `criteria` and `retired` and nothing else, so an id written inside a fenced code block (prose to the parser, hi: FILE-9) or on a criterion-shaped line outside every section (`Doc::stray`, reported by `check` as `stray-criterion`, hi: CHECK-2.e) does not make the id taken and does not raise `next_free`.
+- Only parsed criteria count *here*. `Doc::all()` chains `criteria` and `retired` and nothing else, so an id written inside a fenced code block (prose to the parser, hi: FILE-9), on a criterion-shaped line outside every section, or in a file `load` skipped, is not what this refusal sees and does not raise `next_free`. It is still refused, by the separate reservation check REQ-capture-017 describes, with a different message.
 - The destination file is byte-for-byte unchanged.
 
 ### REQ-capture-004
@@ -116,13 +116,13 @@ The capture module SHALL require no initialization step, creating the `hi/` dire
 
 Acceptance Criteria
 
-- When `hi/` does not exist it is created with `fs::create_dir_all`, normally by `lock::acquire` before the read-modify-write begins, because the write lock is a file inside that directory (`specs/workspace/`, REQ-workspace-011). `capture` keeps a `create_dir_all` of its own for a caller that holds no lock, such as a unit test, and it sits after every refusal has returned.
+- When `hi/` does not exist it is created with `fs::create_dir_all`, normally by `lock::acquire` before the read-modify-write begins, because the write lock is a file inside that directory (`specs/workspace/`, REQ-workspace-012). `capture` keeps a `create_dir_all` of its own for a caller that holds no lock, such as a unit test, and it sits after every refusal has returned.
 - A capture that refuses in a repository that had no `hi/` leaves no `hi/` behind: the guard removes the directory it created while it is still empty (hi: CAPTURE-5).
 - A first capture in a repository with no `hi/` directory succeeds in one command. `Workspace::find` only accepts a `hi/` directory that `holds_hi_files`, meaning one holding a `.md` file with a `hi:` frontmatter key (hi: CAPTURE-6), so an absent or still-empty `hi/` is reached through the `.git` branch, and `capture` then creates the directory and the file.
 - That `.git` branch is a boundary, not just a fallback: `Workspace::find` returns at the first directory holding one, so a repository nested inside another captures into its own root and never adopts the outer project's criteria (hi: CAPTURE-10, covered by `cli::a_repository_is_a_boundary_for_discovery`).
 - Capture works from any directory inside the repository, because `find` walks up from the start directory (or from `--root`, when one was given).
 - When neither a qualifying `hi/` nor a `.git` is found anywhere above the start directory, `Workspace::find` fails before `capture` is called, with `this is not a repository, and no hi/ directory was found above it. hi anchors to a repository, so run it inside one`, and the process exits 1.
-- No configuration file, cache, or state file is created, read, or required. The one file hi writes that is not markdown is `hi/.hi.lock`, which exists only while a writer is writing and is removed when it finishes; nothing ever reads it back as state (hi: FILE-1, FILE-1.a).
+- No configuration file, cache, or state file is created, read, or required. The one file hi writes that is not markdown is `hi/.hi.lock`, which exists while a writer is writing and is removed when it finishes; nothing ever reads it back as state, not even the pid written into it (hi: FILE-1, FILE-1.a). A `hi` that was killed can leave the file behind, and the file is not a lock: the lock belongs to the kernel and went with the process, so the next writer takes it and deletes nothing (hi: FILE-23, DECISIONS.md §34).
 
 ### REQ-capture-009
 
@@ -216,6 +216,20 @@ Acceptance Criteria
 - This is the same rule `start_product_intent` and `start_agent_files` already follow, and for the same reason: the thought is what mattered and it is already stored (hi: INDEX-3, HABIT-1, CAPTURE-1.a).
 - The refresh runs inside the lock `main::run_capture` already holds and takes none of its own, because `lock::acquire` is not reentrant (hi: FILE-19).
 - The accepted cost is that a bulk capture rewrites `INTENT.md` once per criterion. fledge's adoption was 197 captures. That is 197 atomic replaces of a few hundred bytes, serialized by a lock those captures already contend for.
+- The refresh rewrites the generated block and installs none. `refresh_index` passes `out::Absent::LeaveAlone`, so an `INTENT.md` with no marker pair is left exactly as it is and nothing is reported; installing a `## Features` section is `hi index`'s act, because there it was asked for (hi: INDEX-4.c, DECISIONS.md §32).
+- `start_product_intent` therefore writes `out::starter_intent_file`, which carries the `## Features` heading and the generated block, rather than the prose prompt alone. A first capture still leaves a complete `INTENT.md`; it is written once rather than appended to by the refresh that follows (hi: INDEX-1.a, INDEX-3).
+
+### REQ-capture-017
+
+The capture module SHALL refuse an id written anywhere hi cannot read it as a criterion, wherever that is, and SHALL NOT write anything (hi: CAPTURE-14, FILE-20, CAPTURE-5).
+
+Acceptance Criteria
+
+- After the `find_id` refusal and before any filesystem write, `capture` calls `Workspace::find_stray`, the one reservation lookup, which covers criterion-shaped lines in a criteria file outside every section, inside a fence, and in a file `load` skipped because its name is not lowercase.
+- The message is `<id> is already written at <file>:<line>, where hi cannot read it.`, followed by a `hint:` line. The hint for `StrayPlace::OutsideSection` says to move the line under `## Criteria` or `## Retired`; for `StrayPlace::UnreadFile` it says to move it into a lowercase file, because renaming `hi/AGENTS.md` would turn hi's own instruction file into a criteria file.
+- The refusal and `check`'s `stray-criterion` report come from the same call, so an id `hi check` names as used is always an id `hi` refuses to reissue. They were two scans over two different sets of files, and a retired `SEND-1` in `hi/Archive.md` was reported by one and handed out again by the other (DECISIONS.md §32).
+- An id that no line anywhere speaks for is still free, so this reserves rather than blocks. An id hi could not *look* for is not one of those: when a file hi skips cannot be read or decoded, `find_stray` fails, the capture refuses with `reading <file>: <cause>` and a hint, and nothing is written — not the criterion, not `hi/`, not `INTENT.md` and not `hi/AGENTS.md`. Unreadable is not absent, and the read error used to be swallowed, so a retired id parked in an undecodable `hi/Archive.md` was handed out again while `hi check` exited 0 both before and after (hi: CAPTURE-15, CAPTURE-5, DECISIONS.md §36).
+- hi's own files are read for reservation and for nothing else. Neither `hi/AGENTS.md` nor `hi/CLAUDE.md` becomes a doc, a family, a counted criterion or a line in the generated feature list, and the prose hi writes into them contains no criterion-shaped line (DECISIONS.md §27).
 
 ## Constraints
 

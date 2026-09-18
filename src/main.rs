@@ -211,7 +211,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
 
     match cli.command {
         Command::Check { json } => {
-            let report = check::run(&workspace);
+            let report = check::run(&workspace)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
@@ -285,7 +285,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Command::Index => {
-            let path = out::write_index(&workspace)?;
+            let path = out::write_index(&workspace, out::Absent::Install)?;
             println!("{path}  index updated");
             Ok(ExitCode::SUCCESS)
         }

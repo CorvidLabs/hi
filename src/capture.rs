@@ -10,7 +10,7 @@ use anyhow::{Result, bail};
 
 use crate::doc::{Doc, Section, new_file_text};
 use crate::id::Id;
-use crate::workspace::Workspace;
+use crate::workspace::{StrayPlace, Workspace};
 
 /// Family names that would want a file hi already keeps in `hi/`.
 ///
@@ -92,14 +92,24 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
 
     // An id hi cannot read is still an id somebody wrote. Reusing it would put
     // two lines with the same id and different sentences in one file, which no
-    // amount of later checking undoes (hi: CAPTURE-14).
-    if let Some((index, line)) = workspace.find_stray(&id) {
-        let file = workspace.rel(&workspace.docs[index].path);
-        bail!(
-            "{id} is already written at {file}:{line}, where hi cannot read it.\n\
-             hint:  move that line under ## Criteria or ## Retired, or delete it, \
-             then capture again"
-        );
+    // amount of later checking undoes (hi: CAPTURE-14). The lookup covers the
+    // files hi loads and the ones it skips alike: a retired id parked in
+    // `hi/Archive.md` was reported by `check` and reissued here for four
+    // releases (DECISIONS.md §32).
+    if let Some(stray) = workspace.find_stray(&id)? {
+        let (file, line) = (&stray.file, stray.line);
+        let hint = match stray.place {
+            StrayPlace::OutsideSection => {
+                "move that line under ## Criteria or ## Retired, or delete it, then capture again"
+            }
+            // Renaming the file would work too, and is the wrong advice: it
+            // makes hi's own AGENTS.md into a criteria file.
+            StrayPlace::UnreadFile => {
+                "move that line into a lowercase file under ## Criteria or ## Retired, \
+                 or delete it, then capture again"
+            }
+        };
+        bail!("{id} is already written at {file}:{line}, where hi cannot read it.\nhint:  {hint}");
     }
 
     // A case has to hang off something, and that something has to be live.
@@ -204,7 +214,10 @@ fn start_product_intent(workspace: &Workspace) -> Option<String> {
     if path.exists() {
         return None;
     }
-    let body = crate::out::starter_intent(workspace);
+    // With the feature list already in it. The refresh below rewrites a block
+    // it finds and installs none, so a file that is born without one never
+    // gets one (hi: INDEX-1.a, INDEX-4.c, DECISIONS.md §32).
+    let body = crate::out::starter_intent_file(workspace);
     fs::write(&path, body).ok()?;
     Some(workspace.rel(&path))
 }
