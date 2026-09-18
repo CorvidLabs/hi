@@ -1776,9 +1776,19 @@ Two rules close it, and both are load-bearing:
 On Windows neither is available and neither is needed. A delete there marks the file and leaves it
 in place until the last handle closes, and while it is marked every `CreateFile` on that name is
 refused, so no replacement can exist during the window `still_at` covers. `still_at` is therefore
-`Ok(true)` on Windows. That is an argument, not a test: **the Windows path is compile-checked
-against `x86_64-pc-windows-msvc` and has not been run.** The unix path is what this change was
-tested on.
+`Ok(true)` on Windows.
+
+**What is actually verified there, and what is not.** CI runs the whole suite on `windows-latest`,
+so the `LockFileEx` path builds, links and passes: one process cannot take a lock another holds,
+the bootstrap into a repository with no `hi/` locks like every later capture, a holder killed with
+`TerminateProcess` frees the repository with nothing cleaned up, and thirty-two concurrent captures
+into a fresh repository all land. What is *not* asserted anywhere is the delete-pending argument
+itself — that no replacement lock file can be created while a handoff is in flight. Nothing in the
+suite forces that interleaving on Windows the way
+`a_lock_granted_on_a_file_that_was_replaced_is_not_the_repository_s_lock` forces it on unix. If
+that argument is wrong, Windows has the same hazard `still_at` exists to close, and the fix would
+be a `GetFileInformationByHandle` comparison in `still_at`, which is a fourth `extern` and no new
+dependency.
 
 ### What is still true, and what is not claimed
 

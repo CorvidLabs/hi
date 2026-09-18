@@ -166,7 +166,7 @@ without waiting and without deleting anything.
 
 hi fails rather than writes if the filesystem cannot lock. `flock` is emulated or absent on some
 network filesystems, and hi has not been tested on any of them; a local checkout is the supported
-answer. The Windows path is compile-checked and has not been run.
+answer. Linux, macOS and Windows all run the full suite in CI, the concurrency tests included.
 
 Recorded in DECISIONS.md §34, which also records why the two rules that stop the same defect
 returning through the back door — verify the file you were granted is still the file the name
