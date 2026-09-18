@@ -358,10 +358,12 @@ on their own product to find it, and the first fix we shipped for it was the wro
 
 ## Status
 
-**v0.7.0** on [crates.io](https://crates.io/crates/human-intent), with binaries for Linux (x86_64
+**v0.8.0** on [crates.io](https://crates.io/crates/human-intent), with binaries for Linux (x86_64
 and arm64), macOS (Intel and Apple silicon) and Windows on the
-[release page](https://github.com/CorvidLabs/hi/releases). The Unreleased work on this branch
-writes the contract a 1.0 will freeze — [HI-1.md](HI-1.md) — without tagging it.
+[release page](https://github.com/CorvidLabs/hi/releases). **0.8.0 is the 1.0 release candidate.**
+[HI-1.md](HI-1.md) is the contract 1.0 will freeze, and 1.0 is this build after it has soaked:
+the same code with the version number changed. A defect in the promise found meanwhile ships as
+0.8.x and restarts the clock.
 
 **Permanence of an id is a convention over shared history: the merged tree, not an unmerged
 branch.** Two workstreams can each choose the same hand-chosen id against the tree they captured

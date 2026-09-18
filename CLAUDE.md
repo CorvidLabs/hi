@@ -208,7 +208,7 @@ gitignored.
 
 ## Releasing
 
-v0.7.0 is out: the repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
+v0.8.0 is out and is the 1.0 release candidate; HI-1.md is the contract 1.0 freezes, and the 1.0 tag is 0.8.x with only the version changed. The repo is public, `human-intent` is on crates.io, `corvidlabs/tap/hi` is in the
 Homebrew tap, and every tagged release carries binaries for Linux and macOS (both architectures
 each) and Windows. The docs are at corvidlabs.xyz/hi, and corvidlabs.github.io/hi publishes this
 repository's own `hi view` output on every push to `main`.
@@ -218,8 +218,8 @@ publish` runs failed on a dirty tree and the failure was not noticed. 0.3.0 clos
 lesson is the rule below: read what `cargo publish` actually printed, and check the registry.
 
 `release.yml` fires on a `v*` tag, so **tagging is the release**. Bump `Cargo.toml`, update
-`CHANGELOG.md`, commit, push, tag, then `cargo publish` separately. The format is not frozen; this
-is 0.x.
+`CHANGELOG.md`, commit, push, tag, then `cargo publish` separately. HI/1 is the format 1.0 freezes; until the
+tag it may still change, but only for a defect in what HI-1.md promises.
 
 **Publish from a clean tree, and verify the registry afterwards.** `cargo publish` refuses a dirty
 working tree, and that refusal is easy to miss in a wall of output. Run `cargo publish --dry-run`

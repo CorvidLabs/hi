@@ -5,10 +5,19 @@ All notable changes to `hi` (Human Intent). Format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 The format itself is versioned separately by the `hi:` key in each file's frontmatter. `HI/1` is the
-only version so far, and since the Unreleased entry below a file declaring any other version is
+only version so far, and since 0.8.0 a file declaring any other version is
 refused rather than read as this one.
 
-## Unreleased
+## [0.8.0] 2026-09-18
+
+**The 1.0 release candidate.** Everything three readiness reviews called blocking is in this
+release, and nothing else is planned before 1.0. [HI-1.md](HI-1.md) is the contract it will
+freeze. The tag for 1.0 is this build after a soak, with the version number changed and nothing
+else; if a defect in the promise is found meanwhile, it ships as 0.8.x and the soak restarts.
+
+The one change here that can turn an adopter's green build red is `duplicate-family`, the
+seventh `hi check` kind: two files both declaring one family. Fix it by leaving the family in one
+file's frontmatter. A file declaring a `hi:` version other than `1` is now refused as well.
 
 ### After the 1.0 readiness review of #20
 
