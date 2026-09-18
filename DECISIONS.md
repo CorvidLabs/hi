@@ -1386,7 +1386,82 @@ a bulk path to exist first.
 
 ---
 
-## 31. The fifth way, which was live through the audit that found the other four
+## 31. The write path and the parse path have to agree about where the sections are
+
+Two more ways to break the one promise, found in an external review of 0.7.0. Both are the same
+mistake, and neither is anybody's fault twice removed: a verb that *writes* decided where a section
+was without asking the code that *reads*.
+
+1. **`Doc::retired_heading` scanned the raw lines** for `## Retired`. A fence is opaque to the
+   parser, on purpose, so that a person can document the format inside their own prose (§3,
+   `FILE-9`). Put an ordinary, properly closed ```` ```markdown ```` example under `## Intent`
+   showing the three headings, above a real `## Criteria` holding `SEND-1`, and `hi retire SEND-1`
+   found the `## Retired` *in the example*. It moved the criterion into the intent prose after the
+   fence, printed `SEND-1 retired`, and produced a file that parses back with zero criteria and zero
+   retirements. `hi SEND-1 "something else"` then succeeded. `hi check` exited 0 at every step.
+2. **`Doc::insert` appended a missing `## Criteria` section** after the file's last content line
+   without asking whether that line was inside a fence. Leave a fence open — the normal state of a
+   paragraph somebody is in the middle of writing — and the heading hi appends, and the criterion
+   under it, are both part of the example. Capture printed `hi/chat.md  +SEND-1` twice for the same
+   id with different sentences. Both lines were invisible, `hi check` reported zero criteria, and the
+   file was valid the whole time.
+
+The first one is the more alarming, because the file it destroys is *correct*. `FILE-9` invites the
+example. The person did nothing wrong.
+
+### The fix is a postcondition, not two patches
+
+The obvious repair is to teach `retired_heading` about fences and to make `insert` check its
+insertion point. Both are done, through the same state machine `parse_body` uses, because the
+legitimate retirement still has to work rather than merely fail safely. But neither is the fix.
+
+The fix is that **no write site is trusted to know where it landed.** `insert`, `retire` and
+`set_retired_reason` each parse the buffer they are about to save and hold it to three things:
+
+- every id the verb named is readable in the section the verb named;
+- every id the document already made readable still is, compared as a multiset;
+- nothing new has been stranded.
+
+Anything else is refused, with the in-memory document restored, so nothing reaches disk
+(`CAPTURE-5`). The refusal names an unclosed fence and the line it opens on when there is one.
+
+This is the shape §26 was reaching for and did not take. Every one of the four bugs there, and both
+of these, would have been caught by it, because all six have the same signature: hi wrote a
+criterion somewhere and then could not read it back. A checker that asks "did the bytes land where I
+put them" cannot catch that. A checker that asks "can a reader find this" catches all of it, and
+catches the next one too, whatever the cause turns out to be.
+
+`insert` still does not reparse *itself*, and §30's reasoning is untouched: its line-index
+bookkeeping is the contract with `rewrite_families` and the next insert, and re-deriving it would
+make that contract untestable. The verified parse is thrown away, and `capture` still reloads the
+file it saved before anything counts. The read-back is a check on the bytes, not a replacement for
+the bookkeeping.
+
+### Refusing an unfinished file is a decision, and it is the smaller harm
+
+Accepting an unfinished document is right, and stays right: `Doc::parse` is infallible, `hi check`
+fails on structure and nothing else, and a half-written fence is somebody mid-thought. What is not
+right is reporting a successful capture into it. So the refusal is narrow: the write is refused, the
+prose is left exactly as it was, and the message says which line to close. Closing the fence makes
+the identical capture succeed, which is the test that the refusal is not a dead end.
+
+### The blind spot, for the fourth time
+
+§12 was found because every test asserted on parse output. §25 because every view test asserted on
+generated HTML. §26 because every write-path test asserted on files hi itself had written. These two
+were found by somebody reading the code who was not us, and the fixture that reproduces them is a
+file hi did not write: hand-typed, with a documented example in it, exactly what `FILE-9` invites and
+exactly what none of our own `hi/*.md` contains. The regression tests are written over that file,
+and one of them exists only to fail if the fix ever over-corrects into treating a fence as structure.
+
+**What would change this decision:** nothing about the postcondition. If the reparse-per-write ever
+costs too much, it narrows — check only the ids the verb touched rather than the whole document —
+before it is removed. If a future write path genuinely cannot express its postcondition this way,
+that is the signal it is doing something the format does not support, not the signal to skip it.
+
+---
+
+## 33. The fifth way, which was live through the audit that found the other four
 
 §26 named four ways hi broke its one promise, fixed them, and said the promise does not move. A
 fifth was open the whole time, in the fix for the fourth.

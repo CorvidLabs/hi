@@ -43,18 +43,18 @@ Acceptance Criteria
 
 ### REQ-workspace-011
 
-The write lock SHALL be a real lock in every repository, including one that has never run hi, and SHALL be broken only when nobody is holding it (hi: FILE-19, FILE-22, CAPTURE-5).
+The write lock SHALL be a real lock in every repository, including one that has never run hi, and SHALL be broken only when nobody is holding it (hi: FILE-19, FILE-23, CAPTURE-5).
 
 Acceptance Criteria
 
-- `lock::acquire` creates `hi/` with `create_dir_all` before it tries to create `<hi>/.hi.lock`. The lock lives inside the directory it protects, so before that directory exists there is nothing to create a lock file in. That open failed with `NotFound`, and the failure used to be returned as a `Guard`: every concurrent first capture in a repository then ran unlocked (DECISIONS.md §31).
+- `lock::acquire` creates `hi/` with `create_dir_all` before it tries to create `<hi>/.hi.lock`. The lock lives inside the directory it protects, so before that directory exists there is nothing to create a lock file in. That open failed with `NotFound`, and the failure used to be returned as a `Guard`: every concurrent first capture in a repository then ran unlocked (DECISIONS.md §33).
 - `create_dir_all` succeeds when another writer created the directory first, so the bootstrap race is safe by construction.
 - Any failure other than `AlreadyExists` is an error. `acquire` never returns a guard for a lock it did not take, and `Guard`'s only constructor is private and takes the `File` that was exclusively created, so an unacquired guard cannot exist to remove somebody else's lock when it drops.
 - A guard that had to create `hi/` removes that directory again on release. `fs::remove_dir` refuses a directory with anything in it, so this only ever takes back an empty one: a capture that wrote a file keeps its directory, and a capture that refused leaves nothing at all behind (hi: CAPTURE-5).
 - The holder refreshes the lock file every `HEARTBEAT` (250ms) from a thread of its own, which moves the file's mtime.
 - A waiter remembers the mtime it first saw and when it saw it, and breaks the lock only after that mtime has stood still for `ABANDONED` (5s) of the waiter's own elapsed time. It re-reads the mtime immediately before removing the file, so a lock another waiter has just taken is never removed. Age alone is not evidence: the previous rule broke any lock older than 60 seconds, which said a holder was slow rather than dead.
 - Nothing compares this machine's clock against the file's timestamp, so clock skew on a shared filesystem cannot make a held lock look abandoned.
-- A waiter gives up after `PATIENCE` (30s) with a message naming the directory and the file to delete. `PATIENCE` outlasts `ABANDONED`, or a lock whose holder was killed could never be recovered (hi: FILE-22).
+- A waiter gives up after `PATIENCE` (30s) with a message naming the directory and the file to delete. `PATIENCE` outlasts `ABANDONED`, or a lock whose holder was killed could never be recovered (hi: FILE-23).
 
 ## Constraints
 

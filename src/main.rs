@@ -242,7 +242,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
             // in between; retiring from that snapshot writes the file back the
             // way it was and brings whatever they retired back to life, while
             // both commands print "retired" and exit 0. Capture reloads for the
-            // same reason (hi: RETIRE-7, FILE-19, DECISIONS.md §31).
+            // same reason (hi: RETIRE-7, FILE-19, DECISIONS.md §33).
             let mut workspace = Workspace::find(&start)?;
             let parsed =
                 id::Id::parse(&id).map_err(|e| anyhow::anyhow!("'{id}' is not a valid id: {e}"))?;

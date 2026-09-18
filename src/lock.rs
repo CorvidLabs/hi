@@ -12,7 +12,7 @@
 //! (hi: FILE-19).
 //!
 //! Two things here are not obvious, and both were bugs first
-//! (DECISIONS.md §31):
+//! (DECISIONS.md §33):
 //!
 //! **A guard is only ever a lock that was really taken.** The lock lives inside
 //! `hi/`, so before the directory exists there is nothing to create it in, and
@@ -69,7 +69,7 @@ const GRACE: Duration = Duration::from_millis(500);
 ///
 /// There is no public constructor, and the private one takes the file that was
 /// exclusively created. A guard that does not hold the lock cannot be built, so
-/// releasing one can never remove somebody else's (DECISIONS.md §31).
+/// releasing one can never remove somebody else's (DECISIONS.md §33).
 pub struct Guard {
     path: PathBuf,
     dir: PathBuf,
@@ -151,7 +151,7 @@ fn acquire_within(hi_dir: &Path, patience: Duration, abandoned: Duration) -> Res
     // make the directory before it can take one. Doing it here rather than in
     // capture is the whole point: opening a lock file under a directory that
     // does not exist fails, and a failure used to be handed back as a guard
-    // (hi: FILE-19, DECISIONS.md §31). `create_dir_all` succeeds when another
+    // (hi: FILE-19, DECISIONS.md §33). `create_dir_all` succeeds when another
     // capture won the same race, so the bootstrap is safe by construction.
     let mut created_dir = !hi_dir.is_dir();
     fs::create_dir_all(hi_dir).with_context(|| format!("creating {}", hi_dir.display()))?;
@@ -206,7 +206,7 @@ fn acquire_within(hi_dir: &Path, patience: Duration, abandoned: Duration) -> Res
         // held by nobody. Only our own elapsed time is used, never the
         // difference between this clock and the file's: age alone never
         // established that a process had died, and a slow capture is not a dead
-        // one (DECISIONS.md §31).
+        // one (DECISIONS.md §33).
         match fs::metadata(&path).and_then(|meta| meta.modified()) {
             Ok(mtime) => match watched {
                 Some((seen, _)) if seen != mtime => watched = Some((mtime, Instant::now())),
@@ -258,7 +258,7 @@ mod tests {
     fn the_first_writer_in_a_repository_takes_a_real_lock() {
         // The state every first capture starts in: no `hi/` at all. This used to
         // return a guard that held nothing, so thirty-two concurrent captures
-        // all believed they were alone (hi: FILE-19, DECISIONS.md §31).
+        // all believed they were alone (hi: FILE-19, DECISIONS.md §33).
         let root = scratch("bootstrap");
         fs::create_dir_all(&root).unwrap();
         let hi = root.join("hi");
