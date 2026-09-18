@@ -21,7 +21,8 @@ spec: workspace.spec.md
 - A directory named `hi` that holds no file declaring `hi:` in its frontmatter is not a workspace, whatever else is in it (hi: CAPTURE-6)
 - Loading reads only `*.md` files sitting directly inside `<root>/hi`, in sorted path order
 - A root with no `hi/` directory loads as a valid, empty workspace rather than an error
-- Nothing in this module writes to disk, creates a directory, or mutates a loaded `Doc` (hi: FILE-4)
+- Nothing in `src/workspace.rs` writes to disk, creates a directory, or mutates a loaded `Doc` (hi: FILE-4). `src/lock.rs`, which this spec also covers, is the exception and writes exactly two things: the `hi/` directory when the repository has never run hi, and the lock file inside it
+- The write lock is taken before the read of a read-modify-write and released after the write, it is taken in a repository that has no `hi/` yet exactly as it is in one that has, and it is never handed back unless it was really taken (hi: FILE-19)
 - Family ownership resolves from frontmatter first and from actual criterion use second, so an undeclared family still finds its file (hi: FILE-2)
 - Id lookup, family ownership and next-free numbering all consider retired criteria as well as active ones
 - `families()` returns the sorted, deduplicated union of declared and used families across every doc (hi: FILE-5)
@@ -40,6 +41,21 @@ Acceptance Criteria
 - `holds_hi_files` is unchanged and still requires frontmatter carrying a `hi:` key, so `hi/AGENTS.md` alone never makes a directory look like a workspace.
 
 
+### REQ-workspace-011
+
+The write lock SHALL be a real lock in every repository, including one that has never run hi, and SHALL be broken only when nobody is holding it (hi: FILE-19, FILE-23, CAPTURE-5).
+
+Acceptance Criteria
+
+- `lock::acquire` creates `hi/` with `create_dir_all` before it tries to create `<hi>/.hi.lock`. The lock lives inside the directory it protects, so before that directory exists there is nothing to create a lock file in. That open failed with `NotFound`, and the failure used to be returned as a `Guard`: every concurrent first capture in a repository then ran unlocked (DECISIONS.md §33).
+- `create_dir_all` succeeds when another writer created the directory first, so the bootstrap race is safe by construction.
+- Any failure other than `AlreadyExists` is an error. `acquire` never returns a guard for a lock it did not take, and `Guard`'s only constructor is private and takes the `File` that was exclusively created, so an unacquired guard cannot exist to remove somebody else's lock when it drops.
+- A guard that had to create `hi/` removes that directory again on release. `fs::remove_dir` refuses a directory with anything in it, so this only ever takes back an empty one: a capture that wrote a file keeps its directory, and a capture that refused leaves nothing at all behind (hi: CAPTURE-5).
+- The holder refreshes the lock file every `HEARTBEAT` (250ms) from a thread of its own, which moves the file's mtime.
+- A waiter remembers the mtime it first saw and when it saw it, and breaks the lock only after that mtime has stood still for `ABANDONED` (5s) of the waiter's own elapsed time. It re-reads the mtime immediately before removing the file, so a lock another waiter has just taken is never removed. Age alone is not evidence: the previous rule broke any lock older than 60 seconds, which said a holder was slow rather than dead.
+- Nothing compares this machine's clock against the file's timestamp, so clock skew on a shared filesystem cannot make a held lock look abandoned.
+- A waiter gives up after `PATIENCE` (30s) with a message naming the directory and the file to delete. `PATIENCE` outlasts `ABANDONED`, or a lock whose holder was killed could never be recovered (hi: FILE-23).
+
 ## Constraints
 
 - No dependency beyond `std`, `anyhow`, and the sibling `doc` and `id` modules. The `hi/` directory has no manifest format to parse, so nothing else is needed (hi: FILE-1)
@@ -53,7 +69,7 @@ Acceptance Criteria
 ## Out of Scope
 
 - Writing, inserting, formatting or saving anything in a hi file: that is `doc`
-- Creating `hi/` or a new feature file, which `capture` does using `dir`
+- Creating a new feature file, which `capture` does using `dir`. Creating `hi/` itself is `lock::acquire`'s, because the lock has to live in it; `capture` still creates it if it is somehow missing when it saves
 - Judging whether a file is structurally valid: duplicates, orphans, retired collisions and undeclared families are `check`'s findings, not load errors
 - Parsing ids or enforcing level alternation: that is `id`
 - Rendering criteria as text, JSON, tickets or the `INTENT.md` index, which `out` does

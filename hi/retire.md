@@ -25,3 +25,4 @@ Retiring should cost one command, keep the id spoken for forever, and keep the r
 - **RETIRE-4**  I can learn the standard a team retires things by, because every retirement says why.
 - **RETIRE-5**  What I retire lands in the retired section, wherever that section sits in the file.
 - **RETIRE-6**  A reason I type is a reason, even with line breaks in it, and can never become a criterion.
+- **RETIRE-7**  What I retire stays retired, even when something else is writing to the same file at the same time.

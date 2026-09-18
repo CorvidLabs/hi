@@ -7,6 +7,7 @@ spec: main.spec.md
 | Test File | Type | What It Covers |
 |-----------|------|----------------|
 | `tests/cli.rs` | Integration | Drives the built binary in a throwaway repository: argv routing, exit codes, stream discipline, and every verb's happy path. It also pins the discovery `main` depends on through `Workspace::find`, in `outside_a_repository_it_says_so_rather_than_guessing`, `a_hindi_locale_directory_is_not_mistaken_for_a_workspace` and `a_repository_is_a_boundary_for_discovery`. |
+| `tests/cli.rs` (concurrency) | Integration, many real processes | The two write verbs under contention: `concurrent_captures_into_a_repository_with_no_hi_directory_all_land` (32 captures into a repository with no `hi/` yet), `concurrent_captures_all_land` (8 into an existing one) and `concurrent_retires_never_bring_a_criterion_back` (two retires at once, neither of which may come back live). The last of these covers the reload inside the lock in the `Retire` arm; reverting that reload fails it on every run (hi: RETIRE-7, FILE-19). |
 | `src/id.rs` (`mod tests`) | Unit | `looks_like_id`, the predicate the capture route depends on. |
 | `src/capture.rs` (`mod tests`) | Unit | The refusal paths that produce exit 1. |
 
@@ -47,6 +48,7 @@ codes, stream discipline) needs a real process, so it is covered from `tests/cli
 | `hi SEND-a "<sentence>"` | Not id-shaped either, so it is an unrecognized subcommand at exit 2 rather than an alternation error at exit 1 |
 | Run from outside any repository | `this is not a repository, and no hi/ directory was found above it. hi anchors to a repository, so run it inside one`, exit 1 |
 | `hi export > file` | File contains only JSON |
+| Two `hi retire` runs at once against the same file | Both take the lock in turn and each reloads inside it, so both retirements are in the file afterwards. Writing from the workspace `run` loaded before the lock used to put the file back as it was and leave the first-retired criterion live again, with both commands reporting success (hi: RETIRE-7) |
 | `hi --root PATH SEND-2 "<sentence>"` and `hi --root=PATH SEND-2 "<sentence>"` | Both capture into `PATH`'s workspace; neither writes `--root` into the sentence |
 | A `hi/` directory holding no hi file, such as a Hindi locale directory | Walked past; the search continues upward to the nearest qualifying `hi/` or `.git` |
 | A repository nested inside another repository | The inner `.git` stops the walk, so the outer repository's criteria are not adopted; `hi check` in the child reports `0 criteria`, exit 0 |
