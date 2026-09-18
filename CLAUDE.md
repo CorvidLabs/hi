@@ -99,6 +99,13 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   two scans over two different sets of files, so a retired id in `hi/Archive.md` was reported as
   taken and handed out again (`hi: CAPTURE-14`, DECISIONS.md §32). Reading inside hi's own files
   reserves ids and nothing else: they are still not docs, not counted, not in the feature list.
+- **Unreadable is not absent.** `strays` returns a `Result`, and a file it cannot read or decode is
+  that failure rather than an empty list. Swallowing the error made the shared lookup say "free"
+  about an id it had not been able to look for, so `check` and `capture` agreed on the same wrong
+  answer and a reserved id was handed out. `let Ok(x) = read(..) else { continue }` is the same
+  shape as `unwrap_or_default` on a read: distrust both wherever the answer decides whether
+  something exists. The failure is operational and never a seventh check kind (`hi: CAPTURE-15`,
+  DECISIONS.md §36).
 - **The automatic refresh rewrites a block and installs none.** `refresh_index` passes
   `Absent::LeaveAlone` so its whole effect on disk is a span replacement between two markers.
   `hi index` passes `Absent::Install`. A `## Features` heading is prose, and a person who deleted

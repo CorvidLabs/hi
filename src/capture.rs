@@ -96,7 +96,7 @@ pub fn capture(workspace: &mut Workspace, raw_id: &str, sentence: &str) -> Resul
     // files hi loads and the ones it skips alike: a retired id parked in
     // `hi/Archive.md` was reported by `check` and reissued here for four
     // releases (DECISIONS.md §32).
-    if let Some(stray) = workspace.find_stray(&id) {
+    if let Some(stray) = workspace.find_stray(&id)? {
         let (file, line) = (&stray.file, stray.line);
         let hint = match stray.place {
             StrayPlace::OutsideSection => {

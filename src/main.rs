@@ -211,7 +211,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
 
     match cli.command {
         Command::Check { json } => {
-            let report = check::run(&workspace);
+            let report = check::run(&workspace)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {

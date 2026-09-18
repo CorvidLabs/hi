@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 
+use anyhow::Result;
 use serde::Serialize;
 
 use crate::doc::Section;
@@ -94,7 +95,13 @@ fn product_intent_note(workspace: &Workspace) -> Option<String> {
 }
 
 /// Run every structural check across the workspace.
-pub fn run(workspace: &Workspace) -> Report {
+///
+/// The `Result` is operational, never a finding: a file hi cannot read at all
+/// is not one of the six structural problems and never becomes a seventh. It is
+/// hi saying it could not do the check, which is the only honest answer when
+/// part of the repository is unreadable (hi: CAPTURE-15, CHECK-1,
+/// DECISIONS.md §36).
+pub fn run(workspace: &Workspace) -> Result<Report> {
     let mut problems: Vec<Problem> = Vec::new();
 
     // Where each id was first seen, so duplicates can name the original.
@@ -116,7 +123,7 @@ pub fn run(workspace: &Workspace) -> Report {
     // Both come from `Workspace::strays`, which is the same lookup `capture`
     // refuses an id by, so what is reported here and what is refused there can
     // never disagree again (hi: CAPTURE-14, FILE-20, DECISIONS.md §32).
-    for stray in workspace.strays() {
+    for stray in workspace.strays()? {
         let Stray {
             file, line, token, ..
         } = &stray;
@@ -275,14 +282,14 @@ pub fn run(workspace: &Workspace) -> Report {
         ));
     }
 
-    Report {
+    Ok(Report {
         note: (!notes.is_empty()).then(|| notes.join("\n      ")),
         files: workspace.docs.len(),
         criteria: workspace.criteria_count(),
         retired: workspace.docs.iter().map(|d| d.retired.len()).sum(),
         families: workspace.families(),
         problems,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -311,7 +318,7 @@ mod tests {
     #[test]
     fn a_clean_workspace_has_no_problems() {
         let raw = format!("{}SEND-1  One.\nSEND-1.a  A case.\n", head("SEND"));
-        let report = run(&workspace(&[("chat.md", &raw)]));
+        let report = run(&workspace(&[("chat.md", &raw)])).unwrap();
         assert!(report.ok(), "{:?}", report.problems);
         assert_eq!(report.criteria, 2);
         assert_eq!(report.families, vec!["SEND"]);
@@ -321,7 +328,7 @@ mod tests {
     fn catches_duplicate_ids_across_files() {
         let a = format!("{}SEND-1  One.\n", head("SEND"));
         let b = format!("{}SEND-1  Again.\n", head("SEND"));
-        let report = run(&workspace(&[("a.md", &a), ("b.md", &b)]));
+        let report = run(&workspace(&[("a.md", &a), ("b.md", &b)])).unwrap();
         assert_eq!(report.problems.len(), 1);
         assert_eq!(report.problems[0].kind, Kind::DuplicateId);
     }
@@ -329,7 +336,7 @@ mod tests {
     #[test]
     fn catches_a_case_with_no_parent() {
         let raw = format!("{}SEND-1.a  An orphan.\n", head("SEND"));
-        let report = run(&workspace(&[("chat.md", &raw)]));
+        let report = run(&workspace(&[("chat.md", &raw)])).unwrap();
         assert_eq!(report.problems.len(), 1);
         assert_eq!(report.problems[0].kind, Kind::OrphanCase);
         assert!(report.problems[0].message.contains("SEND-1"));
@@ -341,7 +348,7 @@ mod tests {
             "{}SEND-3  Back again.\n\n## Retired\n\nSEND-3  Gone.\n        retired: no\n",
             head("SEND")
         );
-        let report = run(&workspace(&[("chat.md", &raw)]));
+        let report = run(&workspace(&[("chat.md", &raw)])).unwrap();
         let kinds: Vec<Kind> = report.problems.iter().map(|p| p.kind).collect();
         assert!(kinds.contains(&Kind::RetiredCollision));
         assert!(kinds.contains(&Kind::DuplicateId));
@@ -350,7 +357,7 @@ mod tests {
     #[test]
     fn catches_a_malformed_id() {
         let raw = format!("{}SEND-1.a.b  Two letters.\n", head("SEND"));
-        let report = run(&workspace(&[("chat.md", &raw)]));
+        let report = run(&workspace(&[("chat.md", &raw)])).unwrap();
         assert_eq!(report.problems.len(), 1);
         assert_eq!(report.problems[0].kind, Kind::UnparseableId);
     }
@@ -358,7 +365,7 @@ mod tests {
     #[test]
     fn catches_an_undeclared_family() {
         let raw = format!("{}OFFLINE-1  Undeclared.\n", head("SEND"));
-        let report = run(&workspace(&[("chat.md", &raw)]));
+        let report = run(&workspace(&[("chat.md", &raw)])).unwrap();
         assert!(
             report
                 .problems
@@ -374,7 +381,7 @@ mod tests {
             "{}SEND-1  Seen.\n\n# Appendix\n\nSEND-9  Invisible.\n",
             head("SEND")
         );
-        let report = run(&workspace(&[("chat.md", &raw)]));
+        let report = run(&workspace(&[("chat.md", &raw)])).unwrap();
         assert_eq!(report.problems.len(), 1);
         assert_eq!(report.problems[0].kind, Kind::StrayCriterion);
         assert_eq!(report.problems[0].id, "SEND-9");
@@ -386,14 +393,14 @@ mod tests {
             "{}SEND-1  One.\n\n# Notes\n\nJust prose about the feature.\n",
             head("SEND")
         );
-        assert!(run(&workspace(&[("chat.md", &raw)])).ok());
+        assert!(run(&workspace(&[("chat.md", &raw)])).unwrap().ok());
     }
 
     #[test]
     fn unfinished_intent_is_never_a_problem() {
         // No specs, no tests, no evidence, nothing downstream. Still fine.
         let raw = format!("{}SEND-1  It should feel fast.\n", head("SEND"));
-        assert!(run(&workspace(&[("chat.md", &raw)])).ok());
+        assert!(run(&workspace(&[("chat.md", &raw)])).unwrap().ok());
     }
 
     #[test]
@@ -402,6 +409,6 @@ mod tests {
             "{}SEND-1  Live.\n\n## Retired\n\nSEND-1.a  Retired case.\n",
             head("SEND")
         );
-        assert!(run(&workspace(&[("chat.md", &raw)])).ok());
+        assert!(run(&workspace(&[("chat.md", &raw)])).unwrap().ok());
     }
 }

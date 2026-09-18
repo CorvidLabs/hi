@@ -197,6 +197,26 @@ what would have happened to it.
 The two fixes are independent on purpose: with the parser fix removed, the postcondition refuses
 the capture instead of losing the criterion. Recorded in DECISIONS.md §35.
 
+### A file hi could not read gave away an id that was reserved in it
+
+hi does not read an uppercase-named file in `hi/` as criteria, but it does look inside one for ids,
+because an id written there is still taken. That lookup swallowed read errors: a file it could not
+open or decode was passed over, and "nothing found" was handed back to both of its callers as "that
+id is free". One Latin-1 byte in a retirement reason was enough. A retired `SEND-1` parked in
+`hi/Archive.md` was reissued with different words, the reservation was still on disk, and
+`hi check` exited 0 before and after.
+
+The read failure is now the answer. `hi check` exits 1 naming the file it could not read, and a
+capture refuses before it writes anything at all — not the criterion, not `hi/`, not `INTENT.md`
+and not `hi/AGENTS.md`.
+
+**This is not a seventh thing `hi check` fails on.** It still fails on exactly six structural
+problems, and still never on unfinished intent. A file hi cannot read is hi saying it could not do
+the check, which is not a finding.
+
+0.7.0 made `check` and `capture` answer from one lookup so they could not disagree. They could
+still both be wrong, and here they were. Recorded in DECISIONS.md §36.
+
 ## [0.7.0] 2026-09-17
 
 ### The feature list in INTENT.md stays true by itself

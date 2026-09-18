@@ -37,9 +37,12 @@ spec: check.spec.md
   it did not parse), and a complete human message
 - `problems` is sorted by file then line, so repeated runs are byte identical
 - `Report::ok()` is true exactly when `problems` is empty, and is the only input to the exit code
-- `run` takes an already-parsed `&Workspace`, performs no I/O, and returns `Report` rather than
-  `Result`, so no input can make it fail or panic and one run reports every problem in every file
-  (hi: CHECK-5)
+- `run` takes an already-parsed `&Workspace` and mutates nothing. Its one read of the filesystem is
+  `Workspace::strays`, which opens the files hi skips so that an id written into one is still
+  reported (REQ-workspace-011), and that read is why `run` returns `Result<Report>`: a file hi
+  cannot read is an operational failure and is never a finding. Nothing about the *structure* of a
+  file can make `run` fail, so one run still reports every problem in every file it could read
+  (hi: CHECK-5, CAPTURE-15)
 - `Kind`, `Problem`, and `Report` all derive `Serialize`, with `Kind` in kebab-case, so JSON output
   and text output describe the same findings
 - Findings are limited to what `doc` parsed: an id-shaped line inside a fenced code block, or
@@ -217,15 +220,21 @@ Acceptance Criteria
 
 ### REQ-check-008
 
-`run` SHALL be a pure, offline function of the workspace it is given (hi: CHECK-4).
+`run` SHALL be offline and SHALL change nothing, and no *structural* shape of a file SHALL be able
+to abort it (hi: CHECK-4).
 
 Acceptance Criteria
 
-- No filesystem read, no filesystem write, no network access, and no environment lookup occurs in
-  this module.
+- No filesystem write, no network access, and no environment lookup occurs in this module.
+- The only read is the one `Workspace::strays` makes over the files hi skips, which is the
+  reservation lookup `capture` refuses from. It is not a finding and it does not vary with the
+  content of a criterion.
 - The workspace is taken by shared reference and is not mutated.
-- `run` returns `Report`, not `Result<Report>`, and no input shape can abort the walk.
-- Every unit test constructs its workspace from in-memory strings, with no filesystem fixture.
+- `run` returns `Result<Report>`. The error arm exists only for a file hi could not read at all
+  (hi: CAPTURE-15); no id, sentence, section, family or malformed line can reach it, and every
+  structural problem is a `Problem` in the `Report`.
+- Every unit test constructs its workspace from in-memory strings, with no filesystem fixture; the
+  unreadable-file case is covered in `workspace` and end to end, where a file on disk is the point.
 
 ### REQ-check-009
 

@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 
 use crate::doc::Doc;
 use crate::id::Id;
@@ -168,19 +168,31 @@ impl Workspace {
     /// is worse than one nobody noticed (hi: CAPTURE-14, FILE-20,
     /// DECISIONS.md §27, §32).
     ///
-    /// A skipped file that cannot be read is passed over rather than raised:
-    /// this is a lookup, not a verb, and `check` has behaved that way since
-    /// skipped files were first scanned.
-    pub fn strays(&self) -> Vec<Stray> {
+    /// A skipped file hi cannot read is an answer hi does not have, and it is
+    /// returned as the failure it is. Swallowing the read error made this
+    /// lookup say "free" about an id it could not see, and because `check` and
+    /// `capture` now share the lookup, both agreed on the same wrong answer:
+    /// `check` exited 0 and `capture` reissued a reserved id (hi: CAPTURE-15,
+    /// DECISIONS.md §36).
+    pub fn strays(&self) -> Result<Vec<Stray>> {
         let mut found = Vec::new();
 
         // A file hi skips is still a file somebody may have written a
         // criterion into. Skipping quietly is the FILE-20 failure with a new
         // cause, so look inside rather than assume (DECISIONS.md §27).
         for path in &self.skipped {
-            let Ok(raw) = fs::read_to_string(path) else {
-                continue;
-            };
+            // Built by hand rather than with `with_context`, so the cause
+            // stays on the error line and the hint is the last thing read,
+            // which is the shape every other refusal in hi has.
+            let raw = fs::read_to_string(path).map_err(|err| {
+                anyhow!(
+                    "reading {}: {err}\n\
+                     hint:  hi has to read it before it can say whether an id is already taken, \
+                     and hi files are UTF-8 text. Fix that one or move it out of hi/, and \
+                     nothing else has to change",
+                    self.rel(path)
+                )
+            })?;
             let file = self.rel(path);
             for (line, token) in crate::doc::criterion_tokens(&raw) {
                 found.push(Stray {
@@ -207,7 +219,7 @@ impl Workspace {
             }
         }
 
-        found
+        Ok(found)
     }
 
     /// A criterion-shaped line hi could not read, but which spoke for this id.
@@ -217,11 +229,12 @@ impl Workspace {
     /// Handing it out again produces two lines with the same id and different
     /// sentences, which is the one thing hi promises cannot happen, so capture
     /// refuses and points at the line (hi: FILE-20, CAPTURE-14).
-    pub fn find_stray(&self, id: &Id) -> Option<Stray> {
+    pub fn find_stray(&self, id: &Id) -> Result<Option<Stray>> {
         let wanted = id.to_string().to_ascii_uppercase();
-        self.strays()
+        Ok(self
+            .strays()?
             .into_iter()
-            .find(|stray| crate::doc::strip_emphasis(&stray.token).to_ascii_uppercase() == wanted)
+            .find(|stray| crate::doc::strip_emphasis(&stray.token).to_ascii_uppercase() == wanted))
     }
 
     /// The next free top-level number in a family.
@@ -372,6 +385,7 @@ mod tests {
 
         let found = workspace
             .find_stray(&Id::parse("SEND-1").unwrap())
+            .unwrap()
             .expect("an id written where hi cannot read it is still taken");
         assert_eq!(found.file, "hi/Archive.md");
         assert_eq!(found.line, 5);
@@ -380,7 +394,45 @@ mod tests {
         assert!(
             workspace
                 .find_stray(&Id::parse("SEND-3").unwrap())
+                .unwrap()
                 .is_none()
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_file_hi_cannot_read_is_a_failure_and_not_an_empty_answer() {
+        // The read error used to be swallowed, so the lookup said "free" about
+        // an id it had not been able to look for. Because `check` and `capture`
+        // share the lookup, both agreed on the same wrong answer: `check`
+        // exited 0 and `capture` reissued a reserved id (hi: CAPTURE-15,
+        // DECISIONS.md §36).
+        let root = std::env::temp_dir().join(format!("hi-ws-unreadable-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("hi")).unwrap();
+        // One Latin-1 byte in the retirement reason is enough.
+        fs::write(
+            root.join("hi/Archive.md"),
+            b"# Archive\n\n## Retired\n\n- **SEND-1**  The old way.\n  retired: Old caf\xe9.\n"
+                .as_slice(),
+        )
+        .unwrap();
+        fs::write(
+            root.join("hi/chat.md"),
+            "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-2**  One.\n",
+        )
+        .unwrap();
+
+        let workspace = Workspace::load(&root).unwrap();
+
+        let err = workspace
+            .strays()
+            .expect_err("unreadable is not absent")
+            .to_string();
+        assert!(err.contains("hi/Archive.md"), "it names the file: {err}");
+        assert!(
+            workspace.find_stray(&Id::parse("SEND-1").unwrap()).is_err(),
+            "and the lookup capture refuses by cannot answer either"
         );
         let _ = fs::remove_dir_all(&root);
     }
@@ -403,9 +455,9 @@ mod tests {
         let workspace = Workspace::load(&root).unwrap();
 
         assert!(
-            workspace.strays().is_empty(),
+            workspace.strays().unwrap().is_empty(),
             "hi's own instruction file is not a file that holds criteria: {:?}",
-            workspace.strays()
+            workspace.strays().unwrap()
         );
         assert_eq!(workspace.criteria_count(), 1);
         let _ = fs::remove_dir_all(&root);

@@ -1492,3 +1492,72 @@ fn a_capture_never_brings_a_retired_criterion_back_to_life() {
     let reuse = repo.run(&["SEND-1", "Different intent."]);
     assert!(!reuse.status.success(), "{}", stdout(&reuse));
 }
+
+#[test]
+fn a_file_hi_cannot_read_never_frees_the_id_reserved_in_it() {
+    // A retired id parked in a file hi skips is reserved (CAPTURE-14). If hi
+    // cannot read that file it cannot see the reservation, and it used to
+    // treat "could not read" as "nothing there": the capture succeeded, the
+    // reservation stayed on disk, and `hi check` exited 0 before and after. An
+    // answer hi does not have is not the answer "free" (hi: CAPTURE-15,
+    // DECISIONS.md §36).
+    let repo = Repo::new("unreadable");
+    repo.write(
+        "hi/send.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-2**  Existing.\n",
+    );
+    // One Latin-1 byte in the retirement reason, which is how a pasted "café"
+    // arrives out of an older file.
+    fs::write(
+        repo.root.join("hi/Archive.md"),
+        b"---\nhi: 1\nfamilies: [SEND]\n---\n\n## Retired\n\n- **SEND-1**  Original.\n  retired: Old caf\xe9.\n".as_slice(),
+    )
+    .unwrap();
+
+    let before: Vec<String> = listing(&repo.root);
+
+    let check = repo.run(&["check"]);
+    assert!(!check.status.success(), "{}", stdout(&check));
+    assert!(
+        stderr(&check).contains("hi/Archive.md"),
+        "it names the file it could not read: {}",
+        stderr(&check)
+    );
+
+    let capture = repo.run(&["SEND-1", "Different intent."]);
+    assert!(
+        !capture.status.success(),
+        "an id hi cannot rule out is not free: {}",
+        stdout(&capture)
+    );
+
+    assert_eq!(
+        listing(&repo.root),
+        before,
+        "and the refusal wrote nothing at all, INTENT.md and hi/AGENTS.md included"
+    );
+    assert_eq!(
+        repo.read("hi/send.md"),
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\n- **SEND-2**  Existing.\n"
+    );
+}
+
+/// Every path under `root`, with its bytes, so a refusal can be held to
+/// changing nothing at all rather than to changing no criteria.
+fn listing(root: &std::path::Path) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                let name = path.strip_prefix(root).unwrap().display().to_string();
+                found.push(format!("{name}\u{0}{:?}", fs::read(&path).unwrap()));
+            }
+        }
+    }
+    found.sort();
+    found
+}

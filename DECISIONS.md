@@ -1868,3 +1868,46 @@ thing to guarantee, and it is not a guarantee about anything that happened to th
 
 **What would change this decision:** nothing, but the next postcondition added here should be
 written by asking what a reader of the file would notice, not by asking what the writer changed.
+
+## 36. Unreadable is not absent, and sharing a lookup shares its mistakes
+
+§32 replaced two disagreeing reservation scans with one, `Workspace::strays`, so that an id `check`
+reports as used and an id `capture` refuses are by construction the same set. That is still right.
+It also had this in it:
+
+```rust
+let Ok(raw) = fs::read_to_string(path) else {
+    continue;
+};
+```
+
+A file hi could not read was passed over, and the lookup returned "no stray here" — which its two
+callers read as *this id is free*. The re-review put one Latin-1 byte in a retirement reason in
+`hi/Archive.md`, where a retired `SEND-1` was parked. `hi check` exited 0. `hi SEND-1 "Different
+intent."` succeeded. `hi check` exited 0 again. The reservation was still sitting on disk the whole
+time, in a file nothing had managed to open.
+
+**Making the two callers share a lookup makes them share its mistakes.** §32's argument was that
+they could no longer disagree, and they cannot; it did not follow that the shared answer was right,
+and here it made a quiet wrong answer authoritative in a place — capture — where it had not been
+before. That is worth saying plainly, because "one source of truth" is usually offered as though it
+were the whole of correctness.
+
+`strays` now returns `Result<Vec<Stray>>` and a file it cannot read is the failure, named, with a
+hint. `find_stray` propagates it, so `capture` refuses before it writes anything at all — no
+criterion, no `hi/`, no `INTENT.md`, no `hi/AGENTS.md`. `check::run` returns `Result<Report>` and
+exits 1 through the same path any other I/O failure takes.
+
+**This is not a seventh check kind and it is not a rule about what a criterion may say.** `hi check`
+still fails on exactly six structural things, and still never fails on unfinished intent (§5,
+`CHECK-1`). An unreadable file is hi saying it could not do the check, which is a different
+sentence from hi saying the check found something. The six stay six.
+
+The shape to distrust is `let Ok(x) = read(...) else { continue }` wherever the answer feeds a
+decision about whether something exists. §32 named `unwrap_or_default` on a read as that shape; this
+is the same shape spelled differently, in the function that same pass introduced. Both convert "I
+could not look" into "there is nothing there", and the second of those is a claim.
+
+**What would change this decision:** a repository where an unreadable file in `hi/` is normal and
+the refusal is in the way. The answer then is to say which file and let the person move it, which
+is what the hint already says, not to go back to guessing on their behalf.
