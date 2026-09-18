@@ -115,6 +115,13 @@ backtrace (hi: CAPTURE-1.c).
 16. The two verbs that write hold `lock::acquire` over their whole read-modify-write, and
     everything they do inside it is inside it, `out::refresh_index` included. The lock is not
     reentrant, so nothing under it may take one of its own (hi: FILE-19, INDEX-4).
+    **Both reload the workspace under the lock.** The `Workspace` each arm starts from was read
+    before the lock was granted, so another writer may have finished in between; writing from that
+    snapshot puts the file back the way it was. `run_capture` has always called `Workspace::find`
+    a second time. The `Retire` arm did not, and two concurrent retires therefore both printed
+    `retired`, both exited 0, and left one of the two criteria live again with `hi check` reporting
+    nothing wrong. It now calls `Workspace::find(&start)` inside the lock and resolves the id from
+    that (hi: RETIRE-7, FILE-19, DECISIONS.md §33).
 17. stdout is the record of what landed and stderr is everything else. `<file>  +<id>`,
     `<file>  created` and `<file>  <id> retired` go to stdout; the note about a feature list that
     could not be refreshed goes to stderr, because a capture that stored its criterion succeeded
@@ -249,3 +256,4 @@ backtrace (hi: CAPTURE-1.c).
 | 2026-09-16 | Claude | Verification pass. Corrected three claims that the code does not make: an unpeeled `--root` is only a clap usage error off the capture path (after an id it lands in the sentence), a non-UTF-8 `--root` value survives only the separated `--root PATH` form, and `args_os` is an environment call invariant 8 did not name. Added an error row for a `--root` that does not resolve, and `specs/id/id.spec.md` to `depends_on`, which the Consumes table already listed. |
 | 2026-09-16 | Claude | Reconciled with the routing and discovery changes, every claim re-checked against `./target/release/hi`. `peel_root` now consumes `--root` only while it leads and stops at the id, so the "scans the whole slice" claim and everything built on it was rewritten. `looks_like_id` is case-insensitive on the family and requires a digit after the hyphen, so invariant 1 and the Purpose no longer claim an uppercase-initial family; `SEND-a` is now a clap usage error rather than an id error, and `send-2` routes to capture and is refused with a reason. Replaced the stale not-found, empty-sentence and export-scope messages with the strings the binary prints. Added `crate::doc` to Consumes and `depends_on`, three behavioral scenarios, and three error rows. |
 | 2026-09-17 | Claude | The `Retire` arm calls `out::refresh_index` after `Doc::save`, so retiring a criterion leaves the generated feature list true the way capturing one now does (hi: INDEX-4, DECISIONS.md §30). The failure is printed on stderr as a note and never changes the exit code (hi: INDEX-4.a). Added invariants 16 and 17 and an error row. This pass also added `Retire { id, reason }` to the `Command` enum row, which the subcommand has had since 0.4.0 and this spec had never listed. |
+| 2026-09-17 | Claude | The `Retire` arm reloads the workspace under the lock instead of writing from the copy `run` read before it. Two concurrent retires used to both report success and leave one criterion live again, because the second wrote a file it had read before the first one landed (hi: RETIRE-7, FILE-19, DECISIONS.md §33). Extended invariant 16. |

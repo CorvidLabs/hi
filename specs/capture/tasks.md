@@ -18,7 +18,7 @@ spec: capture.spec.md
 ## Gaps
 
 - No test covers the adopt-an-existing-file branch of `create_file`, which is the only branch that can push a duplicate `Doc` onto `workspace.docs`.
-- No test covers capturing into a workspace whose `hi/` directory does not exist; both `capture::tests::temp_dir` and `cli::Repo::new` always create it, so `fs::create_dir_all` in `create_file` is never exercised.
+- No *unit* test covers capturing into a workspace whose `hi/` directory does not exist; `capture::tests::temp_dir` and `cli::Repo::new` both create it, so `capture`'s own `fs::create_dir_all` is never exercised. The path itself is covered through the binary by `cli::concurrent_captures_into_a_repository_with_no_hi_directory_all_land`, where `lock::acquire` creates the directory.
 - No test covers a retired id being refused as already taken; only an active one is.
 - No test asserts that a refused capture leaves a *new family file* unwritten; `refuses_a_malformed_id_without_writing` only checks the seeded file's contents.
 - No test covers the `Doc::insert` / `Doc::save` failure path after a family file has been scaffolded.

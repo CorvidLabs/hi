@@ -116,12 +116,13 @@ The capture module SHALL require no initialization step, creating the `hi/` dire
 
 Acceptance Criteria
 
-- When `workspace.dir` does not exist, it is created with `fs::create_dir_all` as part of starting the first family file.
+- When `hi/` does not exist it is created with `fs::create_dir_all`, normally by `lock::acquire` before the read-modify-write begins, because the write lock is a file inside that directory (`specs/workspace/`, REQ-workspace-012). `capture` keeps a `create_dir_all` of its own for a caller that holds no lock, such as a unit test, and it sits after every refusal has returned.
+- A capture that refuses in a repository that had no `hi/` leaves no `hi/` behind: the guard removes the directory it created while it is still empty (hi: CAPTURE-5).
 - A first capture in a repository with no `hi/` directory succeeds in one command. `Workspace::find` only accepts a `hi/` directory that `holds_hi_files`, meaning one holding a `.md` file with a `hi:` frontmatter key (hi: CAPTURE-6), so an absent or still-empty `hi/` is reached through the `.git` branch, and `capture` then creates the directory and the file.
 - That `.git` branch is a boundary, not just a fallback: `Workspace::find` returns at the first directory holding one, so a repository nested inside another captures into its own root and never adopts the outer project's criteria (hi: CAPTURE-10, covered by `cli::a_repository_is_a_boundary_for_discovery`).
 - Capture works from any directory inside the repository, because `find` walks up from the start directory (or from `--root`, when one was given).
 - When neither a qualifying `hi/` nor a `.git` is found anywhere above the start directory, `Workspace::find` fails before `capture` is called, with `this is not a repository, and no hi/ directory was found above it. hi anchors to a repository, so run it inside one`, and the process exits 1.
-- No configuration file, lockfile, cache, or state file is created, read, or required.
+- No configuration file, cache, or state file is created, read, or required. The one file hi writes that is not markdown is `hi/.hi.lock`, which exists only while a writer is writing and is removed when it finishes; nothing ever reads it back as state (hi: FILE-1, FILE-1.a).
 
 ### REQ-capture-009
 

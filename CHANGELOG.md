@@ -82,6 +82,58 @@ leaves the list wrong while your capture succeeds, and `hi index` typed by hand 
 takes no lock. What is true is narrower: the ordinary path no longer depends on anybody
 remembering.
 
+### The first capture in a repository is locked like every other one
+
+Thirty-two `hi SEND-N "..."` at once in a repository with no `hi/` yet: all
+thirty-two exited 0, nine of the criteria were not in the file, `hi check` reported
+nothing wrong, and capturing one of the lost ids afterwards succeeded and wrote a
+different sentence under an id that had already been spent. That is ordinary bulk
+adoption, and it is the one thing hi promises cannot happen.
+
+The write lock lives inside `hi/`, so before that directory existed there was nowhere
+to create it, and the failure to create it was handed back as a lock: every
+concurrent first capture ran unlocked. Worse, releasing one of those removed the lock
+file of a writer that really did hold it.
+
+`hi` now creates `hi/` before taking the lock, and a lock it could not take is an
+error rather than a guard. A guard that did not acquire the lock is no longer
+something that can exist, so releasing one can never take somebody else's.
+
+A capture that refuses in a repository that had no `hi/` still writes nothing at all:
+the directory the lock created goes with the lock when it is released, and only ever
+while it is still empty.
+
+### `hi retire` no longer writes from before it took the lock
+
+`retire` read the files, then took the lock, and never read them again. Two retires
+at once both printed `retired`, both exited 0, and one of the two criteria was live
+again afterwards with `hi check` reporting nothing wrong. It now reloads inside the
+lock, the way capture always has.
+
+### A lock is broken because nobody holds it, not because it is old
+
+Any lock file older than sixty seconds used to be treated as belonging to a dead
+process and taken. Age says a holder is old, not that it is gone, and a slow bulk
+capture on a slow filesystem is old. That rule could take the lock away from a writer
+in the middle of a write.
+
+A writer now refreshes its lock four times a second while it holds it, and a waiter
+breaks a lock only after watching that stop for five seconds by its own clock. A `hi`
+that was killed still frees its repository without anybody deleting a file by hand,
+and a `hi` that is merely slow keeps what it took. Nothing compares this machine's
+clock against the file's, so clock skew cannot make a held lock look abandoned.
+
+`hi` now waits up to thirty seconds for another writer rather than five, which is
+also what a few hundred queued captures need.
+
+On Windows a removed file stays present until every handle to it closes, so a
+waiter arriving while another writer releases is told access is denied rather
+than that the lock exists. hi retries such an error for half a second before
+reporting it, which is a handoff rather than a locked directory. It still never
+hands back a lock it did not take.
+
+Recorded in DECISIONS.md §33, with why the §26 pass did not cover any of this.
+
 ## [0.7.0] 2026-09-17
 
 ### The feature list in INTENT.md stays true by itself

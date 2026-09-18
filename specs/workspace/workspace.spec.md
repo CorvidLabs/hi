@@ -51,8 +51,8 @@ file), `out` (rewriting `INTENT.md`) and `view` (writing the HTML page) (hi: FIL
 | `criteria_count` | Count of active criteria across every doc, retired excluded. |
 | `doc_for_family` | Index of the doc that owns a family, by frontmatter declaration or by actual use. |
 | `find_id` | Look up one criterion by exact id, active or retired, returning its doc index with it. |
-| `acquire` | Take the one-writer lock for a repository's `hi/` directory, waiting for another writer and returning a guard that releases on drop. |
-| `Guard` | The held lock. Releasing on drop means a refusal never leaves the lock behind. |
+| `acquire` | Take the one-writer lock for a repository's `hi/` directory, creating that directory when the repository has never run hi, waiting for another writer, and returning a guard that releases on drop. Fails rather than returning a guard it did not take. |
+| `Guard` | The held lock, and only ever a lock that was really taken: the constructor is private and takes the file that was exclusively created. Releasing on drop means a refusal never leaves the lock behind. |
 | `strays` | Every criterion-shaped line hi does not read as structure, across the loaded docs and the skipped files alike, as a `Vec<Stray>`. The one reservation lookup: `check` reports from it and `capture` refuses from it, so what is reported as used and what is refused can never disagree (hi: CAPTURE-14, FILE-20). |
 | `find_stray` | The one `Stray` speaking for this id, matched after stripping emphasis, or `None`. Capture refuses such an id: a line hi cannot parse has still used it, and handing it out again puts two identical ids with different sentences in one file (hi: CAPTURE-14, FILE-20). |
 | `Stray` | One such line, located: workspace-relative `file`, 1-based `line`, the id-shaped `token` as the file has it, and `place`. |
@@ -94,14 +94,19 @@ Every exported function is an inherent method on `Workspace`. One private free f
 | `families` | `fn families(&self) -> Vec<String>` | Every family in the workspace, deduplicated and sorted: the union of each doc's declared `families:` and the families its criteria actually use. |
 | `rel` | `fn rel(&self, path: &Path) -> String` | Renders `path` relative to `root` for stable, machine-comparable output such as `hi/chat.md`. The remaining components are joined with `/` rather than the host separator, so a Windows run prints `hi/chat.md` too and the string is safe in exported JSON, an issue body and a markdown link (hi: FILE-12). A path that is not under `root` is rendered from its own components rather than failing. |
 | `holds_hi_files` (private) | `fn holds_hi_files(dir: &Path) -> bool` | True when `dir` holds at least one file this tool would recognize: a `*.md` (extension compared case-insensitively) whose opening `---` frontmatter block contains a key of exactly `hi`. Strips a leading UTF-8 BOM before looking, so an editor-written marker cannot hide a file from discovery the way it once hid the frontmatter from the parser (hi: FILE-11). A directory it cannot list, a file it cannot read, or a file that is not valid UTF-8 simply does not count; nothing here errors. |
-| `acquire` | `lock::acquire(hi_dir: &Path) -> Result<Guard>` | Exclusive-create `<hi_dir>/.hi.lock`. Retries every 20ms for 5 seconds, treats a lock older than 60 seconds as abandoned by a dead process and takes it, and gives up with a message naming the file to delete. A `hi/` that cannot be written returns a guard rather than a lock error, because the caller is about to fail with something more useful. |
-| `Guard::drop` | `fn drop(&mut self)` | Removes the lock file. Held across the whole read-modify-write in `capture` and `retire`, not just the write: `doc::write_atomically` makes one write atomic and does nothing about two processes each reading the same original and writing over the other. Eight concurrent captures used to land two (hi: FILE-19). |
+| `acquire` | `lock::acquire(hi_dir: &Path) -> Result<Guard>` | `create_dir_all(hi_dir)`, then exclusive-create `<hi_dir>/.hi.lock` and write the holder's pid into it. Retries every 20ms for 30 seconds and then gives up with a message naming the file to delete. An error that is neither "somebody has it" nor "the directory went away" has to persist for `GRACE` (500ms) before it is treated as real: Windows keeps a removed file present until every handle closes, so a waiter arriving during a handoff is told access is denied rather than that the lock exists, and one capture in thirty-two failed that way on CI. The directory comes first because the lock lives inside it: before `hi/` exists there is nothing to create a lock file in, and that failure used to be handed back as a guard, so every bootstrap capture ran unlocked (DECISIONS.md §33). Any failure other than "already taken" is an error, never a guard. |
+| `acquire_within` (private) | `fn acquire_within(hi_dir: &Path, patience: Duration, abandoned: Duration) -> Result<Guard>` | The body of `acquire`, with both waits named so a test can wait in milliseconds instead of seconds. `acquire` passes `PATIENCE` (30s) and `ABANDONED` (5s). |
+| `Guard::held` (private) | `fn held(file: File, path: PathBuf, dir: PathBuf, created_dir: bool) -> Guard` | The only constructor, and it takes the `File` that was exclusively created, so a guard that does not hold the lock cannot be built. Writes the pid and starts the heartbeat thread. |
+| `Guard::drop` | `fn drop(&mut self)` | Ends the heartbeat (drops the sender, joins the thread), removes the lock file, and, when acquiring had to create `hi/` itself, removes that directory as well — `remove_dir` refuses a directory with anything in it, so this only ever takes back an empty one and a refusal leaves nothing behind (hi: CAPTURE-5). Held across the whole read-modify-write in `capture` and `retire`, not just the write: `doc::write_atomically` makes one write atomic and does nothing about two processes each reading the same original and writing over the other. Eight concurrent captures used to land two, and thirty-two into a repository with no `hi/` yet used to land twenty-three (hi: FILE-19). |
+| heartbeat (private thread) | spawned by `Guard::held` | Every `HEARTBEAT` (250ms) it reopens the lock file and rewrites the same pid, which moves its mtime. It never creates the file, so it can never put back a lock the guard has released, and the guard stops it before removing the file. This is what lets a waiter tell a working holder from a dead one (hi: FILE-23). |
 
 ## Invariants
 
-1. The module never writes to disk. It opens files for reading and nothing else: no `fs::write`,
-   no `create_dir_all`, no file handle opened for writing anywhere in it, `holds_hi_files`
-   included, which only reads. Every edit to an existing hi file goes through `doc`'s insert/save
+1. `src/workspace.rs` never writes to disk. It opens files for reading and nothing else: no
+   `fs::write`, no `create_dir_all`, no file handle opened for writing anywhere in it,
+   `holds_hi_files` included, which only reads. The one exception in this spec is `src/lock.rs`,
+   whose whole job is a file: it creates `hi/` when the repository has never run hi, creates and
+   refreshes `<hi>/.hi.lock`, and removes both again on release. Every edit to an existing hi file goes through `doc`'s insert/save
    path, whose temp-file-then-rename lives in the public `doc::write_atomically` (hi: FILE-8),
    the same helper `out::write_index` uses for `INTENT.md`, and the only hi file written from
    scratch is the one `capture::create_file` creates (hi: FILE-4).
@@ -161,6 +166,23 @@ Every exported function is an inherent method on `Workspace`. One private free f
     stray line is invisible to `doc_for_family`, `find_id`, `next_free`, `families` and
     `criteria_count`; it can never claim an id or advance a number. `check` is the module that
     reports it (`Kind::StrayCriterion`, hi: CHECK-2.e).
+
+16. **A `Guard` is always a lock that was really taken.** `acquire` creates `hi/` before it tries
+    the lock file, so the first capture in a repository locks like every later one, and any
+    failure other than `AlreadyExists` returns an error rather than a guard. The constructor is
+    private and takes the exclusively created `File`, so "a guard that did not acquire" is not a
+    value that can exist; releasing one therefore cannot remove a lock somebody else holds
+    (hi: FILE-19, DECISIONS.md §33).
+17. **A lock is broken because nobody is holding it, never because it is old.** The holder
+    refreshes the file four times a second from a thread of its own. A waiter remembers the mtime
+    it first saw and the `Instant` it saw it, and breaks the lock only after that mtime has stood
+    still for `ABANDONED` of the *waiter's own* elapsed time, re-reading it once more immediately
+    before removing it so that a lock another waiter has just taken is never removed. Nothing
+    compares this machine's clock to the file's, so clock skew on a shared filesystem cannot make
+    a live lock look ancient (hi: FILE-19, FILE-23).
+18. Every writer waits on the same path, `<root>/hi/.hi.lock`, and `root` comes from a
+    `Workspace::find` that canonicalized its starting directory, so two processes reaching the
+    same repository by different symlinked paths still contend for one lock.
 
 ## Behavioral Examples
 
@@ -244,6 +266,38 @@ Every exported function is an inherent method on `Workspace`. One private free f
 - **Then** it returns `hi/chat.md`, with forward slashes on every platform, which is the form
   that appears in check problems, capture output and the export payload (hi: FILE-12)
 
+### Scenario: The first two captures in a repository that has never run hi
+
+- **Given** `/repo/.git` exists, `/repo/hi` does not, and two `hi` processes start at once
+- **When** both call `lock::acquire(/repo/hi)`
+- **Then** both `create_dir_all` the directory (the loser of that race is told it already exists,
+  which is success), one exclusive-creates `/repo/hi/.hi.lock` and the other waits for it. Each
+  reloads the workspace under the lock, so the second one sees the file the first one wrote and
+  appends to it instead of writing its own copy over it (hi: FILE-19)
+
+### Scenario: A capture that refuses before `hi/` existed
+
+- **Given** the same fresh repository, and `hi SEND-1.a "a case with no parent"`
+- **When** capture refuses because `SEND-1` does not exist
+- **Then** the guard releases: the lock file goes, and because acquiring had created `hi/`, the
+  now-empty directory goes with it. Nothing at all was written (hi: CAPTURE-5)
+
+### Scenario: A holder that is slower than the abandonment window
+
+- **Given** a capture that holds the lock for a minute on a slow filesystem
+- **When** another `hi` waits for it
+- **Then** the waiter sees the lock's mtime move every 250ms, restarts its watch each time, and
+  never breaks the lock. It waits out `PATIENCE` and says so instead. The old rule broke any lock
+  older than sixty seconds, which said the holder was slow and not that it was dead
+
+### Scenario: A hi that was killed holding the lock
+
+- **Given** `hi/.hi.lock` left by a process that no longer exists, so nothing is refreshing it
+- **When** the next capture runs
+- **Then** its mtime stands still for `ABANDONED`, the waiter re-reads it, finds it unchanged,
+  removes it and takes its own. The repository recovers without anybody deleting a file by hand
+  (hi: FILE-23)
+
 ## Error Cases
 
 | Condition | Behavior |
@@ -261,6 +315,11 @@ Every exported function is an inherent method on `Workspace`. One private free f
 | `doc_for_family` is asked about an unknown family | `None`, which capture reads as "start a new file", never as a failure |
 | `find_id` is asked about an id nothing uses | `None` |
 | `next_free` is asked about a family with no criteria | `1` |
+| `hi/` cannot be created, because the repository root is not writable | `acquire` fails with `creating <dir>` wrapping the underlying I/O error, before anything else happens |
+| The lock file cannot be created for any reason other than another writer holding it, and still cannot 500ms later | `acquire` fails with `could not take the write lock <path>` and a hint naming the directory hi has to be able to write in. It never returns a guard it did not take, and the file on disk is untouched |
+| Another writer holds the lock and keeps holding it | `acquire` retries for `PATIENCE` and fails with `another hi is writing to <dir> and has not finished`, plus the file to delete if nothing is running |
+| A waiter's create fails during another writer's release, which on Windows reads as access denied rather than as the file existing | Retried for `GRACE`. A handoff is over in microseconds, so the next attempt succeeds; only an error still there half a second later is reported |
+| The heartbeat cannot reopen the lock file | The thread stops. The guard still removes the file on release; a lock that stops being refreshed is recoverable by the next waiter, which is the same path a killed process takes |
 | `rel` is given a path that is not under `root` | Returns that path's own components joined with `/`, so an absolute one comes back with a doubled leading separator. No caller in hi does this |
 
 ## Dependencies
@@ -271,6 +330,10 @@ Every exported function is an inherent method on `Workspace`. One private free f
 |-------------|-------------|
 | `std::fs` | `canonicalize`, `read_dir`, `read_to_string` (the frontmatter sniff in `holds_hi_files`) |
 | `std::path` | `Path`, `PathBuf` |
+| `std::fs` (lock) | `create_dir_all`, `OpenOptions::create_new` for the exclusive create, `metadata`/`modified` for the abandonment watch, `remove_file`, `remove_dir` |
+| `std::sync::mpsc` | `channel`, `recv_timeout`: the heartbeat's timer, and how the guard ends it |
+| `std::thread` | `spawn` for the heartbeat, `sleep` for the retry |
+| `std::time` | `Duration`, `Instant` (the waiter's own elapsed time), `SystemTime` (the lock's mtime, compared only against itself) |
 | `anyhow` | `Result`, `Context::with_context` for I/O context, `bail!` for the no-workspace error |
 | `doc` | `Doc`, `Doc::load`, `Doc::all`, `Doc::used_families`, `Doc::criteria`, `Doc::front.families`, `Criterion` |
 | `id` | `Id` for `find_id` lookups, `Id::family` and `Id::root_number` for family and numbering queries |
@@ -294,3 +357,4 @@ Every exported function is an inherent method on `Workspace`. One private free f
 | 2026-09-16 | Leif | Verified the reconciliation against `src/workspace.rs`, `src/main.rs` and the full test suite: the discovery rewrite checks out line for line. Corrected three things it left behind: the declaration pass now reads a `front.families` that `doc` fills from inline, block or singular-`family:` form alike (invariant 9); `main`'s two call sites get `--root` from `peel_root` and from `cli.root` respectively, not both from `peel_root`; and `intent_path` is in fact asserted end to end by the `hi index` tests in `tests/cli.rs`, not merely executed. Note for a future reader: the `///` comment on `find` in the source still describes the old `.git` stop and contradicts the code below it. |
 | 2026-09-16 | Leif | Reconciled with the bug-fix pass: `find` now recognizes a workspace by content via the new private `holds_hi_files` (a `*.md` carrying a `hi:` key, BOM stripped) instead of by the directory name, and `.git` became a remembered fallback rather than a stop, so a farther real `hi/` now beats a nearer repo root, reversing the previous rule. Added the Hindi-locale and BOM scenarios, the recognition-gates-discovery-not-loading invariant, the fenced/stray-lines-are-invisible invariant, and the `--root`/parent-first notes for `main` and `capture`. |
 | 2026-09-16 | Leif | Drift pass against the shipped binary. `.git` is a **stop** again, not a remembered fallback: there is no `git_root`, the walk returns `load(dir)` at the first `.git` it meets, and a repo nested inside another no longer adopts the outer one's criteria (hi: CAPTURE-10, verified with `hi check` in a nested `.git` fixture reporting `0 criteria`). Replaced the not-found message with the one the binary prints. Corrected `rel`: it now joins components with `/` on every platform (hi: FILE-12), and its outside-`root` fallback is no longer the path unchanged. Noted that `out::write_index` shares the public `doc::write_atomically`, that `peel_root` only consumes a `--root` that precedes the id, and that `view` takes the page title from `root`. Added the nested-repository scenario. |
+| 2026-09-17 | Claude | `lock::acquire` now creates `hi/` before taking the lock and fails closed on anything but a lock another writer holds, so the first capture in a repository is locked like every later one; `Guard`'s constructor is private and takes the exclusively created file, so a guard that never acquired cannot exist to remove somebody else's lock on drop. Staleness is no longer age: the holder heartbeats and a waiter breaks a lock only after watching its mtime stand still for `ABANDONED` of its own elapsed time. `PATIENCE` 5s → 30s, `STALE` 60s → `ABANDONED` 5s. Rewrote the `acquire`, `Guard` and `Guard::drop` rows, narrowed invariant 1 to `src/workspace.rs`, added invariants 16–18, four scenarios, four error rows and the new `std` dependencies (hi: FILE-19, FILE-23, CAPTURE-5, DECISIONS.md §33). | A follow-up from Windows CI: a create that fails for any other reason is retried for `GRACE` (500ms) before it is reported, because a release there leaves the file briefly present and undeletable and a waiter reads that as access denied. |

@@ -76,7 +76,7 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
 - **Line-index bookkeeping after `splice`.** `Doc::insert` shifts `line`, `end_line`,
   `criteria_end` and `criteria_heading`. `rewrite_families` shifts them again when it adds a
   frontmatter line. Miss one and the next insert lands in the wrong place.
-- **An id is the only promise. Guard it.** Four of hi's own verbs could break it, three
+- **An id is the only promise. Guard it.** Five of hi's own verbs could break it, four
   silently. Anything that writes a `hi/*.md` must not be able to strand a criterion, forge one,
   hide one, or lose one to a concurrent write. `capture` and `retire` hold `lock::acquire` across
   the whole read-modify-write, and every string hi writes into a file goes through `doc::one_line`
@@ -103,6 +103,21 @@ serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync chec
   `Absent::LeaveAlone` so its whole effect on disk is a span replacement between two markers.
   `hi index` passes `Absent::Install`. A `## Features` heading is prose, and a person who deleted
   the block gets to keep it deleted (`hi: INDEX-4.c`, DECISIONS.md §32).
+- **Read inside the lock, or you are writing from before it.** Both write verbs call
+  `Workspace::find` again once the lock is granted. `retire` did not, and two concurrent retires
+  both reported success while one criterion came back to life. Holding a lock around a write you
+  decided on before you held it protects nothing (DECISIONS.md §33, `hi: RETIRE-7`).
+- **The lock must be a lock in a repository that has never run hi.** `hi/.hi.lock` lives inside
+  `hi/`, so `lock::acquire` creates the directory first and fails closed on anything else. It used
+  to hand back a `Guard` when the open failed, so every concurrent first capture ran unlocked and
+  releasing one deleted a real holder's lock. `Guard` has no public constructor for that reason,
+  and it takes back an empty `hi/` it made so a refusal still writes nothing. A write-path test
+  that starts from a repository which already has a `hi/` cannot see any of this: use
+  `cli::Repo::bare` (DECISIONS.md §33, `hi: FILE-19`, `CAPTURE-5`).
+- **Never break a lock because it is old.** Age says a holder is slow, and a bulk capture is slow.
+  The holder heartbeats, and a waiter breaks a lock only after its mtime stands still for
+  `ABANDONED` of the waiter's own elapsed time. Do not reintroduce a rule that compares this
+  machine's clock to the file's (DECISIONS.md §33, `hi: FILE-23`).
 - **Never write a fixed temp or fixture path.** `write_atomically` and the integration-test
   fixtures both used one, so two processes shared a scratch file. That is why the suite flaked and
   why bulk capture lost writes. Include the pid.
