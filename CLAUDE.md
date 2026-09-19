@@ -29,9 +29,18 @@ Each module owns one thing, and `main.rs` owns none of them.
 | `src/out.rs` | `ls`, `issue`, `export`, `index` |
 | `src/view.rs` | The HTML page, and the only markdown rendering in the crate. `view/style.css`, `view/app.js` and the three `view/theme*`/`view/*.html` files are `include_str!`-ed, never built by `format!` |
 | `src/main.rs` | clap wiring, routing, exit codes. No domain logic |
+| `src/lock.rs` | The write lock, which is the kernel's: `flock` on unix, `LockFileEx` on Windows. Specified with `workspace` |
+| `src/promise.rs` | `#[cfg(test)]`. Random capture / retire / hand-edit sequences over files hi did not write, asserted on shape and section |
 
 Every module has a spec under `specs/<module>/`, and requirements there cite the hi criterion they
-serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync check` is in the gate.
+serve (`hi: CAPTURE-3`). If you change behavior, update the spec. `specsync check` is in the gate,
+and it covers every line of `src/`.
+
+The two test targets are specified too, because both make claims nothing else can.
+`specs/promise/` covers `src/promise.rs` and `tests/promise.rs` — the generated half, which looks
+for the id defects nobody has found yet. `specs/cli/` covers `tests/cli.rs` — the black-box half,
+which pins the ones that shipped, one fixture per defect, and is the only place argv routing, exit
+codes and the stdout/stderr split are tested at all.
 
 ## Rules that are easy to break by accident
 
