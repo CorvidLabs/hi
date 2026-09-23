@@ -112,10 +112,10 @@ No known blockers.
 - Non-obvious in `export`: `is_family` comes from `Workspace::families`, which includes frontmatter
   declarations, but file selection additionally requires `doc.all()` to hold a criterion of that
   family. A family declared in frontmatter and used by nothing therefore selects no file, and the
-  export bails with `nothing matches '<scope>'. Give a family like SEND, a file like chat, or
-  nothing at all for the whole repository`. That message no longer asserts the family does not
-  exist, but it still answers a correct family name by listing the three things a scope can be, and
-  it never says the family is declared and empty. `hi ls --family <it>` is quieter about the same
+  export bails with `nothing matches '<scope>'. Give a family like SEND, a file like chat, an id
+  like SEND-1, or nothing at all for the whole repository`. That message no longer asserts the
+  family does not exist, but it still answers a correct family name by listing the four things a
+  scope can be, and it never says the family is declared and empty. `hi ls --family <it>` is quieter about the same
   situation: the `no criteria yet` hint, exit 0.
 - Non-obvious in `export`: `matches_file` has three arms, `scope == stem`, `scope == "<stem>.md"`,
   and `scope.trim_start_matches("./").ends_with("hi/<stem>.md")`. The third is a **suffix test on a

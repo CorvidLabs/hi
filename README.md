@@ -209,7 +209,7 @@ filter. Your words are passed through untouched in all of them.
 | `hi ls [--family F] [--retired]` | Read what you have agreed to. |
 | `hi retire <ID> [reason]` | Change your mind. Moves a criterion and its cases into `## Retired`. |
 | `hi issue <ID> [--create]` | Print a ticket, or open a real GitHub issue with `gh`. |
-| `hi export [FAMILY \| file]` | JSON for an agent, intent prose included. |
+| `hi export [FAMILY \| file \| ID]` | JSON for an agent, intent prose included. Give one id to get just that criterion, its cases and the criteria above it, so a large `hi/` is never read whole. |
 | `hi index` | Rewrite the feature list inside `INTENT.md`, and nothing else in it, adding the `## Features` section if there is none. Capture and `hi retire` refresh a list that is there; run this by hand after editing a `hi/*.md` yourself, or to ask for a list back after deleting one. |
 | `hi view [--out FILE]` | One self-contained HTML page: a sticky feature rail, search with match highlighting, sort, keyboard navigation, and a copyable link for every id. Named after your `INTENT.md` heading, in CorvidLabs brand colors, light and dark. Works offline, and with scripting off it is still readable. |
 | `hi seed` | Write `hi/AGENTS.md` when it is missing, or replace it when it is still a template hi has shipped. Refuses if you have edited the file. |
@@ -255,6 +255,7 @@ Intent is written once, by a human. Everything downstream is generated from it:
 ```console
 $ hi issue SEND-1 --create            # a ticket, with hi: SEND-1 as the permanent backlink
 $ hi export SEND | claude -p "write the spec-sync module spec for this"
+$ hi export SEND-1.a                   # just the piece you are building, and what it sits under
 ```
 
 **Reach for hi upstream of whoever already decided the shape.** Writing intent for code that

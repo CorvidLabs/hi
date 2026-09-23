@@ -67,6 +67,10 @@ spec: out.spec.md
 - As an agent that merged a branch touching `hi/`, I want the file hi wrote into the repository to
   tell me to check the ids, because git merged two branches that chose the same one and said
   nothing (hi: HABIT-5)
+- As an agent building one criterion out of a large `hi/`, I want to export just that criterion,
+  its cases, and the intent of its file, so I read only the piece I am working on (hi: EXPORT-7)
+- As that agent, I want the criteria a case sits under to come with it, so I never read a case
+  without knowing what it is a case of (hi: EXPORT-7.a)
 
 ## Acceptance Criteria
 
@@ -176,7 +180,7 @@ Acceptance Criteria
 ### REQ-out-007
 
 `export` SHALL accept a family, a file, or no scope at all, selecting the right files and
-criteria for each (hi: EXPORT-2).
+criteria for each (hi: EXPORT-2). One criterion id is the fourth scope, in REQ-out-022.
 
 Acceptance Criteria
 
@@ -230,8 +234,9 @@ error.
 Acceptance Criteria
 
 - A stated scope that selects no file exits with exactly
-  `nothing matches '<scope>'. Give a family like SEND, a file like chat, or nothing at all for the
-  whole repository`, which names the scope and then names the three things a scope can be.
+  `nothing matches '<scope>'. Give a family like SEND, a file like chat, an id like SEND-1, or
+  nothing at all for the whole repository`, which names the scope and then names the four things a
+  scope can be.
 - A family declared only in frontmatter, used by no criterion, selects no file and therefore takes
   this same path. The message does not claim the family does not exist, but it does tell the person
   to give a family when they gave one, and it never says the family is declared and empty.
@@ -406,11 +411,11 @@ Acceptance Criteria
 - This is a property of the strings, not a runtime check. The first file an adopter reads is the
   one they write the rest of their prose to match, so a hard-wrapped starter file propagates the
   defect REQ-out-015 renders around.
-- `agent_instructions` says the convention in one sentence, which is one of the two narrowings of
+- `agent_instructions` says the convention in one sentence, which is one of the three narrowings of
   DECISIONS.md §27's rule that the file carries the habit and nothing else. It is admissible there
   because it is how markdown reads a newline rather than anything about hi's format, so it cannot
   go stale with a format that is not frozen (DECISIONS.md §29).
-- The other narrowing is one sentence telling an agent to run `hi check` after a merge that touched
+- The second narrowing is one sentence telling an agent to run `hi check` after a merge that touched
   `hi/`, because two branches can each choose the same id and git merges both without saying
   anything (hi: HABIT-5, DECISIONS.md §37, §38). The test for admitting a sentence here is not "is
   it one more sentence" but "can it ever become false": this one is a habit, which is the category
@@ -540,6 +545,39 @@ Acceptance Criteria
 - One added space is Other. Fuzzy matching would rewrite a person's words.
 - `write_with_endings` is the writer `seed_agent_files` uses for a Prior rewrite, so the endings
   the file had come back (hi: FILE-10).
+
+### REQ-out-022
+
+`export` SHALL accept one criterion id as a scope, and return that criterion, every case beneath it,
+and every criterion it sits under, in the same envelope as every other scope (hi: EXPORT-7,
+EXPORT-7.a, EXPORT-3).
+
+Acceptance Criteria
+
+- A scope that parses as an id selects the files holding a criterion in its slice: the id itself,
+  its descendants, and its ancestors. Within them only that slice is kept, active and retired alike.
+- A scope that parses as an id is read as an id, even when a file's frontmatter declares that
+  string as a family: declared family names are not validated, so the id takes precedence rather
+  than an empty family slice. A file stem cannot parse as one, because an id's family starts with
+  an uppercase letter and a criteria file with a lowercase one. Membership is decided by the
+  private `in_slice`.
+- In a workspace `hi check` passes, every `parent` in the payload names an entry that is in the
+  payload, so a case never arrives without the criteria above it (hi: EXPORT-7.a).
+- A case whose parent no file holds (`orphan-case`) is exported with that `parent` named and
+  absent. The payload does not invent the missing criterion or drop the case; `hi check` is what
+  reports the break (hi: CHECK-2.b).
+- Each selected file carries its full `## Intent` prose and its declared `families`; `product` is
+  omitted, as at every scope other than the whole repository (REQ-out-006, REQ-out-008).
+- A retired id is exported in `retired` with its retired cases, never in `criteria` (hi:
+  EXPORT-4). The live criteria it sits under still arrive in `criteria`, as they would for a live
+  case, because they are live and they are what the retired case was a case of (hi: EXPORT-7.a). A
+  retired top-level criterion therefore comes back with `criteria` empty.
+- A scope shaped like an id that does not parse, such as `SEND-01`, is refused with the parse
+  reason once nothing else matched it, rather than the list of what a scope can be.
+- A well-formed id no file holds selects no file and takes REQ-out-009's refusal.
+- `agent_instructions` names the habit this serves in one sentence: read only the criterion you
+  are building. The 0.8 template is kept in `src/seed/` so `hi seed` upgrades an untouched copy
+  (REQ-out-021, DECISIONS.md §40).
 
 ## Constraints
 

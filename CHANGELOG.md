@@ -8,6 +8,22 @@ The format itself is versioned separately by the `hi:` key in each file's frontm
 only version so far, and since 0.8.0 a file declaring any other version is
 refused rather than read as this one.
 
+## Unreleased
+
+### Added
+
+- `hi export <ID>` exports one criterion with its cases, the criteria it sits under, and the
+  intent of its file, in the same envelope as every other scope. An agent building one piece of a
+  large `hi/` reads that piece and nothing else (`EXPORT-7`, `EXPORT-7.a`, DECISIONS.md §40).
+- `hi/AGENTS.md` says so in one sentence. `hi seed` upgrades an untouched 0.8 copy, which is now a
+  known template.
+
+### Changed
+
+- The refusal for a scope that matches nothing names an id as the fourth thing a scope can be.
+- A scope shaped like an id that is not one, such as `SEND-01`, is refused with the reason, the
+  way capture refuses it.
+
 ## [0.8.0] 2026-09-18
 
 **The 1.0 release candidate.** Everything three readiness reviews called blocking is in this

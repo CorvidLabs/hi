@@ -153,7 +153,8 @@ Notes (`no-product-why`, `index-behind`, `index-markers`, `unexplained-retiremen
 Normative for `"export": 1`:
 
 - Every payload has `hi`, `export`, `scope`, and `files`. `product` is present only on a whole-repository export, and omitted rather than null when absent.
-- `scope` is `"repo"`, a family name, or a file stem, matching the argument that was given.
+- `scope` is `"repo"`, a family name, a file stem, or a criterion id, matching the argument that was given.
+- An id scope carries that criterion, every case beneath it, and every criterion it sits under that the files hold. Its file's `intent` comes with it. In a workspace `hi check` passes, every `parent` in the payload names an entry in the payload; a case whose parent is missing (`orphan-case`) still names that parent, which is absent.
 - `file` uses forward slashes on every platform.
 - `title` is omitted when the file has no `# ` heading.
 - `criteria` are the live ones; `retired` are the ones under `## Retired`. `retired` on a criterion object is the reason string and is omitted when there is none.

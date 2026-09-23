@@ -22,6 +22,15 @@ the intent sentence `It should feel like texting.`
 | `src/out.rs::export_scoped_to_a_family_keeps_only_that_family` | Unit | REQ-out-007. Two files (`chat.md` owning `SEND`, `billing.md` owning `BILLING`); scope `SEND` yields exactly one file entry, `hi/chat.md`. |
 | `src/out.rs::export_scoped_to_a_file_keeps_that_file` | Unit | REQ-out-006, REQ-out-007. Scope `chat` (the file stem without `.md`) yields `scope == "chat"` and exactly one file entry. |
 | `src/out.rs::export_rejects_an_unknown_scope` | Unit | REQ-out-009. Scope `NOPE` returns `Err`. |
+| `src/out.rs::export_scoped_to_an_id_keeps_it_with_its_cases_and_its_intent` | Unit | REQ-out-022. Scope `SEND-1` over two files yields one file entry, its intent, `criteria` of `SEND-1`, `SEND-1.a`, `SEND-1.a.1`, `SEND-1.b` in file order, no `SEND-2`, an empty `retired`, and no `product`. |
+| `src/out.rs::export_of_a_case_brings_every_criterion_it_sits_under` | Unit | REQ-out-022. Scope `SEND-1.a.1` yields `SEND-1`, `SEND-1.a`, `SEND-1.a.1` and asserts every `parent` names an entry in the payload (hi: EXPORT-7.a). |
+| `src/out.rs::export_of_an_orphan_case_names_the_parent_it_does_not_have` | Unit | REQ-out-022. Over a hand-edited file holding `SEND-2.a` and no `SEND-2`, scope `SEND-2.a` yields only that case, whose `parent` is still `"SEND-2"`: export neither invents the parent nor drops the case (hi: CHECK-2.b). |
+| `src/out.rs::an_id_wins_over_a_family_frontmatter_declared_by_the_same_name` | Unit | REQ-out-022. A file declaring `families: [SEND, SEND-1]` still exports `SEND-1` as an id, with `SEND-1` and `SEND-1.a`, rather than as an empty family slice. |
+| `src/out.rs::a_retired_case_comes_with_the_live_criterion_it_was_a_case_of` | Unit | REQ-out-022. Scope `SEND-1.b`, retired under a live `SEND-1`, yields `criteria` of `SEND-1` and `retired` of `SEND-1.b` (hi: EXPORT-4, EXPORT-7.a). |
+| `src/out.rs::an_id_shaped_scope_that_is_not_one_says_why` | Unit | REQ-out-022. Scope `SEND-01` is refused with `is not a valid id` and the leading-zero reason. |
+| `src/out.rs::export_of_a_retired_id_keeps_it_apart` | Unit | REQ-out-022. Scope `SEND-3`, which is retired, yields an empty `criteria` and `retired` of `SEND-3` (hi: EXPORT-4). |
+| `src/out.rs::export_of_an_id_is_the_same_envelope_with_less_in_it` | Unit | REQ-out-022, REQ-out-006. The top-level and per-file key sets for scope `SEND-1.a` equal those for scope `SEND` (hi: EXPORT-3). |
+| `src/out.rs::export_rejects_an_id_nobody_wrote` | Unit | REQ-out-022, REQ-out-009. Scope `SEND-9` returns `Err`, and the message names an id as a scope. |
 | `src/out.rs::a_marker_quoted_in_prose_is_not_the_generated_block` | Unit | REQ-out-012. Over an `INTENT.md` whose prose quotes `<!-- hi:index -->` mid-sentence above the real marker pair, `index_span` returns the real block: the sentence sits before `span.start`, `stale` is inside the span, and `span.end` leaves the closing line's newline outside so the blank line after the block survives. |
 | `src/out.rs::an_unclosed_marker_has_no_span` | Unit | REQ-out-013. `index_span` is `None` for an opening marker with no close, while `has_marker_line` still sees the opening marker, the exact pair of conditions that makes `write_index` bail. |
 | `src/out.rs::index_lists_each_file_with_its_families_and_count` | Unit | REQ-out-010. The generated block contains `[chat](hi/chat.md)`, the family `SEND`, and `(3 criteria)`. |
@@ -67,8 +76,10 @@ the intent sentence `It should feel like texting.`
 | REQ-out-017 (`refresh_index`) | `refresh_hands_back_a_refusal_instead_of_raising_it`, `a_capture_refreshes_the_feature_list`, `a_retire_refreshes_the_feature_list`, `a_capture_survives_an_index_it_cannot_refresh`, and `capture::tests::a_capture_leaves_the_generated_list_true` / `an_index_that_cannot_be_refreshed_is_not_a_failed_capture` in `specs/capture` |
 | REQ-out-018 (`index_note`) | `a_list_that_matches_is_worth_no_note`, `a_list_that_disagrees_is_a_note`, `a_list_hi_can_no_longer_refresh_is_a_note_too`, `a_file_with_no_block_at_all_is_not_a_list_that_is_behind`, `check_says_the_feature_list_is_behind_without_failing` |
 | REQ-out-014 (renders only parsed structure) | None here. The parser side is covered in `specs/doc`; nothing asserts that a fenced or stray id is absent from this module's output. See Gaps. |
+| REQ-out-022 (one id as a scope) | `export_scoped_to_an_id_keeps_it_with_its_cases_and_its_intent`, `export_of_a_case_brings_every_criterion_it_sits_under`, `export_of_an_orphan_case_names_the_parent_it_does_not_have`, `an_id_wins_over_a_family_frontmatter_declared_by_the_same_name`, `a_retired_case_comes_with_the_live_criterion_it_was_a_case_of`, `an_id_shaped_scope_that_is_not_one_says_why`, `export_of_a_retired_id_keeps_it_apart`, `export_of_an_id_is_the_same_envelope_with_less_in_it`, `export_rejects_an_id_nobody_wrote`, `export_takes_one_id_from_the_command_line` |
 | `tests/cli.rs` (`export_says_which_shape_it_is_apart_from_which_format_it_read`) | Integration | REQ-out-020. `hi export` carries `"hi": 1` for the format the files are in and `"export": 1` for the shape of the payload, as two separate fields. |
 | `tests/cli.rs` (`the_agent_file_says_to_check_the_ids_after_a_merge`) | Integration | REQ-out-016. The `hi/AGENTS.md` a first capture writes names `hi check`, a merge, and two branches choosing the same id (hi: HABIT-5). |
+| `tests/cli.rs` (`export_takes_one_id_from_the_command_line`) | Integration | REQ-out-022. `hi export SEND-1.a` through the real binary exits 0 with `scope == "SEND-1.a"` and `criteria` of `SEND-1` and `SEND-1.a`, and not `SEND-2`, over list-item criteria. |
 
 ## Manual Testing
 
@@ -107,7 +118,8 @@ These flows run against this repository's own `hi/` directory, which is the modu
       succeed and return the same one-file payload; only `.scope` differs, echoing what was typed.
       `export HI/generate.md` is refused, because the match is case-sensitive (REQ-out-007).
 - [ ] `./target/release/hi export NOPE` exits 1 with `nothing matches 'NOPE'. Give a family like
-      SEND, a file like chat, or nothing at all for the whole repository` (REQ-out-009).
+      SEND, a file like chat, an id like SEND-1, or nothing at all for the whole repository`
+      (REQ-out-009).
 - [ ] `cp INTENT.md /tmp/intent.before && ./target/release/hi index && diff /tmp/intent.before
       INTENT.md`: the only changed lines are inside the `hi:index` markers (REQ-out-011,
       hi: INDEX-2).
@@ -151,7 +163,7 @@ These flows run against this repository's own `hi/` directory, which is the modu
 | `issue` on a retired id | `<id> is retired, so it should not become work`, exits 1, and nothing is sent to `gh` even with `--create` |
 | `issue --create` where `gh` exits non-zero | `gh issue create failed`; `gh`'s own diagnostics have already been printed through inherited stdio |
 | `export` with a scope that is both a family and a file stem | Both match. The named file comes through whole, not just that family's slice, and every other file holding that family is also included, filtered to it |
-| `export` with a scope naming a family that frontmatter declares but no criterion uses | Refused with `nothing matches '<scope>'. Give a family like SEND, a file like chat, or nothing at all for the whole repository`; no file is selected, so a declared-but-unused family is invisible to `export` |
+| `export` with a scope naming a family that frontmatter declares but no criterion uses | Refused with `nothing matches '<scope>'. Give a family like SEND, a file like chat, an id like SEND-1, or nothing at all for the whole repository`; no file is selected, so a declared-but-unused family is invisible to `export` |
 | `export` with a scope spelled as a path: `hi/chat.md`, `./hi/chat.md`, or `chat.md` | All select `hi/chat.md`, the same as the bare stem. `scope` in the payload is whatever was typed |
 | `export` with a path that merely ends in `hi/<stem>.md`, such as `/anywhere/hi/chat.md` or `xhi/chat.md` | Selected: the path arm is a suffix test, not a path resolution. `HI/chat.md` and `hi\chat.md` are refused, because it is case-sensitive and forward-slash only |
 | `export` where an active criterion carries a `retired:` continuation line | The entry stays in `criteria` and additionally carries a `retired` key holding the note; the key is not a retirement signal |

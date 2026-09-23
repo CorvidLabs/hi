@@ -223,7 +223,7 @@ backtrace (hi: CAPTURE-1.c).
 | Capture given no sentence | `error: a criterion needs a sentence. Say what you actually want`, exit 1 |
 | `hi check` finds any structural problem | Problems printed to stdout, exit 1 |
 | `hi issue` given an id that does not exist, or a retired one | Error, exit 1 |
-| `hi export` given a scope matching no family or file | `error: nothing matches '<scope>'. Give a family like SEND, a file like chat, or nothing at all for the whole repository`, exit 1. A family, a bare stem (`chat`), a file name (`chat.md`) and the repo-relative path (`hi/chat.md`) all match |
+| `hi export` given a scope matching no family, file or id | `error: nothing matches '<scope>'. Give a family like SEND, a file like chat, an id like SEND-1, or nothing at all for the whole repository`, exit 1. A family, a bare stem (`chat`), a file name (`chat.md`) and the repo-relative path (`hi/chat.md`) all match |
 | `hi index` where `INTENT.md` opens a `hi:index` marker and never closes it | Error from `out::write_index`, exit 1, `INTENT.md` untouched (hi: INDEX-2.b) |
 | `hi index` where `INTENT.md` cannot be read for any reason but absence | Error from `out::write_index`, `reading <path>` wrapping the I/O error, exit 1, `INTENT.md` untouched (hi: INDEX-2.c) |
 | The same broken `INTENT.md` during a capture or a `hi retire` | Not an error. `out::refresh_index` hands the message back, `main` prints `note: the feature list in INTENT.md was not refreshed: <text>` on stderr, and the exit code is 0 because the criterion is already on disk (hi: INDEX-4.a) |

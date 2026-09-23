@@ -75,7 +75,7 @@ enum Command {
     },
     /// Emit intent and criteria as JSON for an agent
     Export {
-        /// A family, a file stem, or nothing for the whole repository
+        /// A family, a file stem, an id for just that criterion, or nothing for the whole repository
         scope: Option<String>,
     },
     /// Move a criterion into Retired, keeping its id reserved forever

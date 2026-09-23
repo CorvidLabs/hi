@@ -382,6 +382,27 @@ fn export_stdout_is_parseable_json() {
 }
 
 #[test]
+fn export_takes_one_id_from_the_command_line() {
+    let repo = Repo::new("exportid");
+    repo.write(
+        "hi/chat.md",
+        "---\nhi: 1\nfamilies: [SEND]\n---\n\n# Chat\n\n## Intent\n\nIt should feel like texting.\n\n## Criteria\n\n- **SEND-1**  I hit enter and it shows up.\n  - **SEND-1.a**  If I have no connection it queues.\n- **SEND-2**  It reaches them.\n",
+    );
+    let out = repo.run(&["export", "SEND-1.a"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout(&out)).expect("export stdout must be valid JSON");
+    assert_eq!(value["scope"], "SEND-1.a");
+    let ids: Vec<&str> = value["files"][0]["criteria"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["SEND-1", "SEND-1.a"]);
+}
+
+#[test]
 fn export_rejects_a_scope_that_matches_nothing() {
     let repo = Repo::with_chat("badscope");
     let out = repo.run(&["export", "NOPE"]);
