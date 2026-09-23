@@ -35,6 +35,8 @@ Generation must work with no auth, no network, and no integration, because the m
 - **EXPORT-4**  I get the retired criteria in the export kept apart from the live ones, so the agent never writes a spec for something we dropped.
 - **EXPORT-5**  The starter prompts hi wrote into a file never reach an agent as if I had written them.
 - **EXPORT-6**  I can tell the shape of the export payload apart from the version of the files it was built from, so a change to one never reads as a change to the other.
+- **EXPORT-7**  I can export one criterion, and I get it with its cases and the intent of its file, so an agent working on one piece reads only that piece.
+  - **EXPORT-7.a**  I never get a case without the criteria it sits under.
 
 - **INDEX-1**  I get a root file that shows what features exist without keeping a list by hand.
   - **INDEX-1.a**  I can run hi with no root file yet, or no list in it, and it starts one with a place for my own prose rather than refusing until I set it up.

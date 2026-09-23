@@ -362,32 +362,53 @@ fn matches_file(doc: &Doc, scope: &str) -> bool {
             .ends_with(&format!("hi/{file}"))
 }
 
-/// Build the agent payload. `scope` is a family, a file, or nothing.
+/// True when `criterion` belongs to the slice an id scope names: the criterion
+/// itself, every case beneath it, and every criterion it sits under.
+///
+/// The criteria above come along so that, in a workspace `hi check` passes,
+/// every `parent` in the payload names an entry that is in the payload. A case
+/// read without what it is a case of is a sentence with its subject missing
+/// (hi: EXPORT-7.a). An orphan case keeps naming the parent it does not have:
+/// export reports what the files hold, and `hi check` reports the break.
+fn in_slice(target: &Id, criterion: &Criterion) -> bool {
+    criterion.id.as_ref().is_some_and(|id| {
+        id == target || id.is_descendant_of(target) || target.is_descendant_of(id)
+    })
+}
+
+/// Build the agent payload. `scope` is a family, a file, an id, or nothing.
+///
+/// A family and an id never collide, because a family has no hyphen. A file
+/// and an id never collide either: an id's family starts with an uppercase
+/// letter, and a file hi reads as criteria starts with a lowercase one, since
+/// an uppercase name in `hi/` is hi's own (DECISIONS.md §27, hi: EXPORT-7).
 pub fn export(workspace: &Workspace, scope: Option<&str>) -> Result<String> {
     let families = workspace.families();
     let is_family = scope.is_some_and(|s| families.iter().any(|f| f == s));
+    let target = scope.and_then(|s| Id::parse(s).ok());
+
+    // The criteria a family or id scope reaches. A file scope takes its file
+    // whole instead, so it is decided per file below; one filter serves both
+    // which files are selected and what is kept in them, so the two cannot
+    // disagree.
+    let in_scope = |criterion: &Criterion| -> bool {
+        match (scope, target.as_ref()) {
+            (None, _) => true,
+            (Some(_), Some(target)) => in_slice(target, criterion),
+            (Some(scope), None) => {
+                is_family && criterion.id.as_ref().is_some_and(|id| id.family == scope)
+            }
+        }
+    };
 
     let mut files = Vec::new();
     for doc in &workspace.docs {
         let is_this_file = scope.is_some_and(|s| matches_file(doc, s));
-        if let Some(scope) = scope
-            && !is_this_file
-            && !(is_family
-                && doc
-                    .all()
-                    .any(|c| c.id.as_ref().is_some_and(|id| id.family == scope)))
-        {
+        // A whole-repo export keeps every file, one with no criteria yet included.
+        if scope.is_some() && !is_this_file && !doc.all().any(in_scope) {
             continue;
         }
-
-        let keep = |criterion: &&Criterion| -> bool {
-            match scope {
-                Some(scope) if is_family && !is_this_file => {
-                    criterion.id.as_ref().is_some_and(|id| id.family == scope)
-                }
-                _ => true,
-            }
-        };
+        let keep = |criterion: &&Criterion| is_this_file || in_scope(criterion);
 
         files.push(ExportFile {
             file: workspace.rel(&doc.path),
@@ -415,9 +436,17 @@ pub fn export(workspace: &Workspace, scope: Option<&str>) -> Result<String> {
     if let Some(scope) = scope
         && files.is_empty()
     {
+        // Shaped like an id and not one: say why, the way capture does,
+        // rather than listing what a scope can be. Only once nothing matched,
+        // because `send-1` is also the stem of family SEND_1's file.
+        if crate::id::looks_like_id(scope)
+            && let Err(error) = Id::parse(scope)
+        {
+            bail!("'{scope}' is not a valid id: {error}");
+        }
         bail!(
-            "nothing matches '{scope}'. Give a family like SEND, a file like chat, or \
-             nothing at all for the whole repository"
+            "nothing matches '{scope}'. Give a family like SEND, a file like chat, an id \
+             like SEND-1, or nothing at all for the whole repository"
         );
     }
 
@@ -491,13 +520,14 @@ pub fn starter_intent_file(workspace: &Workspace) -> String {
 
 /// What hi writes into `hi/AGENTS.md` on the first capture.
 ///
-/// The habit, and one sentence about how prose is written here. It carries no
+/// The habit, one sentence about how prose is written here, and one about
+/// reading only the criterion you are building. It carries no
 /// id grammar, no file format and no list of the families already here: this
 /// file is written once and never rewritten, so anything in it that hi could
 /// change underneath it would be wrong later with nothing to notice
 /// (DECISIONS.md §27).
 ///
-/// Two sentences narrow §27's "say less" rule, and both pass the same test:
+/// Three sentences narrow §27's "say less" rule, and all pass the same test:
 /// not "is it one more sentence" but "can it ever become false".
 ///
 /// The wrapping sentence is how markdown reads a newline, which is the same
@@ -513,6 +543,14 @@ pub fn starter_intent_file(workspace: &Workspace) -> String {
 /// problems HI-1.md freezes and `CHECK-2.a` captures, so the
 /// one thing this sentence relies on is as close to frozen as hi has.
 ///
+/// The export sentence is the third narrowing, on the same test. It is a habit
+/// (read the one criterion you are building, not the whole directory), and the
+/// one thing it rests on is that an id is a scope `hi export` accepts, which
+/// HI-1.md freezes beside the envelope. A file that tells an agent to read
+/// everything grows more expensive with every capture, and that is the one
+/// way this file could go stale without a word in it changing
+/// (hi: EXPORT-7, DECISIONS.md §40).
+///
 /// The text is itself one line per paragraph, because the file somebody reads
 /// first is the one they write the rest of their prose to match (FILE-21.a).
 pub fn agent_instructions() -> String {
@@ -527,6 +565,8 @@ pub fn agent_instructions() -> String {
      3. Ask the person to confirm them. Nothing lands that they did not agree to.\n\
      4. Capture what they agreed to, then build it.\n\n\
      That happens before every feature, not only the first one.\n\n\
+     When you are building one criterion rather than drafting new ones, read only that one: \
+     `hi export <ID>` prints it with its cases, the criteria above it, and the intent of its file.\n\n\
      After a merge that touched this directory, run `hi check`. Two branches can each choose the \
      same id, and git will merge both without saying anything.\n\n\
      Write the prose in these files as one line per paragraph, with a blank line between \
@@ -556,6 +596,7 @@ pub enum AgentTemplate {
 const PRIOR_AGENT_INSTRUCTIONS: &[&str] = &[
     include_str!("seed/agents_0_5.md"),
     include_str!("seed/agents_0_6.md"),
+    include_str!("seed/agents_0_8.md"),
 ];
 
 fn fold_agent_text(raw: &str) -> String {
@@ -1023,6 +1064,127 @@ mod tests {
         assert!(export(&workspace, Some("NOPE")).is_err());
     }
 
+    const DEEP: &str = "---\nhi: 1\nfamilies: [SEND]\n---\n\n# Chat\n\n## Intent\n\nIt should feel like texting.\n\n## Criteria\n\nSEND-1  I hit enter and it shows up.\nSEND-1.a  If I have no connection it queues.\nSEND-1.a.1  The queue survives a restart.\nSEND-1.b  If the thread is gone it warns me.\nSEND-2  It reaches them.\n\n## Retired\n\nSEND-3  Messages auto-delete.\n";
+
+    fn ids(value: &serde_json::Value, list: &str) -> Vec<String> {
+        value["files"][0][list]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["id"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn export_scoped_to_an_id_keeps_it_with_its_cases_and_its_intent() {
+        let other = "---\nhi: 1\nfamilies: [BILLING]\n---\n\n## Criteria\n\nBILLING-1  I can see what I paid.\n";
+        let workspace = workspace(&[("chat.md", DEEP), ("billing.md", other)]);
+        let value: serde_json::Value =
+            serde_json::from_str(&export(&workspace, Some("SEND-1")).unwrap()).unwrap();
+        assert_eq!(value["scope"], "SEND-1");
+        assert_eq!(value["files"].as_array().unwrap().len(), 1);
+        assert_eq!(value["files"][0]["intent"], "It should feel like texting.");
+        assert_eq!(
+            ids(&value, "criteria"),
+            ["SEND-1", "SEND-1.a", "SEND-1.a.1", "SEND-1.b"]
+        );
+        assert!(ids(&value, "retired").is_empty());
+        assert!(value.get("product").is_none());
+    }
+
+    #[test]
+    fn export_of_a_case_brings_every_criterion_it_sits_under() {
+        let workspace = workspace(&[("chat.md", DEEP)]);
+        let value: serde_json::Value =
+            serde_json::from_str(&export(&workspace, Some("SEND-1.a.1")).unwrap()).unwrap();
+        assert_eq!(
+            ids(&value, "criteria"),
+            ["SEND-1", "SEND-1.a", "SEND-1.a.1"]
+        );
+        // Every parent the payload names is in the payload (hi: EXPORT-7.a).
+        let present = ids(&value, "criteria");
+        for criterion in value["files"][0]["criteria"].as_array().unwrap() {
+            if let Some(parent) = criterion["parent"].as_str() {
+                assert!(present.iter().any(|id| id == parent), "{parent} missing");
+            }
+        }
+    }
+
+    #[test]
+    fn export_of_an_orphan_case_names_the_parent_it_does_not_have() {
+        // A hand-edit left SEND-2.a with no SEND-2. `hi check` reports that as
+        // orphan-case; export neither invents the parent nor drops the case.
+        let orphan = "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\nSEND-1  I hit enter and it shows up.\nSEND-2.a  If they blocked me it never delivers.\n";
+        let workspace = workspace(&[("chat.md", orphan)]);
+        let value: serde_json::Value =
+            serde_json::from_str(&export(&workspace, Some("SEND-2.a")).unwrap()).unwrap();
+        assert_eq!(ids(&value, "criteria"), ["SEND-2.a"]);
+        assert_eq!(value["files"][0]["criteria"][0]["parent"], "SEND-2");
+    }
+
+    #[test]
+    fn an_id_wins_over_a_family_frontmatter_declared_by_the_same_name() {
+        // Declared families are not validated, so `SEND-1` can be declared as
+        // one. Read as a family it selected nothing and exported an empty file.
+        let declared = "---\nhi: 1\nfamilies: [SEND, SEND-1]\n---\n\n## Criteria\n\nSEND-1  I hit enter and it shows up.\nSEND-1.a  If I have no connection it queues.\n";
+        let workspace = workspace(&[("chat.md", declared)]);
+        let value: serde_json::Value =
+            serde_json::from_str(&export(&workspace, Some("SEND-1")).unwrap()).unwrap();
+        assert_eq!(ids(&value, "criteria"), ["SEND-1", "SEND-1.a"]);
+    }
+
+    #[test]
+    fn a_retired_case_comes_with_the_live_criterion_it_was_a_case_of() {
+        let retired_case = "---\nhi: 1\nfamilies: [SEND]\n---\n\n## Criteria\n\nSEND-1  I hit enter and it shows up.\nSEND-1.a  If I have no connection it queues.\n\n## Retired\n\nSEND-1.b  If the thread is gone it warns me.\n";
+        let workspace = workspace(&[("chat.md", retired_case)]);
+        let value: serde_json::Value =
+            serde_json::from_str(&export(&workspace, Some("SEND-1.b")).unwrap()).unwrap();
+        assert_eq!(ids(&value, "criteria"), ["SEND-1"]);
+        assert_eq!(ids(&value, "retired"), ["SEND-1.b"]);
+    }
+
+    #[test]
+    fn an_id_shaped_scope_that_is_not_one_says_why() {
+        let workspace = workspace(&[("chat.md", DEEP)]);
+        let error = export(&workspace, Some("SEND-01")).unwrap_err().to_string();
+        assert!(error.contains("is not a valid id"), "{error}");
+        assert!(error.contains("leading zero"), "{error}");
+    }
+
+    #[test]
+    fn export_of_a_retired_id_keeps_it_apart() {
+        let workspace = workspace(&[("chat.md", DEEP)]);
+        let value: serde_json::Value =
+            serde_json::from_str(&export(&workspace, Some("SEND-3")).unwrap()).unwrap();
+        assert!(ids(&value, "criteria").is_empty());
+        assert_eq!(ids(&value, "retired"), ["SEND-3"]);
+    }
+
+    #[test]
+    fn export_of_an_id_is_the_same_envelope_with_less_in_it() {
+        let workspace = workspace(&[("chat.md", DEEP)]);
+        let keys = |scope: &str| {
+            let value: serde_json::Value =
+                serde_json::from_str(&export(&workspace, Some(scope)).unwrap()).unwrap();
+            let top: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
+            let file: Vec<String> = value["files"][0]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect();
+            (top, file)
+        };
+        assert_eq!(keys("SEND"), keys("SEND-1.a"));
+    }
+
+    #[test]
+    fn export_rejects_an_id_nobody_wrote() {
+        let workspace = workspace(&[("chat.md", DEEP)]);
+        let error = export(&workspace, Some("SEND-9")).unwrap_err().to_string();
+        assert!(error.contains("an id like SEND-1"), "{error}");
+    }
+
     #[test]
     fn a_marker_quoted_in_prose_is_not_the_generated_block() {
         let prose = "# Product\n\nNote: hi rewrites everything between <!-- hi:index --> and the close.\n\n## Features\n\n<!-- hi:index -->\nstale\n<!-- /hi:index -->\n";
@@ -1230,6 +1392,10 @@ mod tests {
         );
         assert_eq!(
             classify_agent_file(include_str!("seed/agents_0_6.md")),
+            AgentTemplate::Prior
+        );
+        assert_eq!(
+            classify_agent_file(include_str!("seed/agents_0_8.md")),
             AgentTemplate::Prior
         );
         // A BOM and CRLF are storage, not words. Folding them is how we tell

@@ -2296,3 +2296,78 @@ enough and the answer is to also require that the file is still only the paragra
 not to fuzzy-match. Evidence that the property test is not finding things because it cannot
 reach them, which is a gap in the generator, not a reason to go back to only-authored fixtures.
 
+## 40. One criterion is a scope, because a context window is a budget
+
+`hi export` took a family, a file, or the whole repository. On a product with a few hundred
+criteria the whole repository is tens of thousands of tokens, and a family can be most of it. An
+agent building one criterion needs that criterion, what it is a case of, and why the feature
+exists. Everything else in its context is cost: it is paid for on every turn and it crowds out the
+code the agent is actually reading. hi's own `hi/` exports at roughly 10,000 tokens whole and about
+300 for `EXPORT-7`.
+
+So an id is now a scope (`EXPORT-7`). It is the smallest change that answers the problem, and it
+is shaped by three things already decided.
+
+**It is the same envelope.** `EXPORT-3` says a smaller export is the same payload with less in it,
+and HI-1.md freezes the envelope at `"export": 1`. An id scope adds no field and moves none. HI-1.md
+gains the id in the list of values `scope` can hold, and one normative line saying what an id
+scope carries.
+
+**An id wins, and that is a precedence rule.** A file and an id cannot collide: an id's family
+starts with an uppercase letter and a file hi reads as criteria starts with a lowercase one. A
+family and an id should not collide either, because a family has no hyphen, but nothing validates
+the names a file *declares* in frontmatter. A cold read of this change declared `families: [SEND,
+SEND-1]`, `hi check` passed, and `hi export SEND-1` came back empty because the family arm won.
+So when a scope parses as an id it is read as an id, whatever frontmatter declares. Nothing that
+selected a file or a real family before selects anything different now.
+
+**The criteria above come with it** (`EXPORT-7.a`). Export carries `parent` on every entry, and a
+payload whose `parent` names something that is not in it is a reference to nowhere. A case read
+alone is also a sentence with its subject missing: "if I have no connection it queues" means
+nothing until you know what "it" is. The cost is a handful of lines, and the alternative is an
+agent asking for the parent or, worse, guessing it.
+
+That holds in a workspace `hi check` passes. A case whose parent was deleted by hand is an
+`orphan-case`, and export still names the parent it does not have rather than inventing one or
+dropping the case. Export reports what the files hold; `hi check` is where the break is reported.
+
+### What was deliberately not built
+
+- **A token budget.** `--budget 20k` would have to decide what to drop, which is hi judging which
+  of a person's criteria matter. The id scope lets the *caller* choose the slice, which is the only
+  party that knows what the work is.
+- **A reverse lookup from an id to the specs and code that cite it.** §23 put "where is the car
+  now" in a different layer from hi. A lookup that walks the repository for `hi: SEND-1` is that
+  layer's job, and spec-sync already reads those citations.
+- **An outline mode for large sets.** The feature list in `INTENT.md` and `hi ls --family` already
+  answer "what is here" without the sentences.
+- **Several ids in one call.** `scope` is one string, and making it a list is a shape change.
+  Two calls are two payloads, which a consumer can already hold.
+
+### The agent file says it, on §38's test
+
+§27 said `hi/AGENTS.md` carries the habit and nothing else, and points at `hi --help` for verbs.
+§38 admitted one sentence naming a verb on a test: it is a habit rather than a fact about an
+unfrozen format, and the one thing it rests on is frozen. This sentence passes the same test.
+"Read only the criterion you are building" is a habit, and the one thing it rests on is that an
+id is a scope `hi export` accepts, which HI-1.md now states beside the envelope.
+
+There is also a reason specific to this sentence. "Read the files here" is the right first step
+and becomes the wrong one as `hi/` grows, because the instruction stays the same size while what
+it costs keeps growing. That is the one way a file written once can go stale without a word in it
+changing, and the sentence is what keeps it from happening.
+
+The 0.8 template joins `src/seed/` as a known file, so `hi seed` upgrades an untouched copy and
+leaves an edited one alone, exactly as §39 describes.
+
+### Where this lands
+
+0.8.0 is the 1.0 release candidate, and nothing but a defect in the promise was planned before
+the tag. This is not a defect. It is additive: no new field, no new kind, no change to the
+format or the exit codes. It sits under `Unreleased` in the changelog, and whether it ships before
+or after the 1.0 tag is a release decision, not one this section makes.
+
+**What would change this decision:** evidence that agents given an id scope keep asking for the
+rest of the family, which would mean the slice is too narrow and siblings belong in it as one-line
+context. Evidence that `scope` needs to name several ids in practice, which would be an
+`"export": 2`, not a comma inside a string.
