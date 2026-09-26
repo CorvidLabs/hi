@@ -284,6 +284,32 @@ usually the whole reason two criteria disagree. Use the subject the sentence act
 `an operator`. `admin` is a permission bit; an operator is someone with a job to do, and the job is
 what the criterion is about.
 
+## Architecture
+
+One binary and plain files. The verbs that write hold a lock on `hi/` for the whole
+read-modify-write, and the two that write criteria read the result back before they save it; the
+verbs that read never lock. Nothing leaves the repository except the ticket `hi issue --create`
+hands to `gh`.
+
+```mermaid
+flowchart LR
+    accTitle: hi at a glance
+    accDescr: A person or an agent runs hi. Capture, retire, index and seed write the files in hi/ and INTENT.md under a lock. Check, ls, export, issue and view only read them, and hand JSON to an agent, a ticket to gh, and a page to a browser.
+
+    who(["person or agent"]) --> write["capture · retire · index · seed<br/>one writer at a time"]
+    who --> read["check · ls · export · issue · view<br/>read only"]
+    write --> files[("hi/*.md<br/>INTENT.md")]
+    files --> read
+    read -->|"hi export"| json["JSON for an agent<br/>then a spec-sync spec"]
+    read -->|"hi issue --create"| gh["a GitHub issue, via gh"]
+    read -->|"hi view"| page["one self-contained page"]
+```
+
+[docs/HLD.md](docs/HLD.md) is the high-level design: the modules, the capture, retire and export
+flows, how HI/1 is parsed, the id rules, how `INTENT.md`'s list is regenerated, the fledge plugin
+and its hooks, and what breaks and how. It is also published with its diagrams at
+[corvidlabs.github.io/hi/architecture](https://corvidlabs.github.io/hi/architecture/).
+
 ## What it deliberately does not do
 
 `hi` stores **no state**, tracks **no lifecycle**, binds **no evidence**, and **never fails a build

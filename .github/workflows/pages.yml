@@ -9,6 +9,10 @@ name: Pages
 # where corvidlabs.xyz reads them from for a repo marked `governed` in its
 # project catalog (scripts/refresh-coverage.ts).
 #
+# And the high-level design, docs/HLD.md, at /architecture/, with its Mermaid
+# diagrams drawn. That page is not the demo and is not built by hi: it is the
+# markdown rendered into docs/site/architecture.html.
+#
 # Pages must be enabled once in the repository settings
 # (Settings -> Pages -> Source: GitHub Actions); this workflow does not enable it.
 
@@ -20,6 +24,8 @@ on:
       - "INTENT.md"      # the page title and its lead prose
       - "src/**"         # how the page is rendered
       - "specs/**"       # the atlas coverage badges track these
+      - "docs/HLD.md"    # the architecture page
+      - "docs/site/**"   # and its template
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -71,6 +77,24 @@ jobs:
           path: .
           output-dir: site/badges
           components: "coverage langmix treemap sunburst calendar"
+
+      # GitHub renders the Mermaid fences in docs/HLD.md natively; this page
+      # does the same by loading Mermaid from jsdelivr in the reader's browser.
+      # That is why it is a separate page from the one above, which fetches
+      # nothing (hi: VIEW-2). marked is pinned so the markup cannot move under
+      # the template.
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Render the architecture page
+        run: |
+          mkdir -p site/architecture
+          bunx marked@18.0.14 --gfm -i docs/HLD.md -o "$RUNNER_TEMP/hld.html"
+          awk -v body="$RUNNER_TEMP/hld.html" '
+            $0 == "<!-- HLD -->" { while ((getline line < body) > 0) print line; found = 1; next }
+            { print }
+            END { if (!found) { print "docs/site/architecture.html has no <!-- HLD --> line" > "/dev/stderr"; exit 1 } }
+          ' docs/site/architecture.html > site/architecture/index.html
+          grep -q 'language-mermaid' site/architecture/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
