@@ -1,0 +1,291 @@
+<!doctype html>
+<!--
+  The page template for docs/HLD.md on GitHub Pages, served at
+  corvidlabs.github.io/hi/architecture/.
+
+  .github/workflows/pages.yml converts docs/HLD.md to HTML with `marked` and
+  puts it where the HLD marker line below is. Opened on its own this file is
+  an empty shell; read docs/HLD.md instead.
+
+  This is deliberately not the `hi view` page. That page fetches nothing
+  (hi: VIEW-2); this one loads Mermaid from jsdelivr to draw the diagrams, the
+  way GitHub does for the same markdown. Without the network, or with
+  scripting off, the diagrams stay readable as their Mermaid source.
+
+  The colours are the CorvidLabs Brand Kit v1.3 values that
+  src/view/style.css carries, so the two pages match.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hi architecture</title>
+<meta name="description" content="How hi (Human Intent) works, end to end: the high-level design, rendered from docs/HLD.md.">
+<script>
+    // The same stored choice the intent page's theme toggle writes, so a
+    // reader who picked dark there gets dark here (same origin).
+    (() => {
+        try {
+            const q = new URLSearchParams(location.search).get("theme");
+            const t = q || localStorage.getItem("corvid-theme");
+            if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+        } catch (_) {}
+    })();
+</script>
+<style>
+    :root {
+        color-scheme: light;
+        --ink: #15181B;
+        --paper: #FAF9F6;
+        --surface: #FFFFFF;
+        --surface-strong: #DCDAD2;
+        --sheen-strong: #0B5750;
+        --text-faint: #50555B;
+        --hairline: rgba(21, 24, 27, 0.12);
+        --well: rgba(21, 24, 27, 0.06);
+        --iridescence: linear-gradient(90deg, #0E6F66 0%, #1799A3 55%, #1E6FA8 100%);
+        --font-display: "Schibsted Grotesk", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        --font-mono: "Spline Sans Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+            color-scheme: dark;
+            --ink: #F4F3EF;
+            --paper: #131619;
+            --surface: #1B1F23;
+            --surface-strong: #272C31;
+            --sheen-strong: #45D0BC;
+            --text-faint: #A3A199;
+            --hairline: rgba(244, 243, 239, 0.15);
+            --well: rgba(244, 243, 239, 0.08);
+        }
+    }
+    :root[data-theme="dark"] {
+        color-scheme: dark;
+        --ink: #F4F3EF;
+        --paper: #131619;
+        --surface: #1B1F23;
+        --surface-strong: #272C31;
+        --sheen-strong: #45D0BC;
+        --text-faint: #A3A199;
+        --hairline: rgba(244, 243, 239, 0.15);
+        --well: rgba(244, 243, 239, 0.08);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--font-display);
+        font-size: 1rem;
+        line-height: 1.6;
+    }
+    .skip {
+        position: absolute;
+        left: 16px;
+        top: -48px;
+        padding: 8px 12px;
+        background: var(--surface);
+        color: var(--ink);
+        border: 1px solid var(--hairline);
+        border-radius: 6px;
+        z-index: 1;
+    }
+    .skip:focus { top: 12px; }
+    header, main, footer {
+        max-width: 72rem;
+        margin: 0 auto;
+        padding: 0 16px;
+    }
+    header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 24px;
+        align-items: baseline;
+        justify-content: space-between;
+        padding-top: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--hairline);
+    }
+    header::after {
+        content: "";
+        flex-basis: 100%;
+        height: 2px;
+        margin-top: 8px;
+        background: var(--iridescence);
+        opacity: 0.8;
+    }
+    .brand { margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+    header nav { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 0.95rem; }
+    main { padding-top: 8px; padding-bottom: 48px; }
+    main > * { max-width: 68ch; }
+    main > table, main > pre, main > .diagram { max-width: 100%; }
+    h1, h2, h3 { line-height: 1.25; letter-spacing: -0.01em; }
+    h1 { font-size: 2rem; margin: 32px 0 16px; }
+    h2 { font-size: 1.45rem; margin: 48px 0 12px; padding-top: 8px; border-top: 1px solid var(--hairline); }
+    h3 { font-size: 1.15rem; margin: 32px 0 8px; }
+    a { color: var(--sheen-strong); text-underline-offset: 2px; }
+    a:hover { text-decoration-thickness: 2px; }
+    a:focus-visible, .skip:focus-visible, pre:focus-visible, table:focus-visible, .diagram:focus-visible {
+        outline: 2px solid var(--sheen-strong);
+        outline-offset: 2px;
+        border-radius: 2px;
+    }
+    code, pre { font-family: var(--font-mono); font-size: 0.875em; }
+    :not(pre) > code {
+        background: var(--well);
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+        overflow-wrap: anywhere;
+    }
+    pre {
+        background: var(--surface);
+        border: 1px solid var(--hairline);
+        border-radius: 8px;
+        padding: 12px 16px;
+        overflow-x: auto;
+        line-height: 1.45;
+    }
+    .diagram {
+        margin: 16px 0 24px;
+        padding: 16px;
+        background: var(--surface);
+        border: 1px solid var(--hairline);
+        border-radius: 8px;
+        overflow-x: auto;
+    }
+    .diagram pre.mermaid {
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: none;
+        text-align: center;
+        overflow: visible;
+    }
+    .diagram svg { max-width: 100%; height: auto; }
+    .diagram .note {
+        margin: 8px 0 0;
+        font-size: 0.85rem;
+        color: var(--text-faint);
+    }
+    table {
+        display: block;
+        overflow-x: auto;
+        border-collapse: collapse;
+        margin: 16px 0 24px;
+        font-size: 0.95rem;
+    }
+    th, td {
+        text-align: left;
+        vertical-align: top;
+        padding: 8px 12px;
+        border: 1px solid var(--hairline);
+    }
+    th { background: var(--well); }
+    li + li { margin-top: 4px; }
+    footer {
+        padding-top: 16px;
+        padding-bottom: 32px;
+        border-top: 1px solid var(--hairline);
+        color: var(--text-faint);
+        font-size: 0.9rem;
+    }
+</style>
+</head>
+<body>
+<a class="skip" href="#doc">Skip to the document</a>
+<header>
+    <p class="brand">hi (Human Intent)</p>
+    <nav aria-label="Site">
+        <a href="../">The intent page</a>
+        <a href="https://github.com/CorvidLabs/hi/blob/main/docs/HLD.md">This document on GitHub</a>
+        <a href="https://github.com/CorvidLabs/hi">Repository</a>
+    </nav>
+</header>
+<main id="doc" tabindex="-1">
+<!-- HLD -->
+</main>
+<footer>
+    <p>Rendered from <a href="https://github.com/CorvidLabs/hi/blob/main/docs/HLD.md">docs/HLD.md</a> on every push to <code>main</code>. Relative links go to the file on GitHub. Diagrams are drawn by Mermaid in your browser.</p>
+</footer>
+<script type="module">
+    const doc = document.getElementById("doc");
+
+    // Links in docs/HLD.md are relative to docs/ in the repository, which is
+    // right on GitHub and wrong here. Point each at the file on GitHub, and
+    // leave in-page anchors alone.
+    const base = "https://github.com/CorvidLabs/hi/blob/main/docs/";
+    for (const link of doc.querySelectorAll("a[href]")) {
+        const href = link.getAttribute("href");
+        if (!href || href.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(href)) continue;
+        link.href = new URL(href, base).href;
+    }
+
+    // Heading ids the way GitHub makes them, so the document's own contents
+    // links and a link copied from GitHub both land here.
+    const used = new Map();
+    for (const heading of doc.querySelectorAll("h1, h2, h3, h4")) {
+        if (heading.id) continue;
+        const slug = heading.textContent.trim().toLowerCase()
+            .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+            .replace(/\s/g, "-");
+        const seen = used.get(slug) || 0;
+        used.set(slug, seen + 1);
+        heading.id = seen ? `${slug}-${seen}` : slug;
+    }
+
+    // marked writes a mermaid fence as <pre><code class="language-mermaid">.
+    const blocks = [...doc.querySelectorAll("pre > code.language-mermaid")].map((code) => {
+        const figure = document.createElement("div");
+        figure.className = "diagram";
+        const pre = document.createElement("pre");
+        pre.className = "mermaid";
+        pre.textContent = code.textContent;
+        figure.append(pre);
+        code.parentElement.replaceWith(figure);
+        return figure;
+    });
+
+    // Anything that scrolls sideways has to be reachable from the keyboard,
+    // or its right-hand side is out of reach without a mouse.
+    for (const box of doc.querySelectorAll(":scope > pre, :scope > table, .diagram")) {
+        box.tabIndex = 0;
+    }
+
+    if (blocks.length) {
+        const root = document.documentElement;
+        const dark = root.dataset.theme === "dark" ||
+            (root.dataset.theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        try {
+            const { default: mermaid } = await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs");
+            // Mermaid's dark theme puts #ccc edge labels on #585858, which is
+            // 4.4:1. The brand's raised surface under them is well over 4.5:1.
+            mermaid.initialize({
+                startOnLoad: false,
+                securityLevel: "strict",
+                theme: dark ? "dark" : "neutral",
+                themeVariables: dark ? { edgeLabelBackground: "#272C31" } : {},
+            });
+            await mermaid.run({ querySelector: ".diagram pre.mermaid" });
+            // Mermaid shrinks a diagram to fit its box. Past 60% of its own
+            // width the words are too small to read, so from there it scrolls
+            // sideways instead; the box is focusable for exactly that.
+            for (const svg of doc.querySelectorAll(".diagram svg")) {
+                const natural = parseFloat(svg.style.maxWidth);
+                if (natural > 0) svg.style.minWidth = `${Math.round(natural * 0.6)}px`;
+            }
+        } catch (error) {
+            for (const figure of blocks) {
+                if (figure.querySelector("svg")) continue;
+                const note = document.createElement("p");
+                note.className = "note";
+                note.textContent = "Mermaid could not be loaded, so this is the diagram's source.";
+                figure.append(note);
+            }
+        }
+    }
+</script>
+</body>
+</html>
