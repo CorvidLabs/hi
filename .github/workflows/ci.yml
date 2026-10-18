@@ -57,3 +57,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy -- -D warnings
       - run: cargo fmt --check
+
+  specsync:
+    name: SpecSync lifecycle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: CorvidLabs/spec-sync@e8fd149d4d9e7b8df9ea1d40d446df67da13f2fa # v6.1.1
+        with:
+          version: "6.1.1"
+          strict: "true"
+      - name: Lifecycle regression controls
+        run: bash scripts/test-specsync-lifecycle.sh
+      - name: Lifecycle and archive readiness
+        if: always()
+        run: bash scripts/check-specsync-lifecycle.sh

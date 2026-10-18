@@ -1,6 +1,6 @@
 ---
 id: adopt-verified-specsync-6-1-1-approval-review-learning-and-archive-lifecycle-for-hi
-state: approved
+state: implementing
 type: operations
 base_commit: a65a4a1a28c8dd0c204f6e58be30ecba4f6350ab
 ---
