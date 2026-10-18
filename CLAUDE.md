@@ -241,3 +241,5 @@ curl -s -A "release-check" https://crates.io/api/v1/crates/human-intent | \
 
 Unreleased work sits under an `Unreleased` heading in `CHANGELOG.md` with no version number and no
 date, because the version is decided at tag time and nowhere else.
+
+Repository delivery follows `AGENTS.md` and the pinned SpecSync 6.1.1 workflow. This adds no lifecycle or evidence feature to the hi product.

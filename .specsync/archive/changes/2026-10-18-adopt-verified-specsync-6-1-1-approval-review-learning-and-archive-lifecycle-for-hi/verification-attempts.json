@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "attempts": [
+    {
+      "timestamp": 1792333154,
+      "commit": "4b15ad4365e5d8343070cc26716dfd37db6b8e03",
+      "contract_digest": "48b75cae69099aac9e01c70ab6daa36decec0b84b53d25b497f2004853033054",
+      "execution_digest": "e3c6e98ec3aae7d13a5b3b4317a6022611d98d97ef6bba473a773ca119d33deb",
+      "workspace_digest": "bab4cd11e7e5d06854fc076aeb293ce8a969d78bcf179ed2b1b1ff0e229037ad",
+      "passed": true,
+      "commands": [
+        {
+          "command": "specsync check (no spec in scope)",
+          "success": true,
+          "exit_code": 0
+        }
+      ],
+      "requirement_ids": []
+    },
+    {
+      "timestamp": 1792333193,
+      "commit": "4b15ad4365e5d8343070cc26716dfd37db6b8e03",
+      "contract_digest": "48b75cae69099aac9e01c70ab6daa36decec0b84b53d25b497f2004853033054",
+      "execution_digest": "e3c6e98ec3aae7d13a5b3b4317a6022611d98d97ef6bba473a773ca119d33deb",
+      "workspace_digest": "466be6a022989deaaf33f0278f841e3fa20c40d5479745edb3dde8ffea6d1541",
+      "passed": true,
+      "commands": [
+        {
+          "command": "specsync check (no spec in scope)",
+          "success": true,
+          "exit_code": 0
+        }
+      ],
+      "requirement_ids": []
+    },
+    {
+      "timestamp": 1792333193,
+      "commit": "199926adce89cd13987fdfb7933ba00ca920a078",
+      "contract_digest": "48b75cae69099aac9e01c70ab6daa36decec0b84b53d25b497f2004853033054",
+      "execution_digest": "e3c6e98ec3aae7d13a5b3b4317a6022611d98d97ef6bba473a773ca119d33deb",
+      "workspace_digest": "bcc2774a7dec3276cb71c979c32370e8df817895f75f012d716206fbf836cc17",
+      "passed": true,
+      "commands": [
+        {
+          "command": "specsync check (no spec in scope)",
+          "success": true,
+          "exit_code": 0
+        }
+      ],
+      "requirement_ids": []
+    },
+    {
+      "timestamp": 1792333213,
+      "commit": "82afd606c3518152e329f39b7f3469cf5ec726d7",
+      "contract_digest": "48b75cae69099aac9e01c70ab6daa36decec0b84b53d25b497f2004853033054",
+      "execution_digest": "e3c6e98ec3aae7d13a5b3b4317a6022611d98d97ef6bba473a773ca119d33deb",
+      "workspace_digest": "ae30a90aac382bdf14601e4f217c42dbf2864ca6bf8f62ca5bdc1c1e32d6d8b2",
+      "passed": true,
+      "commands": [
+        {
+          "command": "specsync check (no spec in scope)",
+          "success": true,
+          "exit_code": 0
+        }
+      ],
+      "requirement_ids": []
+    },
+    {
+      "timestamp": 1792333214,
+      "commit": "6f82c3ce764bda21e3a7f137dc7056738967cb6a",
+      "contract_digest": "48b75cae69099aac9e01c70ab6daa36decec0b84b53d25b497f2004853033054",
+      "execution_digest": "e3c6e98ec3aae7d13a5b3b4317a6022611d98d97ef6bba473a773ca119d33deb",
+      "workspace_digest": "ae30a90aac382bdf14601e4f217c42dbf2864ca6bf8f62ca5bdc1c1e32d6d8b2",
+      "passed": true,
+      "commands": [
+        {
+          "command": "specsync check (no spec in scope)",
+          "success": true,
+          "exit_code": 0
+        }
+      ],
+      "requirement_ids": []
+    },
+    {
+      "timestamp": 1792333214,
+      "commit": "47660ebb0842a34fe860ace2a390cea429f0ac1d",
+      "contract_digest": "48b75cae69099aac9e01c70ab6daa36decec0b84b53d25b497f2004853033054",
+      "execution_digest": "e3c6e98ec3aae7d13a5b3b4317a6022611d98d97ef6bba473a773ca119d33deb",
+      "workspace_digest": "ae30a90aac382bdf14601e4f217c42dbf2864ca6bf8f62ca5bdc1c1e32d6d8b2",
+      "acceptance_input_digest": "3395c75ff7e7bef2b118210b1d36c52bba328535a27420af0f2ab739a9f1b90a",
+      "acceptance_manifest": {
+        "schema_version": 1,
+        "entries": [
+          {
+            "path": ".codex/skills/spec-sync/SKILL.md",
+            "kind": "file",
+            "mode": 33188,
+            "payload_digest": "94d1a150893099561e9f98af21b7018b34292da940464673d14b47d5554611bb",
+            "entry_digest": "62987b7662366afee910589908b4789a5e71be445abbd1db54ad71c185952707",
+            "owners": [
+              "@exact:delivery"
+            ]
+          },
+          {
+            "path": ".github/workflows/ci.yml",
+            "kind": "file",
+            "mode": 33188,
+            "payload_digest": "c4d1e3cce4923b5d8c310d6ae3e8f5f00cf10bef45112f5f496947deb0cf0550",
+            "entry_digest": "5553423d8d762a9c9164b7cc39e9e9ad96e2186f8964fdc28022b42ee261a6aa",
+            "owners": [
+              "@exact:delivery"
+            ]
+          },
+          {
+            "path": ".specsync/sdd.json",
+            "kind": "file",
+            "mode": 33188,
+            "payload_digest": "2e78c7561b606e5744887a8f25540d6e2d71c24e9dacb5f83ce176b32466b958",
+            "entry_digest": "64117fcc0500b6aa030f9b5c4ddfbdfea1fa7ed6f4da0d9e3af02f25cf48281a",
+            "owners": [
+              "@exact:delivery"
+            ]
+          },
+          {
+            "path": "AGENTS.md",
+            "kind": "file",
+            "mode": 33188,
+            "payload_digest": "64959c46bbb6ece9c81f1f0acfc9e744f3a38097160a96dd56aebc0b7e5f4725",
+            "entry_digest": "7c60119d3b899054f6c565d256746b40a12e38d7695452cccc3c2d230d43424a",
+            "owners": [
+              "@exact:delivery"
+            ]
+          },
+          {
+            "path": "CLAUDE.md",
+            "kind": "file",
+            "mode": 33188,
+            "payload_digest": "129e1e1399e2176b0fdd132ccf790c2c5634efe2a381721a4dd741c03af513b7",
+            "entry_digest": "4b10dcfc22eff3bb066022949a2703b54e5d1e1f58c72e646fa9855d495b5f72",
+            "owners": [
+              "@exact:delivery"
+            ]
+          },
+          {
+            "path": "scripts/check-specsync-lifecycle.sh",
+            "kind": "file",
+            "mode": 33261,
+            "payload_digest": "c80cea7a14963534177d1889ccbe2435fcd0b76aa936a2e6bc7310aaae51597a",
+            "entry_digest": "a21820cc4af9b66cc54c925abac7951eac0a01ec7b2223cef9040a2bad6bbc1d",
+            "owners": [
+              "@exact:delivery"
+            ]
+          },
+          {
+            "path": "scripts/test-specsync-lifecycle.sh",
+            "kind": "file",
+            "mode": 33261,
+            "payload_digest": "4c8b166912febf0f42cc711076a326cb52b658ce199dc82a1dffc7e7802edd06",
+            "entry_digest": "321ff56d37ed761af1d2be0c3bdedc746bc0544ae1fa0f85f504625f541f89cd",
+            "owners": [
+              "@exact:delivery"
+            ]
+          }
+        ]
+      },
+      "passed": true,
+      "commands": [
+        {
+          "command": "specsync check (no spec in scope)",
+          "success": true,
+          "exit_code": 0
+        }
+      ],
+      "requirement_ids": []
+    }
+  ]
+}
