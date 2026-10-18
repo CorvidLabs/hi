@@ -7,11 +7,11 @@
   "title": "Adopt verified SpecSync 6.1.1 approval review learning and archive lifecycle for hi",
   "description": "Adopt verified SpecSync 6.1.1 approval review learning and archive lifecycle for hi",
   "kind": "operations",
-  "state": "verifying",
+  "state": "accepted",
   "canonical_applied": true,
   "base_commit": "a65a4a1a28c8dd0c204f6e58be30ecba4f6350ab",
   "created_at": 1792332023,
-  "updated_at": 1792333214,
+  "updated_at": 1792335678,
   "affected_specs": [],
   "affected_paths": [
     ".github/workflows/ci.yml",

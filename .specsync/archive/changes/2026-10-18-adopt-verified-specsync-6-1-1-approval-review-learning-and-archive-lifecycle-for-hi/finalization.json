@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "change_id": "adopt-verified-specsync-6-1-1-approval-review-learning-and-archive-lifecycle-for-hi",
+  "implementation_commit": "47660ebb0842a34fe860ace2a390cea429f0ac1d",
+  "implementation_tree": "51af96664cf7746aff329c74880baa6419e2d8f6",
+  "contract_digest": "48b75cae69099aac9e01c70ab6daa36decec0b84b53d25b497f2004853033054",
+  "workspace_digest": "ae30a90aac382bdf14601e4f217c42dbf2864ca6bf8f62ca5bdc1c1e32d6d8b2",
+  "closing_digest": "e916a35992fd63d2518c2c9e7e01002aa02cc709571a2541906fda316426abfa",
+  "review_digest": "1d0adf957ebb0b0d46dca495e9ee0df1aa8d4cc2bee7fea100902c83c72b2b6e",
+  "finalization_digest": "101209862d506d04ba3eca114fc90c829fa7ef97bd2aee9e4a30a7d1ce99b5c2",
+  "timestamp": 1792335678
+}
