@@ -15,8 +15,25 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Runs first. Every other job needs it, so a pull request with any open SpecSync
+  # change under .specsync/changes/ runs nothing else until the change is archived.
+  archive-gate:
+    name: Archive
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      # The archive gate inputs are newer than v6.1.1, which ignores them.
+      - uses: CorvidLabs/spec-sync@106aaa43d0bcf049f19b173ddb63815a25c3f931 # main, archive gate (#832)
+        with:
+          archive-gate-only: 'true'
+
   check:
     name: Check
+    needs: archive-gate
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -33,6 +50,7 @@ jobs:
   # were found by a person taking a screenshot. ubuntu-latest ships Chrome.
   view:
     name: The page in a browser
+    needs: archive-gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +66,7 @@ jobs:
 
   lint:
     name: Lint
+    needs: archive-gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,6 +79,7 @@ jobs:
 
   specsync:
     name: SpecSync lifecycle
+    needs: archive-gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
