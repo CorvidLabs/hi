@@ -2,3 +2,6 @@
 # wrote with LF, so they must check out as LF on every platform, including
 # the Windows runner that builds the release binary (DECISIONS.md §39).
 src/seed/*.md text eol=lf
+.chough/bugs/*.md merge=chough-bug
+knowledge/index.md merge=chough-generated
+knowledge/journal/feed.xml merge=chough-generated
