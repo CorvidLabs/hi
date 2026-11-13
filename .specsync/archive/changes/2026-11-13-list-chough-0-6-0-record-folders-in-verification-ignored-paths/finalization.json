@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "change_id": "list-chough-0-6-0-record-folders-in-verification-ignored-paths",
+  "implementation_commit": "59729e3052c384980015579149e8b4d37c8f28e7",
+  "implementation_tree": "8ab31162dcc5cc45f2f64bc36db023df44649c78",
+  "contract_digest": "a98b653c5e84e4f8808e4e71006532659d5c80f058bace841d196ea2025eb727",
+  "workspace_digest": "e4b0f4ea924e9aca6340afd9bb9901a67f1c0ff0b780fa49c37a9b0e318a3e68",
+  "closing_digest": "3b622e8bee4245604721d7609176bcb72ac2e4bec1432881b44e9d16bf2b23f0",
+  "review_digest": "72593a502cade71ba52fc863781e611439a5fa0ee000c92eb13e9c9f9b70a06d",
+  "finalization_digest": "374a3e0d67c008f1b9e3ebcb2a75f7614c3dbc0e66382483c306bc96bfcb2256",
+  "timestamp": 1794579332
+}
