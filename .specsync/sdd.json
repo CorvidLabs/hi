@@ -51,6 +51,11 @@
     ".specsync/change-sequence.json",
     ".specsync/adoption-report.json"
   ],
+  "verification_ignored_paths": [
+    ".chough/sessions/",
+    ".chough/archive/",
+    ".chough/bugs/"
+  ],
   "verification_commands": [],
   "custom_artifacts": {},
   "principles_file": null
